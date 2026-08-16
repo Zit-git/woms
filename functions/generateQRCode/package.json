@@ -1,0 +1,9 @@
+{
+  "name": "generateQRCode",
+  "main": "index.js",
+  "dependencies": {
+    "express": "^5.2.1",
+    "qrcode": "^1.5.3",
+    "zcatalyst-sdk-node": "^3.4.0"
+  }
+}

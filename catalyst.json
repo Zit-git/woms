@@ -1,0 +1,16 @@
+{
+  "client": {
+    "source": "client"
+  },
+  "functions": {
+    "source": "functions",
+    "targets": [
+      "generateQRCode",
+      "createGRN",
+      "recordScan",
+      "notifyEvent",
+      "logAudit"
+    ],
+    "ignore": [".output"]
+  }
+}

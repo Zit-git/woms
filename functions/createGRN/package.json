@@ -1,0 +1,9 @@
+{
+  "name": "createGRN",
+  "main": "index.js",
+  "dependencies": {
+    "express": "^5.2.1",
+    "pdfkit": "^0.14.0",
+    "zcatalyst-sdk-node": "^3.4.0"
+  }
+}
