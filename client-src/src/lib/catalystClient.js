@@ -20,11 +20,25 @@ export function embedSignIn(elementId, serviceUrl) {
 }
 
 export function signOut(redirectUrl) {
-  // Best-effort server-side session cleanup; the app's own UI state is
-  // cleared separately and immediately (see AuthContext.clearSession),
-  // since the SDK's redirect/cleanup behavior here is inconsistent across
-  // auth protocols and shouldn't be relied on for the UI transition.
-  sdk().auth.signOut(redirectUrl);
+  // auth.signOut() itself only ever fires a real logout round-trip to
+  // accounts.zoho.com in one of its internal branches -- in the branch this
+  // project actually hits, it just deletes a cookie client-side (which
+  // silently no-ops if the path/domain don't match how it was set) and
+  // redirects straight back without ever invalidating the server session,
+  // so the SSO session survives and the embedded sign-in widget silently
+  // re-authenticates on reload. auth.signOutUrl() computes the same
+  // accounts-domain logout URL the SDK uses internally (correct domain/
+  // region, no guessing) without navigating, so we can force the real
+  // top-level navigation to it ourselves.
+  return sdk()
+    .auth.signOutUrl(redirectUrl)
+    .then((res) => {
+      const url = res?.content?.signout_url || res?.content?.data?.signout_url;
+      window.location.href = url || redirectUrl;
+    })
+    .catch(() => {
+      window.location.href = redirectUrl;
+    });
 }
 
 export function table(tableName) {
