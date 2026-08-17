@@ -7,10 +7,13 @@ export default function Login() {
   }, []);
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: 420 }}>
-        <h1 style={{ textAlign: 'center', marginBottom: 24 }}>WOMS</h1>
-        <div id="catalyst-signin" />
+    <div className="login-page">
+      <div className="login-card">
+        <div className="login-brand">WOMS</div>
+        <div className="login-subtitle">Warehouse Operations Management System</div>
+        <div className="login-widget">
+          <div id="catalyst-signin" />
+        </div>
       </div>
     </div>
   );
