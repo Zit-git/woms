@@ -9,7 +9,20 @@ const TABLES = {
   INBOUND_ADVICE: 'InboundAdvice',
   CARGO: 'Cargo',
   APP_USERS: 'AppUsers',
+  OUTBOUND_REQUEST: 'OutboundRequest',
+  PICK_TASK: 'PickTask',
+  DISPATCH: 'Dispatch',
 };
+
+// Catalyst datetime columns expect "YYYY-MM-DD HH:mm:ss" on insert/update
+// (ISO strings and millisecond-precision values are both rejected).
+function formatDatetime(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  );
+}
 
 // -- Customers --
 export const listCustomers = () => getAllRows(TABLES.CUSTOMERS);
@@ -68,6 +81,53 @@ export const createCargo = (row) => addRow(TABLES.CARGO, row);
 
 export const generateQRCode = (cargoId) => callFunction('generateQRCode', { cargoId });
 export const createGRN = (inboundAdviceId, verifiedBy) => callFunction('createGRN', { inboundAdviceId, verifiedBy });
+
+// -- Outbound Operations --
+export const listOutboundRequests = () =>
+  zcql(
+    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, Customers.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID ORDER BY OutboundRequest.CREATEDTIME DESC`
+  ).then((rows) => rows.map((r) => ({ ...r.OutboundRequest, customer_name: r.Customers?.name })));
+export const createOutboundRequest = (row) => addRow(TABLES.OUTBOUND_REQUEST, row);
+export const editOutboundRequest = (row) => updateRow(TABLES.OUTBOUND_REQUEST, row);
+export const getOutboundRequestById = (id) =>
+  zcql(
+    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.customer_id, Customers.name, Customers.email FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID WHERE OutboundRequest.ROWID = ${id}`
+  ).then((rows) => {
+    const row = rows[0];
+    return row ? { ...row.OutboundRequest, customer_name: row.Customers?.name, customer_email: row.Customers?.email } : null;
+  });
+
+export const listAvailableCargoForCustomer = (customerId) =>
+  zcql(
+    `SELECT ROWID, description, qty, unit, status, qr_code FROM Cargo WHERE customer_id = ${customerId} AND status != 'Dispatched' ORDER BY CREATEDTIME DESC`
+  ).then((rows) => rows.map((r) => r.Cargo));
+
+export const listPickTasksByRequest = (outboundRequestId) =>
+  zcql(
+    `SELECT PickTask.ROWID, PickTask.status, PickTask.assigned_to, PickTask.cargo_id, Cargo.description, Cargo.qty, Cargo.unit, Cargo.qr_code, Cargo.status FROM PickTask LEFT JOIN Cargo ON PickTask.cargo_id = Cargo.ROWID WHERE PickTask.outbound_request_id = ${outboundRequestId} ORDER BY PickTask.CREATEDTIME`
+  ).then((rows) =>
+    rows.map((r) => ({
+      ...r.PickTask,
+      cargo_description: r.Cargo?.description,
+      cargo_qty: r.Cargo?.qty,
+      cargo_unit: r.Cargo?.unit,
+      cargo_qr_code: r.Cargo?.qr_code,
+      cargo_status: r.Cargo?.status,
+    }))
+  );
+export const createPickTask = (row) => addRow(TABLES.PICK_TASK, row);
+export const editPickTask = (row) => updateRow(TABLES.PICK_TASK, row);
+
+export const listDispatchesByRequest = (outboundRequestId) =>
+  zcql(
+    `SELECT ROWID, status, dispatched_by, dispatch_date, vehicle_details FROM Dispatch WHERE outbound_request_id = ${outboundRequestId} ORDER BY CREATEDTIME DESC`
+  ).then((rows) => rows.map((r) => r.Dispatch));
+export const createDispatch = (row) => addRow(TABLES.DISPATCH, { ...row, dispatch_date: formatDatetime() });
+
+export const recordScan = (cargoId, scannedBy, scanContext, locationId) =>
+  callFunction('recordScan', { cargoId, scannedBy, scanContext, locationId });
+export const notifyEvent = (eventType, recipientEmail, recordId, message, module) =>
+  callFunction('notifyEvent', { eventType, recipientEmail, recordId, message, module });
 
 // -- Business role lookup (AppUsers) --
 export const getAppUserByEmail = (email) =>
