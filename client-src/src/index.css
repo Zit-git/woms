@@ -121,6 +121,17 @@ th { color: var(--muted); font-weight: 600; }
 
 .error-text { color: var(--danger); font-size: 13px; margin: 8px 0; }
 
+#catalyst-signin {
+  width: 100%;
+  min-height: 420px;
+}
+#catalyst-signin iframe {
+  width: 100% !important;
+  height: 520px !important;
+  border: none !important;
+  display: block;
+}
+
 @media (max-width: 768px) {
   .sidebar { display: none; }
   .app-shell { flex-direction: column; }
