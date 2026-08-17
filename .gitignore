@@ -2,3 +2,4 @@ node_modules/
 .catalystrc
 .output/
 *.log
+client-src/dist/

@@ -42,7 +42,7 @@ function Gate() {
 
 export default function App() {
   return (
-    <BrowserRouter basename="/app">
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <AuthProvider>
         <Gate />
       </AuthProvider>

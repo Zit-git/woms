@@ -38,7 +38,7 @@ export default function AppShell() {
         <div className="sidebar-footer">
           <div className="muted small">{user?.email_id}</div>
           <div className="muted small">{businessRole}</div>
-          <button className="link-btn" onClick={() => signOut(window.location.origin + '/app/index.html')}>
+          <button className="link-btn" onClick={() => signOut(window.location.origin + import.meta.env.BASE_URL + 'index.html')}>
             Sign out
           </button>
         </div>

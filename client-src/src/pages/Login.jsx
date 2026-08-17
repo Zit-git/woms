@@ -3,7 +3,7 @@ import { embedSignIn } from '../lib/catalystClient';
 
 export default function Login() {
   useEffect(() => {
-    embedSignIn('catalyst-signin', window.location.origin + '/app/index.html');
+    embedSignIn('catalyst-signin', window.location.origin + import.meta.env.BASE_URL + 'index.html');
   }, []);
 
   return (
