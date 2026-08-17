@@ -17,7 +17,12 @@ const NAV_ITEMS = [
 ];
 
 export default function AppShell() {
-  const { user, businessRole } = useAuth();
+  const { user, businessRole, clearSession } = useAuth();
+
+  const handleSignOut = () => {
+    clearSession(); // instant UI feedback, regardless of SDK behavior below
+    signOut(window.location.origin + import.meta.env.BASE_URL + 'index.html');
+  };
 
   return (
     <div className="app-shell">
@@ -38,7 +43,7 @@ export default function AppShell() {
         <div className="sidebar-footer">
           <div className="muted small">{user?.email_id}</div>
           <div className="muted small">{businessRole}</div>
-          <button className="link-btn" onClick={() => signOut(window.location.origin + import.meta.env.BASE_URL + 'index.html')}>
+          <button className="link-btn" onClick={handleSignOut}>
             Sign out
           </button>
         </div>

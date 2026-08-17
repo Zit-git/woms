@@ -33,11 +33,22 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
+  // Clears our own app-level session state immediately, independent of
+  // whatever the Catalyst SDK's signOut() does server-side (its behavior
+  // is inconsistent across auth protocols -- see catalystClient.js). The
+  // route gate in App.jsx reacts to `user` becoming null and swaps to the
+  // Login screen instantly, no page reload required.
+  const clearSession = () => {
+    setUser(null);
+    setAppUser(null);
+  };
+
   const value = {
     user,
     businessRole: appUser?.business_role || null,
     loading,
     isAuthenticated: !!user,
+    clearSession,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

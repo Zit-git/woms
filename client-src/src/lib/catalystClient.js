@@ -20,11 +20,11 @@ export function embedSignIn(elementId, serviceUrl) {
 }
 
 export function signOut(redirectUrl) {
-  // The SDK's own redirect after sign-out is conditional on auth protocol --
-  // for JWT-based auth it just clears a cookie and never navigates, so the
-  // app would otherwise appear to stay signed in. Force it explicitly.
+  // Best-effort server-side session cleanup; the app's own UI state is
+  // cleared separately and immediately (see AuthContext.clearSession),
+  // since the SDK's redirect/cleanup behavior here is inconsistent across
+  // auth protocols and shouldn't be relied on for the UI transition.
   sdk().auth.signOut(redirectUrl);
-  window.location.href = redirectUrl;
 }
 
 export function table(tableName) {
