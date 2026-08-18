@@ -9,7 +9,8 @@
       "createGRN",
       "recordScan",
       "notifyEvent",
-      "logAudit"
+      "logAudit",
+      "inviteUser"
     ],
     "ignore": [".output"]
   }

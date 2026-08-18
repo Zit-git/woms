@@ -312,6 +312,8 @@ export const getAppUserByEmail = (email) =>
 // -- System Administration --
 export const listAppUsers = () => getAllRows('AppUsers', 500);
 export const listRolePermissions = () => getAllRows('RolePermissions', 500);
+export const inviteUser = (firstName, lastName, email, businessRole, redirectUrl, warehouseId) =>
+  callFunction('inviteUser', { firstName, lastName, email, businessRole, redirectUrl, warehouseId });
 
 // -- Settings: audit trail --
 export const listRecentAuditLog = (limit = 100) =>
