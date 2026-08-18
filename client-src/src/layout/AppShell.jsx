@@ -31,11 +31,11 @@ const NAV_GROUPS = [
   {
     label: 'Operations',
     items: [
-      { to: '/inbound', label: 'Inbound Operations', icon: IconInbound },
+      { to: '/inbound', label: 'Inbounds', icon: IconInbound },
       { to: '/storage', label: 'Storage', icon: IconBox },
-      { to: '/outbound', label: 'Outbound Operations', icon: IconOutbound },
-      { to: '/val', label: 'Value Added Logistics', icon: IconLayers },
-      { to: '/tasks', label: 'Operational Tasks', icon: IconChecklist },
+      { to: '/outbound', label: 'Outbounds', icon: IconOutbound },
+      { to: '/val', label: 'VAL', icon: IconLayers },
+      { to: '/tasks', label: 'Tasks', icon: IconChecklist },
     ],
   },
   {
