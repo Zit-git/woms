@@ -64,7 +64,15 @@ export default function AppShell() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand">WOMS</div>
+        <button
+          className="brand"
+          onClick={() => {
+            window.location.href = window.location.origin + import.meta.env.BASE_URL;
+          }}
+        >
+          <IconWarehouse className="brand-icon" width={22} height={22} />
+          <span>WOMS</span>
+        </button>
         <nav>
           {NAV_GROUPS.map((group) => (
             <div className="nav-group" key={group.label || 'root'}>

@@ -39,21 +39,23 @@ h1, h2, h3 { margin: 0 0 12px; }
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  margin-bottom: 24px;
   font-weight: 700;
   font-size: 20px;
-  margin-bottom: 24px;
   color: #ffffff;
   letter-spacing: 0.5px;
+  cursor: pointer;
 }
-.brand::before {
-  content: '';
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  background: var(--accent);
-  margin-right: 8px;
-}
+.brand:hover { opacity: 0.85; }
+.brand-icon { color: var(--accent); flex-shrink: 0; }
 
 .sidebar nav { display: flex; flex-direction: column; flex: 1; overflow-y: auto; }
 
