@@ -1,20 +1,55 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { signOut } from '../lib/catalystClient';
+import {
+  IconGrid,
+  IconUsers,
+  IconWarehouse,
+  IconInbound,
+  IconBox,
+  IconQr,
+  IconChecklist,
+  IconLayers,
+  IconOutbound,
+  IconChart,
+  IconGear,
+  IconLogout,
+} from './icons';
 
-const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', end: true },
-  { to: '/customers', label: 'Customer Management' },
-  { to: '/warehouse', label: 'Warehouse Management' },
-  { to: '/inbound', label: 'Inbound Operations' },
-  { to: '/cargo-storage', label: 'Cargo & Storage Management' },
-  { to: '/qr-labels', label: 'QR Code & Label Management' },
-  { to: '/tasks', label: 'Operational Task Management' },
-  { to: '/val', label: 'Value Added Logistics' },
-  { to: '/outbound', label: 'Outbound Operations' },
-  { to: '/reports', label: 'Reports & Dashboards' },
-  { to: '/admin', label: 'System Administration' },
+const NAV_GROUPS = [
+  {
+    label: null, // ungrouped, always first
+    items: [{ to: '/', label: 'Dashboard', end: true, icon: IconGrid }],
+  },
+  {
+    label: 'Masters',
+    items: [
+      { to: '/customers', label: 'Customers', icon: IconUsers },
+      { to: '/warehouse', label: 'Warehouses', icon: IconWarehouse },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { to: '/inbound', label: 'Inbound Operations', icon: IconInbound },
+      { to: '/cargo-storage', label: 'Cargo & Storage', icon: IconBox },
+      { to: '/qr-labels', label: 'QR & Label Management', icon: IconQr },
+      { to: '/tasks', label: 'Operational Tasks', icon: IconChecklist },
+      { to: '/val', label: 'Value Added Logistics', icon: IconLayers },
+      { to: '/outbound', label: 'Outbound Operations', icon: IconOutbound },
+    ],
+  },
+  {
+    label: 'Insights',
+    items: [{ to: '/reports', label: 'Reports & Dashboards', icon: IconChart }],
+  },
+  {
+    label: 'Administration',
+    items: [{ to: '/admin', label: 'System Administration', icon: IconGear }],
+  },
 ];
+
+const ALL_ITEMS = NAV_GROUPS.flatMap((g) => g.items);
 
 export default function AppShell() {
   const { user, businessRole, clearSession } = useAuth();
@@ -29,21 +64,31 @@ export default function AppShell() {
       <aside className="sidebar">
         <div className="brand">WOMS</div>
         <nav>
-          {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}
-            >
-              {item.label}
-            </NavLink>
+          {NAV_GROUPS.map((group) => (
+            <div className="nav-group" key={group.label || 'root'}>
+              {group.label && <div className="nav-group-label">{group.label}</div>}
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}
+                  >
+                    <Icon className="nav-icon" />
+                    <span>{item.label}</span>
+                  </NavLink>
+                );
+              })}
+            </div>
           ))}
         </nav>
         <div className="sidebar-footer">
           <div className="muted small">{user?.email_id}</div>
           <div className="muted small">{businessRole}</div>
-          <button className="link-btn" onClick={handleSignOut}>
+          <button className="link-btn sign-out-btn" onClick={handleSignOut}>
+            <IconLogout width={14} height={14} />
             Sign out
           </button>
         </div>
@@ -54,16 +99,20 @@ export default function AppShell() {
       </main>
 
       <nav className="bottom-nav">
-        {NAV_ITEMS.slice(0, 5).map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            className={({ isActive }) => 'bottom-nav-link' + (isActive ? ' active' : '')}
-          >
-            {item.label.split(' ')[0]}
-          </NavLink>
-        ))}
+        {ALL_ITEMS.slice(0, 5).map((item) => {
+          const Icon = item.icon;
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) => 'bottom-nav-link' + (isActive ? ' active' : '')}
+            >
+              <Icon width={20} height={20} />
+              <span>{item.label.split(' ')[0]}</span>
+            </NavLink>
+          );
+        })}
       </nav>
     </div>
   );
