@@ -10,6 +10,7 @@ import InboundAdviceList from './pages/inbound/InboundAdviceList';
 import InboundAdviceDetail from './pages/inbound/InboundAdviceDetail';
 import OutboundRequestList from './pages/outbound/OutboundRequestList';
 import OutboundRequestDetail from './pages/outbound/OutboundRequestDetail';
+import ReportsPage from './pages/reports/ReportsPage';
 
 function Gate() {
   const { isAuthenticated, loading } = useAuth();
@@ -35,7 +36,7 @@ function Gate() {
         <Route path="val" element={<PlaceholderModule title="Value Added Logistics" />} />
         <Route path="outbound" element={<OutboundRequestList />} />
         <Route path="outbound/:requestId" element={<OutboundRequestDetail />} />
-        <Route path="reports" element={<PlaceholderModule title="Reports & Dashboards" />} />
+        <Route path="reports" element={<ReportsPage />} />
         <Route path="admin" element={<PlaceholderModule title="System Administration" />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

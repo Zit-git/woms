@@ -129,6 +129,79 @@ export const recordScan = (cargoId, scannedBy, scanContext, locationId) =>
 export const notifyEvent = (eventType, recipientEmail, recordId, message, module) =>
   callFunction('notifyEvent', { eventType, recipientEmail, recordId, message, module });
 
+// -- Dashboard KPIs --
+function todayStart() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return formatDatetime(d);
+}
+
+// COQL's COUNT(...) response nests the value under whatever field name was
+// counted (COUNT(ROWID) -> {ROWID: n}, COUNT(DISTINCT x) -> {x: n}), so pull
+// the first value out rather than assuming a fixed key.
+const countOf = (table, expr, where = '') =>
+  zcql(`SELECT COUNT(${expr}) FROM ${table}${where ? ` WHERE ${where}` : ''}`).then((rows) => {
+    const row = rows[0]?.[table];
+    return row ? Object.values(row)[0] : 0;
+  });
+
+export const getDashboardStats = () => {
+  const since = todayStart();
+  return Promise.all([
+    countOf('Customers', 'ROWID'),
+    countOf('StorageLocations', 'ROWID'),
+    countOf('Cargo', 'DISTINCT current_location_id', 'current_location_id IS NOT NULL'),
+    countOf('Cargo', 'ROWID', "status != 'Dispatched'"),
+    countOf('InboundAdvice', 'ROWID', `CREATEDTIME >= '${since}'`),
+    countOf('OutboundRequest', 'ROWID', `CREATEDTIME >= '${since}'`),
+    countOf('Tasks', 'ROWID', "status != 'Completed'"),
+    countOf('VALRequest', 'ROWID', "status != 'Completed'"),
+  ]).then(
+    ([
+      totalCustomers,
+      totalLocations,
+      occupiedLocations,
+      activeCargo,
+      todaysInbound,
+      todaysOutbound,
+      pendingTasks,
+      pendingVal,
+    ]) => ({
+      totalCustomers,
+      totalLocations,
+      occupiedLocations,
+      activeCargo,
+      todaysInbound,
+      todaysOutbound,
+      pendingTasks,
+      pendingVal,
+    })
+  );
+};
+
+// -- Reports --
+export const listCargoRegister = () =>
+  zcql(
+    `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.status, Cargo.qr_code, Customers.name, StorageLocations.location_code FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID LEFT JOIN StorageLocations ON Cargo.current_location_id = StorageLocations.ROWID ORDER BY Cargo.CREATEDTIME DESC`
+  ).then((rows) =>
+    rows.map((r) => ({
+      ...r.Cargo,
+      customer_name: r.Customers?.name,
+      location_code: r.StorageLocations?.location_code,
+    }))
+  );
+
+export const listDispatchReport = () =>
+  zcql(
+    `SELECT Dispatch.ROWID, Dispatch.status, Dispatch.dispatched_by, Dispatch.dispatch_date, Dispatch.vehicle_details, OutboundRequest.ROWID, Customers.name FROM Dispatch LEFT JOIN OutboundRequest ON Dispatch.outbound_request_id = OutboundRequest.ROWID LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID ORDER BY Dispatch.CREATEDTIME DESC`
+  ).then((rows) =>
+    rows.map((r) => ({
+      ...r.Dispatch,
+      outbound_request_id: r.OutboundRequest?.ROWID,
+      customer_name: r.Customers?.name,
+    }))
+  );
+
 // -- Business role lookup (AppUsers) --
 export const getAppUserByEmail = (email) =>
   zcql(`SELECT ROWID, business_role, warehouse_id, user_status FROM AppUsers WHERE email = '${email}'`).then(

@@ -108,6 +108,16 @@ h1, h2, h3 { margin: 0 0 12px; }
   gap: 16px;
 }
 
+.kpi-card {
+  display: block;
+  text-decoration: none;
+  color: var(--text);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+a.kpi-card:hover { box-shadow: 0 4px 14px rgba(16, 27, 45, 0.1); transform: translateY(-1px); }
+.kpi-card h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin-bottom: 10px; }
+.kpi-value { font-size: 30px; font-weight: 700; color: var(--text); line-height: 1; margin-bottom: 4px; }
+
 table { width: 100%; border-collapse: collapse; background: var(--surface); }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
 th { color: var(--muted); font-weight: 600; }
