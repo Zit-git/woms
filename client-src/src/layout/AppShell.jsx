@@ -13,6 +13,7 @@ import {
   IconChart,
   IconGear,
   IconSettings,
+  IconTruck,
   IconLogout,
 } from './icons';
 
@@ -26,6 +27,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/customers', label: 'Customers', icon: IconUsers },
       { to: '/warehouse', label: 'Warehouses', icon: IconWarehouse },
+      { to: '/transporters', label: 'Transporters', icon: IconTruck },
     ],
   },
   {

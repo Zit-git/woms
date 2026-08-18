@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import DashboardHome from './pages/DashboardHome';
 import CustomerList from './pages/customers/CustomerList';
 import CustomerDetail from './pages/customers/CustomerDetail';
+import TransportersPage from './pages/transporters/TransportersPage';
 import WarehouseConfig from './pages/warehouse/WarehouseConfig';
 import InboundAdviceList from './pages/inbound/InboundAdviceList';
 import InboundAdviceDetail from './pages/inbound/InboundAdviceDetail';
@@ -33,6 +34,7 @@ function Gate() {
         <Route index element={<DashboardHome />} />
         <Route path="customers" element={<CustomerList />} />
         <Route path="customers/:customerId" element={<CustomerDetail />} />
+        <Route path="transporters" element={<TransportersPage />} />
         <Route path="warehouse" element={<WarehouseConfig />} />
         <Route path="inbound" element={<InboundAdviceList />} />
         <Route path="inbound/:adviceId" element={<InboundAdviceDetail />} />

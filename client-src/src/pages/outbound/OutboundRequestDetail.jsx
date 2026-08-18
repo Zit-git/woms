@@ -13,6 +13,7 @@ import {
   notifyEvent,
 } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
+import DocumentUploader from '../../components/DocumentUploader';
 
 export default function OutboundRequestDetail() {
   const { requestId } = useParams();
@@ -134,6 +135,19 @@ export default function OutboundRequestDetail() {
           <strong>Status:</strong> <span className="status-badge">{request.status}</span>
         </p>
       </div>
+
+      <DocumentUploader
+        linkedModule="Outbound Operations"
+        linkedRecordId={requestId}
+        bucketKey="DOCUMENTS"
+        title="Documents (delivery note, invoice, etc.)"
+      />
+      <DocumentUploader
+        linkedModule="Outbound Operations Photos"
+        linkedRecordId={requestId}
+        bucketKey="CARGO_PHOTOS"
+        title="Dispatch Photos"
+      />
 
       <div className="toolbar">
         <h3>Pick Tasks</h3>

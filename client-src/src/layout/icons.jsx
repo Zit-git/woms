@@ -105,6 +105,15 @@ export const IconGear = (p) => (
   </svg>
 );
 
+export const IconTruck = (p) => (
+  <svg {...base} {...p}>
+    <rect x="2" y="7" width="12" height="10" rx="1" />
+    <path d="M14 10h4l3 3v4h-7z" />
+    <circle cx="6.5" cy="19" r="1.6" />
+    <circle cx="17" cy="19" r="1.6" />
+  </svg>
+);
+
 export const IconSettings = (p) => (
   <svg {...base} {...p}>
     <path d="M4 6h9" />

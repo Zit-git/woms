@@ -10,7 +10,8 @@
       "recordScan",
       "notifyEvent",
       "logAudit",
-      "inviteUser"
+      "inviteUser",
+      "uploadFile"
     ],
     "ignore": [".output"]
   }

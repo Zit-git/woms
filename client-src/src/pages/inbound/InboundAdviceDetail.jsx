@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getInboundAdviceById, listCargoByAdvice, createCargo, generateQRCode, createGRN } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
+import DocumentUploader from '../../components/DocumentUploader';
 
 export default function InboundAdviceDetail() {
   const { adviceId } = useParams();
@@ -106,6 +107,14 @@ export default function InboundAdviceDetail() {
           <strong>Status:</strong> <span className="status-badge">{advice.status}</span>
         </p>
       </div>
+
+      <DocumentUploader linkedModule="Inbound Operations" linkedRecordId={adviceId} bucketKey="DOCUMENTS" title="Documents (CMR, packing list, etc.)" />
+      <DocumentUploader
+        linkedModule="Inbound Operations Photos"
+        linkedRecordId={adviceId}
+        bucketKey="CARGO_PHOTOS"
+        title="Receiving Photos"
+      />
 
       <div className="toolbar">
         <h3>Cargo</h3>

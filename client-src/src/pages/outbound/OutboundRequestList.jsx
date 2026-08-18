@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listOutboundRequests, createOutboundRequest, listCustomers } from '../../lib/api';
+import { listOutboundRequests, createOutboundRequest, listCustomers, listTransporters } from '../../lib/api';
 import SortableTh from '../../components/SortableTh';
 import { useSortableData } from '../../lib/useSortableData';
 
@@ -8,19 +8,21 @@ export default function OutboundRequestList() {
   const navigate = useNavigate();
   const [requests, setRequests] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [transporters, setTransporters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ customer_id: '', requested_date: '' });
+  const [form, setForm] = useState({ customer_id: '', transporter_id: '', requested_date: '' });
   const [saving, setSaving] = useState(false);
   const { sorted, toggleSort, arrowFor } = useSortableData(requests);
 
   const load = () => {
     setLoading(true);
-    Promise.all([listOutboundRequests(), listCustomers()])
-      .then(([r, c]) => {
+    Promise.all([listOutboundRequests(), listCustomers(), listTransporters()])
+      .then(([r, c, t]) => {
         setRequests(r);
         setCustomers(c);
+        setTransporters(t);
         if (!form.customer_id && c.length) setForm((f) => ({ ...f, customer_id: c[0].ROWID }));
       })
       .catch((err) => setError(err.message || String(err)))
@@ -32,10 +34,10 @@ export default function OutboundRequestList() {
   const submit = (e) => {
     e.preventDefault();
     setSaving(true);
-    createOutboundRequest({ ...form, status: 'Submitted' })
+    createOutboundRequest({ ...form, transporter_id: form.transporter_id || undefined, status: 'Submitted' })
       .then(() => {
         setShowForm(false);
-        setForm({ customer_id: customers[0]?.ROWID || '', requested_date: '' });
+        setForm({ customer_id: customers[0]?.ROWID || '', transporter_id: '', requested_date: '' });
         load();
       })
       .catch((err) => setError(err.message || String(err)))
@@ -69,6 +71,17 @@ export default function OutboundRequestList() {
             </select>
           </div>
           <div className="form-row">
+            <label>Transporter</label>
+            <select value={form.transporter_id} onChange={(e) => setForm({ ...form, transporter_id: e.target.value })}>
+              <option value="">None</option>
+              {transporters.map((t) => (
+                <option key={t.ROWID} value={t.ROWID}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-row">
             <label>Requested date</label>
             <input
               type="date"
@@ -95,6 +108,7 @@ export default function OutboundRequestList() {
           <thead>
             <tr>
               <SortableTh label="Customer" sortKey="customer_name" onSort={toggleSort} arrowFor={arrowFor} />
+              <SortableTh label="Transporter" sortKey="transporter_name" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Requested date" sortKey="requested_date" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Status" sortKey="status" onSort={toggleSort} arrowFor={arrowFor} />
               <th></th>
@@ -104,6 +118,7 @@ export default function OutboundRequestList() {
             {sorted.map((r) => (
               <tr key={r.ROWID} className="clickable-row" onClick={() => navigate(`/outbound/${r.ROWID}`)}>
                 <td>{r.customer_name}</td>
+                <td>{r.transporter_name || <span className="muted">—</span>}</td>
                 <td>{r.requested_date}</td>
                 <td>
                   <span className="status-badge">{r.status}</span>
@@ -115,7 +130,7 @@ export default function OutboundRequestList() {
             ))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={4} className="muted">
+                <td colSpan={5} className="muted">
                   No outbound requests yet.
                 </td>
               </tr>

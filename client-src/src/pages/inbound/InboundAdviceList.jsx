@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listInboundAdvice, createInboundAdvice, listCustomers } from '../../lib/api';
+import { listInboundAdvice, createInboundAdvice, listCustomers, listTransporters } from '../../lib/api';
 import SortableTh from '../../components/SortableTh';
 import { useSortableData } from '../../lib/useSortableData';
 
@@ -8,19 +8,21 @@ export default function InboundAdviceList() {
   const navigate = useNavigate();
   const [advices, setAdvices] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [transporters, setTransporters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ customer_id: '', expected_date: '', transport_details: '' });
+  const [form, setForm] = useState({ customer_id: '', transporter_id: '', expected_date: '', transport_details: '' });
   const [saving, setSaving] = useState(false);
   const { sorted, toggleSort, arrowFor } = useSortableData(advices);
 
   const load = () => {
     setLoading(true);
-    Promise.all([listInboundAdvice(), listCustomers()])
-      .then(([a, c]) => {
+    Promise.all([listInboundAdvice(), listCustomers(), listTransporters()])
+      .then(([a, c, t]) => {
         setAdvices(a);
         setCustomers(c);
+        setTransporters(t);
         if (!form.customer_id && c.length) setForm((f) => ({ ...f, customer_id: c[0].ROWID }));
       })
       .catch((err) => setError(err.message || String(err)))
@@ -32,10 +34,10 @@ export default function InboundAdviceList() {
   const submit = (e) => {
     e.preventDefault();
     setSaving(true);
-    createInboundAdvice({ ...form, status: 'Submitted' })
+    createInboundAdvice({ ...form, transporter_id: form.transporter_id || undefined, status: 'Submitted' })
       .then(() => {
         setShowForm(false);
-        setForm({ customer_id: customers[0]?.ROWID || '', expected_date: '', transport_details: '' });
+        setForm({ customer_id: customers[0]?.ROWID || '', transporter_id: '', expected_date: '', transport_details: '' });
         load();
       })
       .catch((err) => setError(err.message || String(err)))
@@ -64,6 +66,17 @@ export default function InboundAdviceList() {
               {customers.map((c) => (
                 <option key={c.ROWID} value={c.ROWID}>
                   {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-row">
+            <label>Transporter</label>
+            <select value={form.transporter_id} onChange={(e) => setForm({ ...form, transporter_id: e.target.value })}>
+              <option value="">None</option>
+              {transporters.map((t) => (
+                <option key={t.ROWID} value={t.ROWID}>
+                  {t.name}
                 </option>
               ))}
             </select>
@@ -104,7 +117,7 @@ export default function InboundAdviceList() {
             <tr>
               <SortableTh label="Customer" sortKey="customer_name" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Expected date" sortKey="expected_date" onSort={toggleSort} arrowFor={arrowFor} />
-              <th>Transport</th>
+              <SortableTh label="Transporter" sortKey="transporter_name" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Status" sortKey="status" onSort={toggleSort} arrowFor={arrowFor} />
               <th></th>
             </tr>
@@ -114,7 +127,7 @@ export default function InboundAdviceList() {
               <tr key={a.ROWID} className="clickable-row" onClick={() => navigate(`/inbound/${a.ROWID}`)}>
                 <td>{a.customer_name}</td>
                 <td>{a.expected_date}</td>
-                <td>{a.transport_details}</td>
+                <td>{a.transporter_name || <span className="muted">—</span>}</td>
                 <td>
                   <span className="status-badge">{a.status}</span>
                 </td>

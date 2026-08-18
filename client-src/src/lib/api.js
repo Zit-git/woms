@@ -15,6 +15,7 @@ const TABLES = {
   TASKS: 'Tasks',
   VAL_REQUEST: 'VALRequest',
   VAL_TASK: 'VALTask',
+  TRANSPORTERS: 'Transporters',
 };
 
 // Catalyst datetime columns expect "YYYY-MM-DD HH:mm:ss" on insert/update
@@ -26,6 +27,21 @@ function formatDatetime(date = new Date()) {
     `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
   );
 }
+
+// -- Documents & Photos --
+export const uploadDocument = (fileBase64, fileName, bucketKey, docType, linkedModule, linkedRecordId, uploadedBy) =>
+  callFunction('uploadFile', { fileBase64, fileName, bucketKey, docType, linkedModule, linkedRecordId, uploadedBy });
+
+export const listDocumentsForRecord = (linkedModule, linkedRecordId) =>
+  zcql(
+    `SELECT ROWID, doc_type, file_id, uploaded_by, uploaded_date FROM Documents WHERE linked_module = '${linkedModule}' AND linked_record_id = '${linkedRecordId}' ORDER BY CREATEDTIME DESC`
+  ).then((rows) => rows.map((r) => r.Documents));
+
+// -- Transporters --
+export const listTransporters = () => getAllRows(TABLES.TRANSPORTERS);
+export const createTransporter = (row) => addRow(TABLES.TRANSPORTERS, row);
+export const editTransporter = (row) => updateRow(TABLES.TRANSPORTERS, row);
+export const removeTransporter = (rowId) => deleteRow(TABLES.TRANSPORTERS, rowId);
 
 // -- Customers --
 export const listCustomers = () => getAllRows(TABLES.CUSTOMERS);
@@ -106,16 +122,20 @@ export const getWarehouseMap = (warehouseId) =>
 // -- Inbound Operations --
 export const listInboundAdvice = () =>
   zcql(
-    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, Customers.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID ORDER BY InboundAdvice.CREATEDTIME DESC`
-  ).then((rows) => rows.map((r) => ({ ...r.InboundAdvice, customer_name: r.Customers?.name })));
+    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, Customers.name, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID ORDER BY InboundAdvice.CREATEDTIME DESC`
+  ).then((rows) =>
+    rows.map((r) => ({ ...r.InboundAdvice, customer_name: r.Customers?.name, transporter_name: r.Transporters?.name }))
+  );
 export const createInboundAdvice = (row) => addRow(TABLES.INBOUND_ADVICE, row);
 export const editInboundAdvice = (row) => updateRow(TABLES.INBOUND_ADVICE, row);
 export const getInboundAdviceById = (id) =>
   zcql(
-    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, InboundAdvice.customer_id, Customers.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID WHERE InboundAdvice.ROWID = ${id}`
+    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, InboundAdvice.customer_id, InboundAdvice.transporter_id, Customers.name, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID WHERE InboundAdvice.ROWID = ${id}`
   ).then((rows) => {
     const row = rows[0];
-    return row ? { ...row.InboundAdvice, customer_name: row.Customers?.name } : null;
+    return row
+      ? { ...row.InboundAdvice, customer_name: row.Customers?.name, transporter_name: row.Transporters?.name }
+      : null;
   });
 
 export const listCargoByAdvice = (inboundAdviceId) =>
@@ -186,16 +206,25 @@ export const listCargoForCustomer = (customerId) =>
 // -- Outbound Operations --
 export const listOutboundRequests = () =>
   zcql(
-    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, Customers.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID ORDER BY OutboundRequest.CREATEDTIME DESC`
-  ).then((rows) => rows.map((r) => ({ ...r.OutboundRequest, customer_name: r.Customers?.name })));
+    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, Customers.name, Transporters.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID ORDER BY OutboundRequest.CREATEDTIME DESC`
+  ).then((rows) =>
+    rows.map((r) => ({ ...r.OutboundRequest, customer_name: r.Customers?.name, transporter_name: r.Transporters?.name }))
+  );
 export const createOutboundRequest = (row) => addRow(TABLES.OUTBOUND_REQUEST, row);
 export const editOutboundRequest = (row) => updateRow(TABLES.OUTBOUND_REQUEST, row);
 export const getOutboundRequestById = (id) =>
   zcql(
-    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.customer_id, Customers.name, Customers.email FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID WHERE OutboundRequest.ROWID = ${id}`
+    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.customer_id, OutboundRequest.transporter_id, Customers.name, Customers.email, Transporters.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID WHERE OutboundRequest.ROWID = ${id}`
   ).then((rows) => {
     const row = rows[0];
-    return row ? { ...row.OutboundRequest, customer_name: row.Customers?.name, customer_email: row.Customers?.email } : null;
+    return row
+      ? {
+          ...row.OutboundRequest,
+          customer_name: row.Customers?.name,
+          customer_email: row.Customers?.email,
+          transporter_name: row.Transporters?.name,
+        }
+      : null;
   });
 
 export const listAvailableCargoForCustomer = (customerId) =>
