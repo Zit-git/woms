@@ -12,6 +12,9 @@ const TABLES = {
   OUTBOUND_REQUEST: 'OutboundRequest',
   PICK_TASK: 'PickTask',
   DISPATCH: 'Dispatch',
+  TASKS: 'Tasks',
+  VAL_REQUEST: 'VALRequest',
+  VAL_TASK: 'VALTask',
 };
 
 // Catalyst datetime columns expect "YYYY-MM-DD HH:mm:ss" on insert/update
@@ -81,6 +84,62 @@ export const createCargo = (row) => addRow(TABLES.CARGO, row);
 
 export const generateQRCode = (cargoId) => callFunction('generateQRCode', { cargoId });
 export const createGRN = (inboundAdviceId, verifiedBy) => callFunction('createGRN', { inboundAdviceId, verifiedBy });
+
+// -- Storage (put-away / relocation) --
+export const listAllStorageLocations = () =>
+  zcql(
+    `SELECT StorageLocations.ROWID, StorageLocations.location_code, StorageLocations.capacity, Racks.code, Zones.name, Warehouses.name FROM StorageLocations LEFT JOIN Racks ON StorageLocations.rack_id = Racks.ROWID LEFT JOIN Zones ON Racks.zone_id = Zones.ROWID LEFT JOIN Warehouses ON Zones.warehouse_id = Warehouses.ROWID`
+  ).then((rows) =>
+    rows.map((r) => ({
+      ROWID: r.StorageLocations.ROWID,
+      location_code: r.StorageLocations.location_code,
+      capacity: r.StorageLocations.capacity,
+      path: [r.Warehouses?.name, r.Zones?.name, r.Racks?.code].filter(Boolean).join(' / '),
+    }))
+  );
+
+export const listCargoPendingPutAway = () =>
+  zcql(
+    `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.qr_code, Customers.name FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID WHERE Cargo.current_location_id IS NULL AND Cargo.status != 'Dispatched' ORDER BY Cargo.CREATEDTIME`
+  ).then((rows) => rows.map((r) => ({ ...r.Cargo, customer_name: r.Customers?.name })));
+
+export const listStoredCargo = () =>
+  zcql(
+    `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.qr_code, Cargo.status, Customers.name, StorageLocations.location_code FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID LEFT JOIN StorageLocations ON Cargo.current_location_id = StorageLocations.ROWID WHERE Cargo.current_location_id IS NOT NULL AND Cargo.status != 'Dispatched' ORDER BY Cargo.CREATEDTIME DESC`
+  ).then((rows) =>
+    rows.map((r) => ({
+      ...r.Cargo,
+      customer_name: r.Customers?.name,
+      location_code: r.StorageLocations?.location_code,
+    }))
+  );
+
+// -- Operational Task Management --
+export const listTasks = () => getAllRows(TABLES.TASKS, 500).then((rows) => rows.sort((a, b) => (a.CREATEDTIME < b.CREATEDTIME ? 1 : -1)));
+export const createTask = (row) => addRow(TABLES.TASKS, row);
+export const editTask = (row) => updateRow(TABLES.TASKS, row);
+
+// -- Value Added Logistics --
+export const listValRequests = () =>
+  zcql(
+    `SELECT VALRequest.ROWID, VALRequest.service_type, VALRequest.status, VALRequest.requested_date, VALRequest.cargo_id, Customers.name, Cargo.description FROM VALRequest LEFT JOIN Customers ON VALRequest.customer_id = Customers.ROWID LEFT JOIN Cargo ON VALRequest.cargo_id = Cargo.ROWID ORDER BY VALRequest.CREATEDTIME DESC`
+  ).then((rows) =>
+    rows.map((r) => ({ ...r.VALRequest, customer_name: r.Customers?.name, cargo_description: r.Cargo?.description }))
+  );
+export const createValRequest = (row) => addRow(TABLES.VAL_REQUEST, row);
+export const editValRequest = (row) => updateRow(TABLES.VAL_REQUEST, row);
+
+export const listValTasksByRequest = (valRequestId) =>
+  zcql(`SELECT ROWID, status, assigned_to, completion_notes FROM VALTask WHERE val_request_id = ${valRequestId} ORDER BY CREATEDTIME`).then(
+    (rows) => rows.map((r) => r.VALTask)
+  );
+export const createValTask = (row) => addRow(TABLES.VAL_TASK, row);
+export const editValTask = (row) => updateRow(TABLES.VAL_TASK, row);
+
+export const listCargoForCustomer = (customerId) =>
+  zcql(`SELECT ROWID, description, qty, unit, status FROM Cargo WHERE customer_id = ${customerId} ORDER BY CREATEDTIME DESC`).then(
+    (rows) => rows.map((r) => r.Cargo)
+  );
 
 // -- Outbound Operations --
 export const listOutboundRequests = () =>
@@ -206,4 +265,14 @@ export const listDispatchReport = () =>
 export const getAppUserByEmail = (email) =>
   zcql(`SELECT ROWID, business_role, warehouse_id, user_status FROM AppUsers WHERE email = '${email}'`).then(
     (rows) => rows[0]?.AppUsers || null
+  );
+
+// -- System Administration --
+export const listAppUsers = () => getAllRows('AppUsers', 500);
+export const listRolePermissions = () => getAllRows('RolePermissions', 500);
+
+// -- Settings: audit trail --
+export const listRecentAuditLog = (limit = 100) =>
+  zcql(`SELECT ROWID, user_id, action_type, module, record_id, event_timestamp FROM AuditLog ORDER BY CREATEDTIME DESC`).then(
+    (rows) => rows.slice(0, limit).map((r) => r.AuditLog)
   );

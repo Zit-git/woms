@@ -3,14 +3,18 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import AppShell from './layout/AppShell';
 import Login from './pages/Login';
 import DashboardHome from './pages/DashboardHome';
-import PlaceholderModule from './pages/PlaceholderModule';
 import CustomerList from './pages/customers/CustomerList';
 import WarehouseConfig from './pages/warehouse/WarehouseConfig';
 import InboundAdviceList from './pages/inbound/InboundAdviceList';
 import InboundAdviceDetail from './pages/inbound/InboundAdviceDetail';
+import StoragePage from './pages/storage/StoragePage';
 import OutboundRequestList from './pages/outbound/OutboundRequestList';
 import OutboundRequestDetail from './pages/outbound/OutboundRequestDetail';
+import TasksPage from './pages/tasks/TasksPage';
+import ValPage from './pages/val/ValPage';
 import ReportsPage from './pages/reports/ReportsPage';
+import AdminPage from './pages/admin/AdminPage';
+import SettingsPage from './pages/settings/SettingsPage';
 
 function Gate() {
   const { isAuthenticated, loading } = useAuth();
@@ -30,14 +34,14 @@ function Gate() {
         <Route path="warehouse" element={<WarehouseConfig />} />
         <Route path="inbound" element={<InboundAdviceList />} />
         <Route path="inbound/:adviceId" element={<InboundAdviceDetail />} />
-        <Route path="cargo-storage" element={<PlaceholderModule title="Cargo & Storage Management" />} />
-        <Route path="qr-labels" element={<PlaceholderModule title="QR Code & Label Management" />} />
-        <Route path="tasks" element={<PlaceholderModule title="Operational Task Management" />} />
-        <Route path="val" element={<PlaceholderModule title="Value Added Logistics" />} />
+        <Route path="storage" element={<StoragePage />} />
         <Route path="outbound" element={<OutboundRequestList />} />
         <Route path="outbound/:requestId" element={<OutboundRequestDetail />} />
+        <Route path="tasks" element={<TasksPage />} />
+        <Route path="val" element={<ValPage />} />
         <Route path="reports" element={<ReportsPage />} />
-        <Route path="admin" element={<PlaceholderModule title="System Administration" />} />
+        <Route path="admin" element={<AdminPage />} />
+        <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

@@ -7,12 +7,12 @@ import {
   IconWarehouse,
   IconInbound,
   IconBox,
-  IconQr,
   IconChecklist,
   IconLayers,
   IconOutbound,
   IconChart,
   IconGear,
+  IconSettings,
   IconLogout,
 } from './icons';
 
@@ -22,21 +22,13 @@ const NAV_GROUPS = [
     items: [{ to: '/', label: 'Dashboard', end: true, icon: IconGrid }],
   },
   {
-    label: 'Masters',
-    items: [
-      { to: '/customers', label: 'Customers', icon: IconUsers },
-      { to: '/warehouse', label: 'Warehouses', icon: IconWarehouse },
-    ],
-  },
-  {
     label: 'Operations',
     items: [
       { to: '/inbound', label: 'Inbound Operations', icon: IconInbound },
-      { to: '/cargo-storage', label: 'Cargo & Storage', icon: IconBox },
-      { to: '/qr-labels', label: 'QR & Label Management', icon: IconQr },
+      { to: '/storage', label: 'Storage', icon: IconBox },
+      { to: '/outbound', label: 'Outbound Operations', icon: IconOutbound },
       { to: '/tasks', label: 'Operational Tasks', icon: IconChecklist },
       { to: '/val', label: 'Value Added Logistics', icon: IconLayers },
-      { to: '/outbound', label: 'Outbound Operations', icon: IconOutbound },
     ],
   },
   {
@@ -45,7 +37,17 @@ const NAV_GROUPS = [
   },
   {
     label: 'Administration',
-    items: [{ to: '/admin', label: 'System Administration', icon: IconGear }],
+    items: [
+      { to: '/admin', label: 'System Administration', icon: IconGear },
+      { to: '/settings', label: 'Settings', icon: IconSettings },
+    ],
+  },
+  {
+    label: 'Masters',
+    items: [
+      { to: '/customers', label: 'Customers', icon: IconUsers },
+      { to: '/warehouse', label: 'Warehouses', icon: IconWarehouse },
+    ],
   },
 ];
 

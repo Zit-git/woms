@@ -105,6 +105,18 @@ export const IconGear = (p) => (
   </svg>
 );
 
+export const IconSettings = (p) => (
+  <svg {...base} {...p}>
+    <path d="M4 6h9" />
+    <circle cx="16" cy="6" r="2" />
+    <path d="M4 12h4" />
+    <circle cx="11" cy="12" r="2" />
+    <path d="M13 12h7" />
+    <path d="M4 18h9" />
+    <circle cx="16" cy="18" r="2" />
+  </svg>
+);
+
 export const IconLogout = (p) => (
   <svg {...base} {...p}>
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
