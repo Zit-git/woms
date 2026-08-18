@@ -1,13 +1,21 @@
 import { useEffect, useState } from 'react';
-import { listCustomers, createCustomer, editCustomer, removeCustomer } from '../../lib/api';
+import { useNavigate } from 'react-router-dom';
+import { listCustomers, createCustomer, editCustomer, removeCustomer, removeCustomers } from '../../lib/api';
 import CustomerForm from './CustomerForm';
+import SortableTh from '../../components/SortableTh';
+import { useSortableData } from '../../lib/useSortableData';
 
 export default function CustomerList() {
+  const navigate = useNavigate();
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(null); // null | 'new' | row
   const [saving, setSaving] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const { sorted, sortKey, toggleSort, arrowFor } = useSortableData(customers, 'name');
 
   const load = () => {
     setLoading(true);
@@ -15,6 +23,7 @@ export default function CustomerList() {
       .then(setCustomers)
       .catch((err) => setError(err.message || String(err)))
       .finally(() => setLoading(false));
+    setSelected(new Set());
   };
 
   useEffect(load, []);
@@ -36,6 +45,28 @@ export default function CustomerList() {
     removeCustomer(rowId)
       .then(load)
       .catch((err) => setError(err.message || String(err)));
+  };
+
+  const toggleSelected = (rowId) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowId)) next.delete(rowId);
+      else next.add(rowId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelected((prev) => (prev.size === sorted.length ? new Set() : new Set(sorted.map((c) => c.ROWID))));
+  };
+
+  const handleBulkDelete = () => {
+    if (!window.confirm(`Delete ${selected.size} selected customer(s)?`)) return;
+    setBulkBusy(true);
+    removeCustomers([...selected])
+      .then(load)
+      .catch((err) => setError(err.message || String(err)))
+      .finally(() => setBulkBusy(false));
   };
 
   return (
@@ -60,23 +91,41 @@ export default function CustomerList() {
         />
       )}
 
+      {selected.size > 0 && (
+        <div className="bulk-toolbar">
+          <span>{selected.size} selected</span>
+          <button className="link-btn" style={{ color: 'var(--danger)' }} disabled={bulkBusy} onClick={handleBulkDelete}>
+            {bulkBusy ? 'Deleting...' : 'Delete Selected'}
+          </button>
+          <button className="link-btn" onClick={() => setSelected(new Set())}>
+            Clear selection
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <p className="muted">Loading...</p>
       ) : (
         <table>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Contact</th>
-              <th>Email</th>
-              <th>Phone</th>
-              <th>Status</th>
+              <th className="checkbox-cell">
+                <input type="checkbox" checked={selected.size === sorted.length && sorted.length > 0} onChange={toggleSelectAll} />
+              </th>
+              <SortableTh label="Name" sortKey="name" onSort={toggleSort} arrowFor={arrowFor} />
+              <SortableTh label="Contact" sortKey="contact_person" onSort={toggleSort} arrowFor={arrowFor} />
+              <SortableTh label="Email" sortKey="email" onSort={toggleSort} arrowFor={arrowFor} />
+              <SortableTh label="Phone" sortKey="phone" onSort={toggleSort} arrowFor={arrowFor} />
+              <SortableTh label="Status" sortKey="status" onSort={toggleSort} arrowFor={arrowFor} />
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {customers.map((c) => (
-              <tr key={c.ROWID}>
+            {sorted.map((c) => (
+              <tr key={c.ROWID} className="clickable-row" onClick={() => navigate(`/customers/${c.ROWID}`)}>
+                <td onClick={(e) => e.stopPropagation()}>
+                  <input type="checkbox" checked={selected.has(c.ROWID)} onChange={() => toggleSelected(c.ROWID)} />
+                </td>
                 <td>{c.name}</td>
                 <td>{c.contact_person}</td>
                 <td>{c.email}</td>
@@ -84,7 +133,7 @@ export default function CustomerList() {
                 <td>
                   <span className="status-badge">{c.status}</span>
                 </td>
-                <td>
+                <td onClick={(e) => e.stopPropagation()}>
                   <button className="link-btn" onClick={() => setEditing(c)}>
                     Edit
                   </button>{' '}
@@ -94,9 +143,9 @@ export default function CustomerList() {
                 </td>
               </tr>
             ))}
-            {customers.length === 0 && (
+            {sorted.length === 0 && (
               <tr>
-                <td colSpan={6} className="muted">
+                <td colSpan={7} className="muted">
                   No customers yet.
                 </td>
               </tr>

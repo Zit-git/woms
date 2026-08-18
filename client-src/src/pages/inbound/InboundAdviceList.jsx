@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { listInboundAdvice, createInboundAdvice, listCustomers } from '../../lib/api';
+import SortableTh from '../../components/SortableTh';
+import { useSortableData } from '../../lib/useSortableData';
 
 export default function InboundAdviceList() {
+  const navigate = useNavigate();
   const [advices, setAdvices] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -10,6 +13,7 @@ export default function InboundAdviceList() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ customer_id: '', expected_date: '', transport_details: '' });
   const [saving, setSaving] = useState(false);
+  const { sorted, toggleSort, arrowFor } = useSortableData(advices);
 
   const load = () => {
     setLoading(true);
@@ -98,16 +102,16 @@ export default function InboundAdviceList() {
         <table>
           <thead>
             <tr>
-              <th>Customer</th>
-              <th>Expected date</th>
+              <SortableTh label="Customer" sortKey="customer_name" onSort={toggleSort} arrowFor={arrowFor} />
+              <SortableTh label="Expected date" sortKey="expected_date" onSort={toggleSort} arrowFor={arrowFor} />
               <th>Transport</th>
-              <th>Status</th>
+              <SortableTh label="Status" sortKey="status" onSort={toggleSort} arrowFor={arrowFor} />
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {advices.map((a) => (
-              <tr key={a.ROWID}>
+            {sorted.map((a) => (
+              <tr key={a.ROWID} className="clickable-row" onClick={() => navigate(`/inbound/${a.ROWID}`)}>
                 <td>{a.customer_name}</td>
                 <td>{a.expected_date}</td>
                 <td>{a.transport_details}</td>
@@ -115,13 +119,11 @@ export default function InboundAdviceList() {
                   <span className="status-badge">{a.status}</span>
                 </td>
                 <td>
-                  <Link className="link-btn" to={`/inbound/${a.ROWID}`}>
-                    Open
-                  </Link>
+                  <span className="link-btn">Open</span>
                 </td>
               </tr>
             ))}
-            {advices.length === 0 && (
+            {sorted.length === 0 && (
               <tr>
                 <td colSpan={5} className="muted">
                   No inbound advices yet.

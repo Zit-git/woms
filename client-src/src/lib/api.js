@@ -32,6 +32,23 @@ export const listCustomers = () => getAllRows(TABLES.CUSTOMERS);
 export const createCustomer = (row) => addRow(TABLES.CUSTOMERS, row);
 export const editCustomer = (row) => updateRow(TABLES.CUSTOMERS, row);
 export const removeCustomer = (rowId) => deleteRow(TABLES.CUSTOMERS, rowId);
+export const removeCustomers = (rowIds) => Promise.all(rowIds.map((id) => deleteRow(TABLES.CUSTOMERS, id)));
+
+export const getCustomerById = (id) =>
+  zcql(`SELECT * FROM Customers WHERE ROWID = ${id}`).then((rows) => rows[0]?.Customers || null);
+
+export const getCustomerActivity = (customerId) =>
+  Promise.all([
+    zcql(
+      `SELECT ROWID, expected_date, status FROM InboundAdvice WHERE customer_id = ${customerId} ORDER BY CREATEDTIME DESC`
+    ).then((rows) => rows.map((r) => r.InboundAdvice)),
+    zcql(
+      `SELECT ROWID, requested_date, status FROM OutboundRequest WHERE customer_id = ${customerId} ORDER BY CREATEDTIME DESC`
+    ).then((rows) => rows.map((r) => r.OutboundRequest)),
+    zcql(`SELECT ROWID, description, qty, unit, status FROM Cargo WHERE customer_id = ${customerId} ORDER BY CREATEDTIME DESC`).then(
+      (rows) => rows.map((r) => r.Cargo)
+    ),
+  ]).then(([inbound, outbound, cargo]) => ({ inbound, outbound, cargo }));
 
 // -- Warehouses / Zones / Racks / StorageLocations --
 export const listWarehouses = () => getAllRows(TABLES.WAREHOUSES);
@@ -60,6 +77,31 @@ export const listLocationsByRack = (rackId) =>
 export const createLocation = (row) => addRow(TABLES.STORAGE_LOCATIONS, row);
 export const editLocation = (row) => updateRow(TABLES.STORAGE_LOCATIONS, row);
 export const removeLocation = (rowId) => deleteRow(TABLES.STORAGE_LOCATIONS, rowId);
+
+// Full zone -> rack -> location hierarchy for one warehouse, with each
+// location flagged occupied/empty from current Cargo placements.
+export const getWarehouseMap = (warehouseId) =>
+  Promise.all([
+    listZonesByWarehouse(warehouseId),
+    zcql(`SELECT current_location_id FROM Cargo WHERE current_location_id IS NOT NULL AND status != 'Dispatched'`).then(
+      (rows) => new Set(rows.map((r) => String(r.Cargo.current_location_id)))
+    ),
+  ]).then(([zones, occupiedIds]) =>
+    Promise.all(
+      zones.map((zone) =>
+        listRacksByZone(zone.ROWID).then((racks) =>
+          Promise.all(
+            racks.map((rack) =>
+              listLocationsByRack(rack.ROWID).then((locations) => ({
+                rack,
+                locations: locations.map((loc) => ({ ...loc, occupied: occupiedIds.has(String(loc.ROWID)) })),
+              }))
+            )
+          ).then((racksWithLocations) => ({ zone, racks: racksWithLocations }))
+        )
+      )
+    )
+  );
 
 // -- Inbound Operations --
 export const listInboundAdvice = () =>

@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { listOutboundRequests, createOutboundRequest, listCustomers } from '../../lib/api';
+import SortableTh from '../../components/SortableTh';
+import { useSortableData } from '../../lib/useSortableData';
 
 export default function OutboundRequestList() {
+  const navigate = useNavigate();
   const [requests, setRequests] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -10,6 +13,7 @@ export default function OutboundRequestList() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ customer_id: '', requested_date: '' });
   const [saving, setSaving] = useState(false);
+  const { sorted, toggleSort, arrowFor } = useSortableData(requests);
 
   const load = () => {
     setLoading(true);
@@ -90,28 +94,26 @@ export default function OutboundRequestList() {
         <table>
           <thead>
             <tr>
-              <th>Customer</th>
-              <th>Requested date</th>
-              <th>Status</th>
+              <SortableTh label="Customer" sortKey="customer_name" onSort={toggleSort} arrowFor={arrowFor} />
+              <SortableTh label="Requested date" sortKey="requested_date" onSort={toggleSort} arrowFor={arrowFor} />
+              <SortableTh label="Status" sortKey="status" onSort={toggleSort} arrowFor={arrowFor} />
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {requests.map((r) => (
-              <tr key={r.ROWID}>
+            {sorted.map((r) => (
+              <tr key={r.ROWID} className="clickable-row" onClick={() => navigate(`/outbound/${r.ROWID}`)}>
                 <td>{r.customer_name}</td>
                 <td>{r.requested_date}</td>
                 <td>
                   <span className="status-badge">{r.status}</span>
                 </td>
                 <td>
-                  <Link className="link-btn" to={`/outbound/${r.ROWID}`}>
-                    Open
-                  </Link>
+                  <span className="link-btn">Open</span>
                 </td>
               </tr>
             ))}
-            {requests.length === 0 && (
+            {sorted.length === 0 && (
               <tr>
                 <td colSpan={4} className="muted">
                   No outbound requests yet.

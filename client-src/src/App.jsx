@@ -4,6 +4,7 @@ import AppShell from './layout/AppShell';
 import Login from './pages/Login';
 import DashboardHome from './pages/DashboardHome';
 import CustomerList from './pages/customers/CustomerList';
+import CustomerDetail from './pages/customers/CustomerDetail';
 import WarehouseConfig from './pages/warehouse/WarehouseConfig';
 import InboundAdviceList from './pages/inbound/InboundAdviceList';
 import InboundAdviceDetail from './pages/inbound/InboundAdviceDetail';
@@ -31,6 +32,7 @@ function Gate() {
       <Route path="/" element={<AppShell />}>
         <Route index element={<DashboardHome />} />
         <Route path="customers" element={<CustomerList />} />
+        <Route path="customers/:customerId" element={<CustomerDetail />} />
         <Route path="warehouse" element={<WarehouseConfig />} />
         <Route path="inbound" element={<InboundAdviceList />} />
         <Route path="inbound/:adviceId" element={<InboundAdviceDetail />} />

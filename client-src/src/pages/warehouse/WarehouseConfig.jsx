@@ -12,9 +12,10 @@ import {
   listLocationsByRack,
   createLocation,
   removeLocation,
+  getWarehouseMap,
 } from '../../lib/api';
 
-const TABS = ['Warehouses', 'Zones', 'Racks', 'Storage Locations'];
+const TABS = ['Warehouses', 'Zones', 'Racks', 'Storage Locations', 'Map'];
 
 function useList(loader, deps) {
   const [items, setItems] = useState([]);
@@ -403,6 +404,88 @@ function LocationsTab() {
   );
 }
 
+function WarehouseMapTab() {
+  const { items: warehouses } = useList(listWarehouses, []);
+  const [warehouseId, setWarehouseId] = useState('');
+  const { items: zoneMap, loading, error, reload } = useList(
+    warehouseId ? () => getWarehouseMap(warehouseId) : null,
+    [warehouseId]
+  );
+
+  useEffect(() => {
+    if (!warehouseId && warehouses.length) setWarehouseId(warehouses[0].ROWID);
+  }, [warehouses]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const totalLocations = zoneMap.reduce((n, z) => n + z.racks.reduce((rn, r) => rn + r.locations.length, 0), 0);
+  const totalOccupied = zoneMap.reduce(
+    (n, z) => n + z.racks.reduce((rn, r) => rn + r.locations.filter((l) => l.occupied).length, 0),
+    0
+  );
+
+  return (
+    <div>
+      <div className="form-row" style={{ maxWidth: 300 }}>
+        <label>Warehouse</label>
+        <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
+          {warehouses.map((w) => (
+            <option key={w.ROWID} value={w.ROWID}>
+              {w.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="toolbar">
+        <div className="warehouse-map-legend">
+          <span>
+            <i className="legend-swatch legend-empty" /> Empty
+          </span>
+          <span>
+            <i className="legend-swatch legend-occupied" /> Occupied
+          </span>
+        </div>
+        {!loading && <span className="muted small">{totalOccupied} of {totalLocations} locations occupied</span>}
+        <button className="link-btn" onClick={reload}>
+          Refresh
+        </button>
+      </div>
+
+      {error && <div className="error-text">{error}</div>}
+      {loading ? (
+        <p className="muted">Loading...</p>
+      ) : zoneMap.length === 0 ? (
+        <p className="muted">No zones configured for this warehouse yet.</p>
+      ) : (
+        zoneMap.map(({ zone, racks }) => (
+          <div className="warehouse-zone" key={zone.ROWID}>
+            <h3>
+              {zone.name} {zone.zone_type && <span className="muted small">({zone.zone_type})</span>}
+            </h3>
+            {racks.length === 0 && <p className="muted small">No racks in this zone.</p>}
+            {racks.map(({ rack, locations }) => (
+              <div className="warehouse-rack" key={rack.ROWID}>
+                <div className="warehouse-rack-label">{rack.code}</div>
+                <div className="warehouse-rack-locations">
+                  {locations.map((loc) => (
+                    <div
+                      key={loc.ROWID}
+                      className={'location-box' + (loc.occupied ? ' occupied' : ' empty')}
+                      title={`${loc.location_code} - ${loc.occupied ? 'Occupied' : 'Empty'}`}
+                    >
+                      {loc.location_code}
+                    </div>
+                  ))}
+                  {locations.length === 0 && <span className="muted small">No storage locations in this rack.</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
 export default function WarehouseConfig() {
   const [tab, setTab] = useState(TABS[0]);
 
@@ -420,6 +503,7 @@ export default function WarehouseConfig() {
       {tab === 'Zones' && <ZonesTab />}
       {tab === 'Racks' && <RacksTab />}
       {tab === 'Storage Locations' && <LocationsTab />}
+      {tab === 'Map' && <WarehouseMapTab />}
     </div>
   );
 }
