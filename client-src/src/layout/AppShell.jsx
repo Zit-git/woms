@@ -22,6 +22,13 @@ const NAV_GROUPS = [
     items: [{ to: '/', label: 'Dashboard', end: true, icon: IconGrid }],
   },
   {
+    label: 'Masters',
+    items: [
+      { to: '/customers', label: 'Customers', icon: IconUsers },
+      { to: '/warehouse', label: 'Warehouses', icon: IconWarehouse },
+    ],
+  },
+  {
     label: 'Operations',
     items: [
       { to: '/inbound', label: 'Inbound Operations', icon: IconInbound },
@@ -29,13 +36,6 @@ const NAV_GROUPS = [
       { to: '/outbound', label: 'Outbound Operations', icon: IconOutbound },
       { to: '/val', label: 'Value Added Logistics', icon: IconLayers },
       { to: '/tasks', label: 'Operational Tasks', icon: IconChecklist },
-    ],
-  },
-  {
-    label: 'Masters',
-    items: [
-      { to: '/customers', label: 'Customers', icon: IconUsers },
-      { to: '/warehouse', label: 'Warehouses', icon: IconWarehouse },
     ],
   },
   {
