@@ -337,6 +337,20 @@ export const listDispatchReport = () =>
     }))
   );
 
+export const getCargoTimeline = (cargoId) =>
+  Promise.all([
+    zcql(`SELECT * FROM Cargo WHERE ROWID = ${cargoId}`).then((rows) => rows[0]?.Cargo || null),
+    zcql(
+      `SELECT ROWID, from_location_id, to_location_id, moved_by, movement_type, movement_timestamp FROM CargoMovementLog WHERE cargo_id = ${cargoId} ORDER BY CREATEDTIME`
+    ).then((rows) => rows.map((r) => r.CargoMovementLog)),
+    zcql(
+      `SELECT ROWID, scanned_by, scan_context, scan_timestamp FROM ScanHistory WHERE cargo_id = ${cargoId} ORDER BY CREATEDTIME`
+    ).then((rows) => rows.map((r) => r.ScanHistory)),
+  ]).then(([cargo, movements, scans]) => ({ cargo, movements, scans }));
+
+export const markCargoDelivered = (cargoIds) =>
+  Promise.all(cargoIds.map((id) => updateRow('Cargo', { ROWID: id, status: 'Delivered' })));
+
 // -- Business role lookup (AppUsers) --
 export const getAppUserByEmail = (email) =>
   zcql(`SELECT ROWID, business_role, warehouse_id, user_status FROM AppUsers WHERE email = '${email}'`).then(

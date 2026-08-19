@@ -11,6 +11,7 @@ import {
   createDispatch,
   editOutboundRequest,
   notifyEvent,
+  markCargoDelivered,
 } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import DocumentUploader from '../../components/DocumentUploader';
@@ -33,6 +34,7 @@ export default function OutboundRequestDetail() {
   const [vehicleDetails, setVehicleDetails] = useState('');
   const [dispatching, setDispatching] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [markingDelivered, setMarkingDelivered] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -100,6 +102,15 @@ export default function OutboundRequestDetail() {
 
   const allPicked = pickTasks.length > 0 && pickTasks.every((t) => t.status === 'Picked');
   const alreadyDispatched = dispatches.length > 0;
+  const allDelivered = pickTasks.length > 0 && pickTasks.every((t) => t.cargo_status === 'Delivered');
+
+  const handleMarkDelivered = () => {
+    setMarkingDelivered(true);
+    markCargoDelivered(pickTasks.map((t) => t.cargo_id))
+      .then(load)
+      .catch((err) => setError(err.message || String(err)))
+      .finally(() => setMarkingDelivered(false));
+  };
 
   const handleConfirmDispatch = () => {
     setDispatching(true);
@@ -265,6 +276,15 @@ export default function OutboundRequestDetail() {
               By {d.dispatched_by} on {d.dispatch_date} {d.vehicle_details && `- ${d.vehicle_details}`}
             </div>
           ))}
+          {allDelivered ? (
+            <p className="status-badge" style={{ marginTop: 10 }}>
+              Delivered
+            </p>
+          ) : (
+            <button className="btn" style={{ marginTop: 10 }} onClick={handleMarkDelivered} disabled={markingDelivered}>
+              {markingDelivered ? 'Saving...' : 'Mark Delivered'}
+            </button>
+          )}
         </div>
       ) : (
         <div className="card">

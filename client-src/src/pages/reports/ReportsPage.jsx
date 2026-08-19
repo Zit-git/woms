@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { listCargoRegister, listDispatchReport } from '../../lib/api';
 
 const TABS = [
@@ -7,6 +8,7 @@ const TABS = [
 ];
 
 export default function ReportsPage() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState('cargo');
   const [cargo, setCargo] = useState([]);
   const [dispatches, setDispatches] = useState([]);
@@ -55,7 +57,7 @@ export default function ReportsPage() {
           </thead>
           <tbody>
             {cargo.map((c) => (
-              <tr key={c.ROWID}>
+              <tr key={c.ROWID} className="clickable-row" onClick={() => navigate(`/cargo/${c.ROWID}`)}>
                 <td>{c.customer_name}</td>
                 <td>{c.description}</td>
                 <td>

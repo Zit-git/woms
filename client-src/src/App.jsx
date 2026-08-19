@@ -15,6 +15,7 @@ import OutboundRequestDetail from './pages/outbound/OutboundRequestDetail';
 import TasksPage from './pages/tasks/TasksPage';
 import ValPage from './pages/val/ValPage';
 import ReportsPage from './pages/reports/ReportsPage';
+import CargoDetail from './pages/reports/CargoDetail';
 import AdminPage from './pages/admin/AdminPage';
 import SettingsPage from './pages/settings/SettingsPage';
 
@@ -44,6 +45,7 @@ function Gate() {
         <Route path="tasks" element={<TasksPage />} />
         <Route path="val" element={<ValPage />} />
         <Route path="reports" element={<ReportsPage />} />
+        <Route path="cargo/:cargoId" element={<CargoDetail />} />
         <Route path="admin" element={<AdminPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
