@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   getOutboundRequestById,
@@ -14,6 +14,7 @@ import {
 } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import DocumentUploader from '../../components/DocumentUploader';
+import QrScannerModal from '../../components/QrScannerModal';
 
 export default function OutboundRequestDetail() {
   const { requestId } = useParams();
@@ -30,6 +31,7 @@ export default function OutboundRequestDetail() {
   const [savingPick, setSavingPick] = useState(false);
   const [vehicleDetails, setVehicleDetails] = useState('');
   const [dispatching, setDispatching] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -81,6 +83,19 @@ export default function OutboundRequestDetail() {
       .catch((err) => setError(err.error || err.message || String(err)))
       .finally(() => setBusyRow(null));
   };
+
+  const handleScanned = useCallback(
+    (decodedText) => {
+      setShowScanner(false);
+      const match = pickTasks.find((t) => t.cargo_qr_code === decodedText && t.status !== 'Picked');
+      if (match) {
+        handleScanPick(match);
+      } else {
+        setError(`No pending pick line matches scanned code "${decodedText}"`);
+      }
+    },
+    [pickTasks] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const allPicked = pickTasks.length > 0 && pickTasks.every((t) => t.status === 'Picked');
   const alreadyDispatched = dispatches.length > 0;
@@ -154,12 +169,21 @@ export default function OutboundRequestDetail() {
 
       <div className="toolbar">
         <h3>Pick Tasks</h3>
-        {!showPickForm && !alreadyDispatched && (
-          <button className="btn secondary" onClick={() => setShowPickForm(true)}>
-            + Add Pick Line
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {!alreadyDispatched && pickTasks.some((t) => t.status !== 'Picked') && (
+            <button className="btn secondary" onClick={() => setShowScanner(true)}>
+              Scan to Pick
+            </button>
+          )}
+          {!showPickForm && !alreadyDispatched && (
+            <button className="btn secondary" onClick={() => setShowPickForm(true)}>
+              + Add Pick Line
+            </button>
+          )}
+        </div>
       </div>
+
+      {showScanner && <QrScannerModal onDecode={handleScanned} onClose={() => setShowScanner(false)} />}
 
       {showPickForm && (
         <form className="card" onSubmit={addPickTask}>

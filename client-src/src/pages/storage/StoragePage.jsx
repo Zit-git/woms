@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { listCargoPendingPutAway, listStoredCargo, listAllStorageLocations, recordScan } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
+import QrScannerModal from '../../components/QrScannerModal';
 
 export default function StoragePage() {
   const { user } = useAuth();
@@ -12,6 +13,7 @@ export default function StoragePage() {
   const [activeCargo, setActiveCargo] = useState(null); // { id, mode: 'putaway' | 'relocate' }
   const [pickedLocation, setPickedLocation] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -32,6 +34,24 @@ export default function StoragePage() {
     setPickedLocation('');
   };
 
+  const handleScanned = useCallback(
+    (decodedText) => {
+      setShowScanner(false);
+      const pendingMatch = pending.find((c) => c.qr_code === decodedText);
+      if (pendingMatch) {
+        openPicker(pendingMatch.ROWID, 'putaway');
+        return;
+      }
+      const storedMatch = stored.find((c) => c.qr_code === decodedText);
+      if (storedMatch) {
+        openPicker(storedMatch.ROWID, 'relocate');
+        return;
+      }
+      setError(`No cargo matches scanned code "${decodedText}"`);
+    },
+    [pending, stored]
+  );
+
   const confirmMove = () => {
     if (!activeCargo || !pickedLocation) return;
     setBusy(true);
@@ -48,8 +68,17 @@ export default function StoragePage() {
 
   return (
     <div>
-      <h2>Storage</h2>
-      <p className="muted small">Put-away and relocation for cargo already received into the warehouse.</p>
+      <div className="toolbar">
+        <div>
+          <h2>Storage</h2>
+          <p className="muted small">Put-away and relocation for cargo already received into the warehouse.</p>
+        </div>
+        <button className="btn secondary" onClick={() => setShowScanner(true)}>
+          Scan QR
+        </button>
+      </div>
+
+      {showScanner && <QrScannerModal onDecode={handleScanned} onClose={() => setShowScanner(false)} />}
 
       {error && <div className="error-text">{error}</div>}
 

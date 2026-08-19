@@ -185,6 +185,26 @@ tr.clickable-row:hover td { background: var(--bg); }
 .tab { padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; font-size: 14px; }
 .tab.active { border-bottom-color: var(--primary); color: var(--primary); font-weight: 600; }
 
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(16, 27, 45, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+.modal-card {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 20px;
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
 .warehouse-map-legend { display: flex; gap: 16px; font-size: 12.5px; color: var(--muted); }
 .legend-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
 .legend-empty { background: #d7dee8; }
