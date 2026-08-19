@@ -119,7 +119,10 @@ export default function OutboundRequestDetail() {
         &larr; Back to Outbound Operations
       </Link>
       <div className="toolbar">
-        <h2>Outbound Request #{request.ROWID}</h2>
+        <h2>
+          Outbound Request #{request.ROWID}
+          {request.reference_number && <span className="muted small"> ({request.reference_number})</span>}
+        </h2>
       </div>
 
       {error && <div className="error-text">{error}</div>}

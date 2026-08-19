@@ -79,7 +79,10 @@ export default function InboundAdviceDetail() {
         &larr; Back to Inbound Operations
       </Link>
       <div className="toolbar">
-        <h2>Advice #{advice.ROWID}</h2>
+        <h2>
+          Advice #{advice.ROWID}
+          {advice.reference_number && <span className="muted small"> ({advice.reference_number})</span>}
+        </h2>
         <button className="btn" onClick={handleGenerateGRN} disabled={grnBusy || cargoRows.length === 0}>
           {grnBusy ? 'Generating GRN...' : 'Generate GRN'}
         </button>

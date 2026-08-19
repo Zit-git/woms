@@ -12,7 +12,13 @@ export default function InboundAdviceList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ customer_id: '', transporter_id: '', expected_date: '', transport_details: '' });
+  const [form, setForm] = useState({
+    customer_id: '',
+    transporter_id: '',
+    expected_date: '',
+    transport_details: '',
+    reference_number: '',
+  });
   const [saving, setSaving] = useState(false);
   const { sorted, toggleSort, arrowFor } = useSortableData(advices);
 
@@ -37,7 +43,13 @@ export default function InboundAdviceList() {
     createInboundAdvice({ ...form, transporter_id: form.transporter_id || undefined, status: 'Submitted' })
       .then(() => {
         setShowForm(false);
-        setForm({ customer_id: customers[0]?.ROWID || '', transporter_id: '', expected_date: '', transport_details: '' });
+        setForm({
+          customer_id: customers[0]?.ROWID || '',
+          transporter_id: '',
+          expected_date: '',
+          transport_details: '',
+          reference_number: '',
+        });
         load();
       })
       .catch((err) => setError(err.message || String(err)))
@@ -82,6 +94,13 @@ export default function InboundAdviceList() {
             </select>
           </div>
           <div className="form-row">
+            <label>Reference number (customer's PO/order ref, optional)</label>
+            <input
+              value={form.reference_number}
+              onChange={(e) => setForm({ ...form, reference_number: e.target.value })}
+            />
+          </div>
+          <div className="form-row">
             <label>Expected date</label>
             <input
               type="date"
@@ -115,6 +134,7 @@ export default function InboundAdviceList() {
         <table>
           <thead>
             <tr>
+              <SortableTh label="Ref #" sortKey="reference_number" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Customer" sortKey="customer_name" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Expected date" sortKey="expected_date" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Transporter" sortKey="transporter_name" onSort={toggleSort} arrowFor={arrowFor} />
@@ -125,6 +145,7 @@ export default function InboundAdviceList() {
           <tbody>
             {sorted.map((a) => (
               <tr key={a.ROWID} className="clickable-row" onClick={() => navigate(`/inbound/${a.ROWID}`)}>
+                <td>{a.reference_number || <span className="muted">—</span>}</td>
                 <td>{a.customer_name}</td>
                 <td>{a.expected_date}</td>
                 <td>{a.transporter_name || <span className="muted">—</span>}</td>
@@ -138,7 +159,7 @@ export default function InboundAdviceList() {
             ))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={5} className="muted">
+                <td colSpan={6} className="muted">
                   No inbound advices yet.
                 </td>
               </tr>

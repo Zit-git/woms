@@ -122,7 +122,7 @@ export const getWarehouseMap = (warehouseId) =>
 // -- Inbound Operations --
 export const listInboundAdvice = () =>
   zcql(
-    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, Customers.name, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID ORDER BY InboundAdvice.CREATEDTIME DESC`
+    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, InboundAdvice.reference_number, Customers.name, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID ORDER BY InboundAdvice.CREATEDTIME DESC`
   ).then((rows) =>
     rows.map((r) => ({ ...r.InboundAdvice, customer_name: r.Customers?.name, transporter_name: r.Transporters?.name }))
   );
@@ -130,7 +130,7 @@ export const createInboundAdvice = (row) => addRow(TABLES.INBOUND_ADVICE, row);
 export const editInboundAdvice = (row) => updateRow(TABLES.INBOUND_ADVICE, row);
 export const getInboundAdviceById = (id) =>
   zcql(
-    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, InboundAdvice.customer_id, InboundAdvice.transporter_id, Customers.name, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID WHERE InboundAdvice.ROWID = ${id}`
+    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, InboundAdvice.reference_number, InboundAdvice.customer_id, InboundAdvice.transporter_id, Customers.name, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID WHERE InboundAdvice.ROWID = ${id}`
   ).then((rows) => {
     const row = rows[0];
     return row
@@ -206,7 +206,7 @@ export const listCargoForCustomer = (customerId) =>
 // -- Outbound Operations --
 export const listOutboundRequests = () =>
   zcql(
-    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, Customers.name, Transporters.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID ORDER BY OutboundRequest.CREATEDTIME DESC`
+    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.reference_number, Customers.name, Transporters.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID ORDER BY OutboundRequest.CREATEDTIME DESC`
   ).then((rows) =>
     rows.map((r) => ({ ...r.OutboundRequest, customer_name: r.Customers?.name, transporter_name: r.Transporters?.name }))
   );
@@ -214,7 +214,7 @@ export const createOutboundRequest = (row) => addRow(TABLES.OUTBOUND_REQUEST, ro
 export const editOutboundRequest = (row) => updateRow(TABLES.OUTBOUND_REQUEST, row);
 export const getOutboundRequestById = (id) =>
   zcql(
-    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.customer_id, OutboundRequest.transporter_id, Customers.name, Customers.email, Transporters.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID WHERE OutboundRequest.ROWID = ${id}`
+    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.reference_number, OutboundRequest.customer_id, OutboundRequest.transporter_id, Customers.name, Customers.email, Transporters.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID WHERE OutboundRequest.ROWID = ${id}`
   ).then((rows) => {
     const row = rows[0];
     return row

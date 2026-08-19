@@ -12,7 +12,7 @@ export default function OutboundRequestList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ customer_id: '', transporter_id: '', requested_date: '' });
+  const [form, setForm] = useState({ customer_id: '', transporter_id: '', requested_date: '', reference_number: '' });
   const [saving, setSaving] = useState(false);
   const { sorted, toggleSort, arrowFor } = useSortableData(requests);
 
@@ -37,7 +37,7 @@ export default function OutboundRequestList() {
     createOutboundRequest({ ...form, transporter_id: form.transporter_id || undefined, status: 'Submitted' })
       .then(() => {
         setShowForm(false);
-        setForm({ customer_id: customers[0]?.ROWID || '', transporter_id: '', requested_date: '' });
+        setForm({ customer_id: customers[0]?.ROWID || '', transporter_id: '', requested_date: '', reference_number: '' });
         load();
       })
       .catch((err) => setError(err.message || String(err)))
@@ -82,6 +82,13 @@ export default function OutboundRequestList() {
             </select>
           </div>
           <div className="form-row">
+            <label>Reference number (customer's PO/order ref, optional)</label>
+            <input
+              value={form.reference_number}
+              onChange={(e) => setForm({ ...form, reference_number: e.target.value })}
+            />
+          </div>
+          <div className="form-row">
             <label>Requested date</label>
             <input
               type="date"
@@ -107,6 +114,7 @@ export default function OutboundRequestList() {
         <table>
           <thead>
             <tr>
+              <SortableTh label="Ref #" sortKey="reference_number" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Customer" sortKey="customer_name" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Transporter" sortKey="transporter_name" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Requested date" sortKey="requested_date" onSort={toggleSort} arrowFor={arrowFor} />
@@ -117,6 +125,7 @@ export default function OutboundRequestList() {
           <tbody>
             {sorted.map((r) => (
               <tr key={r.ROWID} className="clickable-row" onClick={() => navigate(`/outbound/${r.ROWID}`)}>
+                <td>{r.reference_number || <span className="muted">—</span>}</td>
                 <td>{r.customer_name}</td>
                 <td>{r.transporter_name || <span className="muted">—</span>}</td>
                 <td>{r.requested_date}</td>
@@ -130,7 +139,7 @@ export default function OutboundRequestList() {
             ))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={5} className="muted">
+                <td colSpan={6} className="muted">
                   No outbound requests yet.
                 </td>
               </tr>
