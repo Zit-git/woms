@@ -181,6 +181,11 @@ export const listTasks = () => getAllRows(TABLES.TASKS, 500).then((rows) => rows
 export const createTask = (row) => addRow(TABLES.TASKS, row);
 export const editTask = (row) => updateRow(TABLES.TASKS, row);
 
+export const listTasksForRecord = (moduleRef, recordRefId) =>
+  zcql(
+    `SELECT ROWID, task_type, assigned_to, status, priority, due_date FROM Tasks WHERE module_ref = '${moduleRef}' AND record_ref_id = '${recordRefId}' ORDER BY CREATEDTIME DESC`
+  ).then((rows) => rows.map((r) => r.Tasks));
+
 // -- Value Added Logistics --
 export const listValRequests = () =>
   zcql(

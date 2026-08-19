@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { getInboundAdviceById, listCargoByAdvice, createCargo, generateQRCode, createGRN } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import DocumentUploader from '../../components/DocumentUploader';
+import RecordTasks from '../../components/RecordTasks';
 
 export default function InboundAdviceDetail() {
   const { adviceId } = useParams();
@@ -118,6 +119,8 @@ export default function InboundAdviceDetail() {
         bucketKey="CARGO_PHOTOS"
         title="Receiving Photos"
       />
+
+      <RecordTasks moduleRef="Inbound Operations" recordRefId={adviceId} />
 
       <div className="toolbar">
         <h3>Cargo</h3>

@@ -15,6 +15,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import DocumentUploader from '../../components/DocumentUploader';
 import QrScannerModal from '../../components/QrScannerModal';
+import RecordTasks from '../../components/RecordTasks';
 
 export default function OutboundRequestDetail() {
   const { requestId } = useParams();
@@ -166,6 +167,8 @@ export default function OutboundRequestDetail() {
         bucketKey="CARGO_PHOTOS"
         title="Dispatch Photos"
       />
+
+      <RecordTasks moduleRef="Outbound Operations" recordRefId={requestId} />
 
       <div className="toolbar">
         <h3>Pick Tasks</h3>
