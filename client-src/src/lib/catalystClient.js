@@ -19,26 +19,63 @@ export function embedSignIn(elementId, serviceUrl) {
   sdk().auth.signIn(elementId, { service_url: serviceUrl });
 }
 
-export function signOut(redirectUrl) {
-  // auth.signOut() itself only ever fires a real logout round-trip to
-  // accounts.zoho.com in one of its internal branches -- in the branch this
-  // project actually hits, it just deletes a cookie client-side (which
-  // silently no-ops if the path/domain don't match how it was set) and
-  // redirects straight back without ever invalidating the server session,
-  // so the SSO session survives and the embedded sign-in widget silently
-  // re-authenticates on reload. auth.signOutUrl() computes the same
-  // accounts-domain logout URL the SDK uses internally (correct domain/
-  // region, no guessing) without navigating, so we can force the real
-  // top-level navigation to it ourselves.
-  return sdk()
-    .auth.signOutUrl(redirectUrl)
-    .then((res) => {
-      const url = res?.content?.signout_url || res?.content?.data?.signout_url;
-      window.location.href = url || redirectUrl;
-    })
-    .catch(() => {
-      window.location.href = redirectUrl;
+// Wipes every cookie readable from JS, across every path segment of the
+// current URL and both with/without a leading dot on the hostname (the two
+// variations that account for the vast majority of how a cookie could have
+// been set). This can't touch HttpOnly cookies -- nothing client-side can --
+// but combined with clearing storage and forcing a fresh navigation, it's
+// the most a browser script can do to guarantee no stale client state
+// survives a sign-out click.
+function wipeAllCookies() {
+  const cookies = document.cookie.split(';');
+  const pathParts = window.location.pathname.split('/').filter(Boolean);
+  const paths = ['/'];
+  let acc = '';
+  for (const part of pathParts) {
+    acc += `/${part}`;
+    paths.push(acc);
+  }
+  const hosts = [window.location.hostname, `.${window.location.hostname}`];
+
+  cookies.forEach((c) => {
+    const name = c.split('=')[0].trim();
+    if (!name) return;
+    paths.forEach((path) => {
+      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=${path}`;
+      hosts.forEach((host) => {
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=${path}; domain=${host}`;
+      });
     });
+  });
+}
+
+export function signOut(redirectUrl) {
+  // Every previous approach here (forcing auth.signOut()'s own redirect,
+  // then switching to auth.signOutUrl()'s computed accounts-domain logout
+  // URL) still left the SSO session alive, for reasons that stayed
+  // unresolved after real investigation into the SDK's source. Rather than
+  // keep guessing at Zoho's session internals, this wipes everything
+  // client-side can reach and forces a hard navigation -- deterministic
+  // regardless of what's actually causing the SDK-level behavior.
+  try {
+    wipeAllCookies();
+  } catch {
+    // best-effort; still proceed to storage clear + redirect below
+  }
+  try {
+    localStorage.clear();
+    sessionStorage.clear();
+  } catch {
+    // ignore
+  }
+  try {
+    sdk().auth.signOut(redirectUrl);
+  } catch {
+    // ignore -- the wipe + redirect below is what actually guarantees sign-out
+  }
+
+  const separator = redirectUrl.includes('?') ? '&' : '?';
+  window.location.href = `${redirectUrl}${separator}loggedout=${Date.now()}`;
 }
 
 export function table(tableName) {
