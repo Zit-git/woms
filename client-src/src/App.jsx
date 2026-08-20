@@ -37,32 +37,51 @@ function Gate() {
   }
 
   return (
-    <Suspense fallback={<PageLoading />}>
-      <Routes>
-        <Route path="/print/inbound/:adviceId" element={<InboundPrint />} />
-        <Route path="/print/outbound/:requestId" element={<OutboundPrint />} />
-        <Route path="/print/putaway/:adviceId" element={<PutawayPrint />} />
-        <Route path="/" element={<AppShell />}>
-          <Route index element={<DashboardHome />} />
-          <Route path="customers" element={<CustomerList />} />
-          <Route path="customers/:customerId" element={<CustomerDetail />} />
-          <Route path="transporters" element={<TransportersPage />} />
-          <Route path="warehouse" element={<WarehouseConfig />} />
-          <Route path="inbound" element={<InboundAdviceList />} />
-          <Route path="inbound/:adviceId" element={<InboundAdviceDetail />} />
-          <Route path="storage" element={<StoragePage />} />
-          <Route path="outbound" element={<OutboundRequestList />} />
-          <Route path="outbound/:requestId" element={<OutboundRequestDetail />} />
-          <Route path="tasks" element={<TasksPage />} />
-          <Route path="val" element={<ValPage />} />
-          <Route path="reports" element={<ReportsPage />} />
-          <Route path="cargo/:cargoId" element={<CargoDetail />} />
-          <Route path="admin" element={<AdminPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
-    </Suspense>
+    <Routes>
+      <Route
+        path="/print/inbound/:adviceId"
+        element={
+          <Suspense fallback={<PageLoading />}>
+            <InboundPrint />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/print/outbound/:requestId"
+        element={
+          <Suspense fallback={<PageLoading />}>
+            <OutboundPrint />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/print/putaway/:adviceId"
+        element={
+          <Suspense fallback={<PageLoading />}>
+            <PutawayPrint />
+          </Suspense>
+        }
+      />
+      <Route path="/" element={<AppShell />}>
+        <Route index element={<DashboardHome />} />
+        <Route path="customers" element={<CustomerList />} />
+        <Route path="customers/:customerId" element={<CustomerDetail />} />
+        <Route path="transporters" element={<TransportersPage />} />
+        <Route path="warehouse" element={<WarehouseConfig />} />
+        <Route path="inbound" element={<InboundAdviceList />} />
+        <Route path="inbound/:adviceId" element={<InboundAdviceDetail />} />
+        <Route path="storage" element={<StoragePage />} />
+        <Route path="outbound" element={<OutboundRequestList />} />
+        <Route path="outbound/:requestId" element={<OutboundRequestDetail />} />
+        <Route path="tasks" element={<TasksPage />} />
+        <Route path="val" element={<ValPage />} />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="cargo/:cargoId" element={<CargoDetail />} />
+        <Route path="admin" element={<AdminPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
   );
 }
 

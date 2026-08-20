@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { signOut } from '../lib/catalystClient';
@@ -107,7 +108,9 @@ export default function AppShell() {
       </aside>
 
       <main className="main-content">
-        <Outlet />
+        <Suspense fallback={null}>
+          <Outlet />
+        </Suspense>
       </main>
 
       <nav className="bottom-nav">
