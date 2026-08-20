@@ -18,6 +18,23 @@ const TABLES = {
   TRANSPORTERS: 'Transporters',
 };
 
+// Tier-based visibility: System Administrator sees everything; Warehouse
+// Manager/Supervisor see everything in their own warehouse; Warehouse
+// Operator sees only records assigned to them. Returns a " AND ..." clause
+// fragment to append to a query's WHERE, or '' for unrestricted (Admin, or
+// a viewer with no role/warehouse info yet -- fails open rather than
+// hiding everything from a not-yet-fully-loaded session).
+function visibilityClause(viewer, { warehouseCol, assignedCol } = {}) {
+  if (!viewer || !viewer.businessRole || viewer.businessRole === 'System Administrator') return '';
+  if (viewer.businessRole === 'Warehouse Operator' && assignedCol && viewer.email) {
+    return ` AND ${assignedCol} = '${viewer.email}'`;
+  }
+  if (warehouseCol && viewer.warehouseId) {
+    return ` AND ${warehouseCol} = ${viewer.warehouseId}`;
+  }
+  return '';
+}
+
 // Catalyst datetime columns expect "YYYY-MM-DD HH:mm:ss" on insert/update
 // (ISO strings and millisecond-precision values are both rejected).
 function formatDatetime(date = new Date()) {
@@ -120,9 +137,9 @@ export const getWarehouseMap = (warehouseId) =>
   );
 
 // -- Inbound Operations --
-export const listInboundAdvice = () =>
+export const listInboundAdvice = (viewer) =>
   zcql(
-    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, InboundAdvice.reference_number, Customers.name, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID ORDER BY InboundAdvice.CREATEDTIME DESC`
+    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, InboundAdvice.reference_number, Customers.name, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID WHERE InboundAdvice.ROWID != 0${visibilityClause(viewer, { warehouseCol: 'InboundAdvice.warehouse_id' })} ORDER BY InboundAdvice.CREATEDTIME DESC`
   ).then((rows) =>
     rows.map((r) => ({ ...r.InboundAdvice, customer_name: r.Customers?.name, transporter_name: r.Transporters?.name }))
   );
@@ -130,7 +147,7 @@ export const createInboundAdvice = (row) => addRow(TABLES.INBOUND_ADVICE, row);
 export const editInboundAdvice = (row) => updateRow(TABLES.INBOUND_ADVICE, row);
 export const getInboundAdviceById = (id) =>
   zcql(
-    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, InboundAdvice.reference_number, InboundAdvice.customer_id, InboundAdvice.transporter_id, Customers.name, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID WHERE InboundAdvice.ROWID = ${id}`
+    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, InboundAdvice.reference_number, InboundAdvice.customer_id, InboundAdvice.transporter_id, InboundAdvice.warehouse_id, Customers.name, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID WHERE InboundAdvice.ROWID = ${id}`
   ).then((rows) => {
     const row = rows[0];
     return row
@@ -160,14 +177,14 @@ export const listAllStorageLocations = () =>
     }))
   );
 
-export const listCargoPendingPutAway = () =>
+export const listCargoPendingPutAway = (viewer) =>
   zcql(
-    `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.qr_code, Customers.name FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID WHERE Cargo.current_location_id IS NULL AND Cargo.status != 'Dispatched' ORDER BY Cargo.CREATEDTIME`
+    `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.qr_code, Customers.name FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID WHERE Cargo.current_location_id IS NULL AND Cargo.status != 'Dispatched'${visibilityClause(viewer, { warehouseCol: 'Cargo.warehouse_id' })} ORDER BY Cargo.CREATEDTIME`
   ).then((rows) => rows.map((r) => ({ ...r.Cargo, customer_name: r.Customers?.name })));
 
-export const listStoredCargo = () =>
+export const listStoredCargo = (viewer) =>
   zcql(
-    `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.qr_code, Cargo.status, Customers.name, StorageLocations.location_code FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID LEFT JOIN StorageLocations ON Cargo.current_location_id = StorageLocations.ROWID WHERE Cargo.current_location_id IS NOT NULL AND Cargo.status != 'Dispatched' ORDER BY Cargo.CREATEDTIME DESC`
+    `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.qr_code, Cargo.status, Customers.name, StorageLocations.location_code FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID LEFT JOIN StorageLocations ON Cargo.current_location_id = StorageLocations.ROWID WHERE Cargo.current_location_id IS NOT NULL AND Cargo.status != 'Dispatched'${visibilityClause(viewer, { warehouseCol: 'Cargo.warehouse_id' })} ORDER BY Cargo.CREATEDTIME DESC`
   ).then((rows) =>
     rows.map((r) => ({
       ...r.Cargo,
@@ -177,13 +194,16 @@ export const listStoredCargo = () =>
   );
 
 // -- Operational Task Management --
-export const listTasks = () => getAllRows(TABLES.TASKS, 500).then((rows) => rows.sort((a, b) => (a.CREATEDTIME < b.CREATEDTIME ? 1 : -1)));
+export const listTasks = (viewer) =>
+  zcql(
+    `SELECT * FROM Tasks WHERE Tasks.ROWID != 0${visibilityClause(viewer, { warehouseCol: 'Tasks.warehouse_id', assignedCol: 'Tasks.assigned_to' })} ORDER BY Tasks.CREATEDTIME DESC`
+  ).then((rows) => rows.map((r) => r.Tasks));
 export const createTask = (row) => addRow(TABLES.TASKS, row);
 export const editTask = (row) => updateRow(TABLES.TASKS, row);
 
 export const listTasksForRecord = (moduleRef, recordRefId) =>
   zcql(
-    `SELECT ROWID, task_type, assigned_to, status, priority, due_date FROM Tasks WHERE module_ref = '${moduleRef}' AND record_ref_id = '${recordRefId}' ORDER BY CREATEDTIME DESC`
+    `SELECT ROWID, task_type, assigned_to, status, task_priority, due_date FROM Tasks WHERE module_ref = '${moduleRef}' AND record_ref_id = '${recordRefId}' ORDER BY CREATEDTIME DESC`
   ).then((rows) => rows.map((r) => r.Tasks));
 
 // -- Value Added Logistics --
@@ -209,9 +229,9 @@ export const listCargoForCustomer = (customerId) =>
   );
 
 // -- Outbound Operations --
-export const listOutboundRequests = () =>
+export const listOutboundRequests = (viewer) =>
   zcql(
-    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.reference_number, Customers.name, Transporters.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID ORDER BY OutboundRequest.CREATEDTIME DESC`
+    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.reference_number, Customers.name, Transporters.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID WHERE OutboundRequest.ROWID != 0${visibilityClause(viewer, { warehouseCol: 'OutboundRequest.warehouse_id' })} ORDER BY OutboundRequest.CREATEDTIME DESC`
   ).then((rows) =>
     rows.map((r) => ({ ...r.OutboundRequest, customer_name: r.Customers?.name, transporter_name: r.Transporters?.name }))
   );

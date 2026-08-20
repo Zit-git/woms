@@ -6,19 +6,20 @@ const STATUSES = ['Assigned', 'In Progress', 'Completed'];
 const PRIORITIES = ['Low', 'Medium', 'High'];
 
 export default function TasksPage() {
-  const { user } = useAuth();
+  const { businessRole, warehouseId, user } = useAuth();
+  const viewer = { businessRole, warehouseId, email: user?.email_id };
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ task_type: '', assigned_to: '', priority: 'Medium', due_date: '' });
+  const [form, setForm] = useState({ task_type: '', assigned_to: '', task_priority: 'Medium', due_date: '' });
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState('open'); // 'open' | 'all'
   const [busyRow, setBusyRow] = useState(null);
 
   const load = () => {
     setLoading(true);
-    listTasks()
+    listTasks(viewer)
       .then(setTasks)
       .catch((err) => setError(err.message || String(err)))
       .finally(() => setLoading(false));
@@ -32,7 +33,7 @@ export default function TasksPage() {
     createTask({ ...form, status: 'Assigned' })
       .then(() => {
         setShowForm(false);
-        setForm({ task_type: '', assigned_to: '', priority: 'Medium', due_date: '' });
+        setForm({ task_type: '', assigned_to: '', task_priority: 'Medium', due_date: '' });
         load();
       })
       .catch((err) => setError(err.message || String(err)))
@@ -81,7 +82,7 @@ export default function TasksPage() {
             </div>
             <div className="form-row">
               <label>Priority</label>
-              <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
+              <select value={form.task_priority} onChange={(e) => setForm({ ...form, task_priority: e.target.value })}>
                 {PRIORITIES.map((p) => (
                   <option key={p} value={p}>
                     {p}
@@ -133,7 +134,7 @@ export default function TasksPage() {
               <tr key={t.ROWID}>
                 <td>{t.task_type}</td>
                 <td>{t.assigned_to}</td>
-                <td>{t.priority}</td>
+                <td>{t.task_priority}</td>
                 <td>{t.due_date}</td>
                 <td>
                   <span className="status-badge">{t.status}</span>

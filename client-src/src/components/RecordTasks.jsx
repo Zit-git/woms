@@ -11,7 +11,7 @@ export default function RecordTasks({ moduleRef, recordRefId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ task_type: '', assigned_to: '', priority: 'Medium', due_date: '' });
+  const [form, setForm] = useState({ task_type: '', assigned_to: '', task_priority: 'Medium', due_date: '' });
   const [saving, setSaving] = useState(false);
 
   const load = () => {
@@ -41,7 +41,7 @@ export default function RecordTasks({ moduleRef, recordRefId }) {
       })
       .then(() => {
         setShowForm(false);
-        setForm({ task_type: '', assigned_to: '', priority: 'Medium', due_date: '' });
+        setForm({ task_type: '', assigned_to: '', task_priority: 'Medium', due_date: '' });
         load();
       })
       .catch((err) => setError(err.message || String(err)))
@@ -85,7 +85,7 @@ export default function RecordTasks({ moduleRef, recordRefId }) {
             </div>
             <div className="form-row">
               <label>Priority</label>
-              <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
+              <select value={form.task_priority} onChange={(e) => setForm({ ...form, task_priority: e.target.value })}>
                 {PRIORITIES.map((p) => (
                   <option key={p} value={p}>
                     {p}
@@ -129,7 +129,7 @@ export default function RecordTasks({ moduleRef, recordRefId }) {
               <tr key={t.ROWID}>
                 <td>{t.task_type}</td>
                 <td>{t.assigned_to}</td>
-                <td>{t.priority}</td>
+                <td>{t.task_priority}</td>
                 <td>
                   <span className="status-badge">{t.status}</span>
                 </td>

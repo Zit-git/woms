@@ -38,6 +38,7 @@ export default function InboundAdviceDetail() {
     createCargo({
       inbound_advice_id: adviceId,
       customer_id: advice.customer_id,
+      warehouse_id: advice.warehouse_id,
       description: cargoForm.description,
       qty: cargoForm.qty ? Number(cargoForm.qty) : undefined,
       unit: cargoForm.unit,

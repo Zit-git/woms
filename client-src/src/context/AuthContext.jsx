@@ -46,6 +46,7 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     businessRole: appUser?.business_role || null,
+    warehouseId: appUser?.warehouse_id || null,
     loading,
     isAuthenticated: !!user,
     clearSession,

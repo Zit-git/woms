@@ -4,7 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import QrScannerModal from '../../components/QrScannerModal';
 
 export default function StoragePage() {
-  const { user } = useAuth();
+  const { businessRole, warehouseId, user } = useAuth();
+  const viewer = { businessRole, warehouseId, email: user?.email_id };
   const [pending, setPending] = useState([]);
   const [stored, setStored] = useState([]);
   const [locations, setLocations] = useState([]);
@@ -17,7 +18,7 @@ export default function StoragePage() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([listCargoPendingPutAway(), listStoredCargo(), listAllStorageLocations()])
+    Promise.all([listCargoPendingPutAway(viewer), listStoredCargo(viewer), listAllStorageLocations()])
       .then(([p, s, l]) => {
         setPending(p);
         setStored(s);

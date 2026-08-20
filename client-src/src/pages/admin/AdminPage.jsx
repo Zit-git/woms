@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { listAppUsers, listRolePermissions, inviteUser } from '../../lib/api';
+import { listAppUsers, listRolePermissions, inviteUser, listWarehouses } from '../../lib/api';
 
 const MODULE_ORDER = [
   'Customer Management',
@@ -19,19 +19,28 @@ const BUSINESS_ROLES = ['System Administrator', 'Warehouse Manager', 'Warehouse 
 export default function AdminPage() {
   const [users, setUsers] = useState([]);
   const [permissions, setPermissions] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showInvite, setShowInvite] = useState(false);
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', businessRole: BUSINESS_ROLES[3] });
+  const [form, setForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    businessRole: BUSINESS_ROLES[3],
+    warehouseId: '',
+  });
   const [inviting, setInviting] = useState(false);
   const [inviteResult, setInviteResult] = useState(null);
 
   const load = () => {
     setLoading(true);
-    Promise.all([listAppUsers(), listRolePermissions()])
-      .then(([u, p]) => {
+    Promise.all([listAppUsers(), listRolePermissions(), listWarehouses()])
+      .then(([u, p, w]) => {
         setUsers(u);
         setPermissions(p);
+        setWarehouses(w);
+        if (!form.warehouseId && w.length) setForm((f) => ({ ...f, warehouseId: w[0].ROWID }));
       })
       .catch((err) => setError(err.message || String(err)))
       .finally(() => setLoading(false));
@@ -39,6 +48,7 @@ export default function AdminPage() {
 
   useEffect(load, []);
 
+  const warehouseName = (id) => warehouses.find((w) => String(w.ROWID) === String(id))?.name;
   const roles = [...new Set(permissions.map((p) => p.role))];
   const hasAccess = (role, module) => permissions.some((p) => p.role === role && p.module === module);
 
@@ -47,10 +57,11 @@ export default function AdminPage() {
     setInviting(true);
     setInviteResult(null);
     const redirectUrl = window.location.origin + import.meta.env.BASE_URL + 'index.html';
-    inviteUser(form.firstName, form.lastName, form.email, form.businessRole, redirectUrl)
+    const warehouseId = form.businessRole === 'System Administrator' ? undefined : form.warehouseId;
+    inviteUser(form.firstName, form.lastName, form.email, form.businessRole, redirectUrl, warehouseId)
       .then((res) => {
         setInviteResult({ ok: true, email: res.email });
-        setForm({ firstName: '', lastName: '', email: '', businessRole: BUSINESS_ROLES[3] });
+        setForm({ firstName: '', lastName: '', email: '', businessRole: BUSINESS_ROLES[3], warehouseId: warehouses[0]?.ROWID || '' });
         setShowInvite(false);
         load();
       })
@@ -104,6 +115,19 @@ export default function AdminPage() {
               ))}
             </select>
           </div>
+          {form.businessRole !== 'System Administrator' && (
+            <div className="form-row">
+              <label>Warehouse</label>
+              <select value={form.warehouseId} onChange={(e) => setForm({ ...form, warehouseId: e.target.value })} required>
+                {warehouses.map((w) => (
+                  <option key={w.ROWID} value={w.ROWID}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+              {!warehouses.length && <p className="muted small">Add a warehouse first (Warehouse Management).</p>}
+            </div>
+          )}
           <div className="form-actions">
             <button className="btn" type="submit" disabled={inviting}>
               {inviting ? 'Sending invite...' : 'Send Invite'}
@@ -125,6 +149,7 @@ export default function AdminPage() {
               <tr>
                 <th>Email</th>
                 <th>Business Role</th>
+                <th>Warehouse</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -135,12 +160,13 @@ export default function AdminPage() {
                   <td>
                     <span className="status-badge">{u.business_role}</span>
                   </td>
+                  <td>{warehouseName(u.warehouse_id) || <span className="muted">—</span>}</td>
                   <td>{u.user_status}</td>
                 </tr>
               ))}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="muted">
+                  <td colSpan={4} className="muted">
                     No app users registered yet.
                   </td>
                 </tr>

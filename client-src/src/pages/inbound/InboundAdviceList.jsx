@@ -1,20 +1,25 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listInboundAdvice, createInboundAdvice, listCustomers, listTransporters } from '../../lib/api';
+import { listInboundAdvice, createInboundAdvice, listCustomers, listTransporters, listWarehouses } from '../../lib/api';
 import SortableTh from '../../components/SortableTh';
 import { useSortableData } from '../../lib/useSortableData';
+import { useAuth } from '../../context/AuthContext';
 
 export default function InboundAdviceList() {
   const navigate = useNavigate();
+  const { businessRole, warehouseId, user } = useAuth();
+  const viewer = { businessRole, warehouseId, email: user?.email_id };
   const [advices, setAdvices] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [transporters, setTransporters] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     customer_id: '',
     transporter_id: '',
+    warehouse_id: '',
     expected_date: '',
     transport_details: '',
     reference_number: '',
@@ -24,12 +29,16 @@ export default function InboundAdviceList() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([listInboundAdvice(), listCustomers(), listTransporters()])
-      .then(([a, c, t]) => {
+    Promise.all([listInboundAdvice(viewer), listCustomers(), listTransporters(), listWarehouses()])
+      .then(([a, c, t, w]) => {
         setAdvices(a);
         setCustomers(c);
         setTransporters(t);
+        setWarehouses(w);
         if (!form.customer_id && c.length) setForm((f) => ({ ...f, customer_id: c[0].ROWID }));
+        if (!form.warehouse_id && w.length) {
+          setForm((f) => ({ ...f, warehouse_id: warehouseId || w[0].ROWID }));
+        }
       })
       .catch((err) => setError(err.message || String(err)))
       .finally(() => setLoading(false));
@@ -46,6 +55,7 @@ export default function InboundAdviceList() {
         setForm({
           customer_id: customers[0]?.ROWID || '',
           transporter_id: '',
+          warehouse_id: warehouseId || warehouses[0]?.ROWID || '',
           expected_date: '',
           transport_details: '',
           reference_number: '',
@@ -89,6 +99,16 @@ export default function InboundAdviceList() {
               {transporters.map((t) => (
                 <option key={t.ROWID} value={t.ROWID}>
                   {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-row">
+            <label>Warehouse</label>
+            <select value={form.warehouse_id} onChange={(e) => setForm({ ...form, warehouse_id: e.target.value })} required>
+              {warehouses.map((w) => (
+                <option key={w.ROWID} value={w.ROWID}>
+                  {w.name}
                 </option>
               ))}
             </select>
