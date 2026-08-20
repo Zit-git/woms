@@ -17,6 +17,7 @@ import { useAuth } from '../../context/AuthContext';
 import DocumentUploader from '../../components/DocumentUploader';
 import QrScannerModal from '../../components/QrScannerModal';
 import RecordTasks from '../../components/RecordTasks';
+import SignaturePad from '../../components/SignaturePad';
 
 export default function OutboundRequestDetail() {
   const { requestId } = useParams();
@@ -150,6 +151,9 @@ export default function OutboundRequestDetail() {
           Outbound Request #{request.ROWID}
           {request.reference_number && <span className="muted small"> ({request.reference_number})</span>}
         </h2>
+        <a className="btn secondary" href={`${import.meta.env.BASE_URL}print/outbound/${requestId}`} target="_blank" rel="noreferrer">
+          Print Dispatch Note
+        </a>
       </div>
 
       {error && <div className="error-text">{error}</div>}
@@ -177,6 +181,12 @@ export default function OutboundRequestDetail() {
         linkedRecordId={requestId}
         bucketKey="CARGO_PHOTOS"
         title="Dispatch Photos"
+      />
+      <SignaturePad
+        linkedModule="Outbound Operations Photos"
+        linkedRecordId={requestId}
+        docType="Driver Signature (Handover)"
+        title="Driver Signature (Handover)"
       />
 
       <RecordTasks moduleRef="Outbound Operations" recordRefId={requestId} />

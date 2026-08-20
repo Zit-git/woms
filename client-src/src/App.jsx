@@ -18,6 +18,9 @@ import ReportsPage from './pages/reports/ReportsPage';
 import CargoDetail from './pages/reports/CargoDetail';
 import AdminPage from './pages/admin/AdminPage';
 import SettingsPage from './pages/settings/SettingsPage';
+import InboundPrint from './pages/print/InboundPrint';
+import OutboundPrint from './pages/print/OutboundPrint';
+import PutawayPrint from './pages/print/PutawayPrint';
 
 function Gate() {
   const { isAuthenticated, loading } = useAuth();
@@ -31,6 +34,9 @@ function Gate() {
 
   return (
     <Routes>
+      <Route path="/print/inbound/:adviceId" element={<InboundPrint />} />
+      <Route path="/print/outbound/:requestId" element={<OutboundPrint />} />
+      <Route path="/print/putaway/:adviceId" element={<PutawayPrint />} />
       <Route path="/" element={<AppShell />}>
         <Route index element={<DashboardHome />} />
         <Route path="customers" element={<CustomerList />} />

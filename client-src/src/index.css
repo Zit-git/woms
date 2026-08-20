@@ -314,3 +314,46 @@ tr.clickable-row:hover td { background: var(--bg); }
   }
   .bottom-nav-link.active { color: var(--primary); font-weight: 600; }
 }
+
+/* -- Printable documents (Inbound/Outbound/Put-away) -- */
+.print-doc {
+  max-width: 800px;
+  margin: 24px auto;
+  padding: 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.print-doc .no-print { margin-bottom: 20px; }
+.print-meta { width: 100%; margin-bottom: 8px; }
+.print-meta td { padding: 4px 8px; font-size: 14px; }
+.print-meta td:nth-child(odd) { color: var(--muted); width: 110px; }
+.print-table { width: 100%; margin-top: 12px; }
+.print-sign-row {
+  display: flex;
+  gap: 60px;
+  margin-top: 60px;
+}
+.print-sign-row > div { flex: 1; }
+.print-sign-line { border-bottom: 1px solid var(--text); height: 40px; }
+
+.label-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.label-card {
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  text-align: center;
+  page-break-inside: avoid;
+}
+.label-desc { font-weight: 600; margin-top: 6px; font-size: 13px; }
+
+@media print {
+  body { background: #fff; }
+  .no-print { display: none !important; }
+  .print-doc { border: none; box-shadow: none; margin: 0; max-width: none; }
+}

@@ -4,6 +4,7 @@ import { getInboundAdviceById, listCargoByAdvice, createCargo, generateQRCode, c
 import { useAuth } from '../../context/AuthContext';
 import DocumentUploader from '../../components/DocumentUploader';
 import RecordTasks from '../../components/RecordTasks';
+import SignaturePad from '../../components/SignaturePad';
 
 export default function InboundAdviceDetail() {
   const { adviceId } = useParams();
@@ -85,9 +86,17 @@ export default function InboundAdviceDetail() {
           Advice #{advice.ROWID}
           {advice.reference_number && <span className="muted small"> ({advice.reference_number})</span>}
         </h2>
-        <button className="btn" onClick={handleGenerateGRN} disabled={grnBusy || cargoRows.length === 0}>
-          {grnBusy ? 'Generating GRN...' : 'Generate GRN'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <a className="btn secondary" href={`${import.meta.env.BASE_URL}print/inbound/${adviceId}`} target="_blank" rel="noreferrer">
+            Print Receipt
+          </a>
+          <a className="btn secondary" href={`${import.meta.env.BASE_URL}print/putaway/${adviceId}`} target="_blank" rel="noreferrer">
+            Print Put-Away Labels
+          </a>
+          <button className="btn" onClick={handleGenerateGRN} disabled={grnBusy || cargoRows.length === 0}>
+            {grnBusy ? 'Generating GRN...' : 'Generate GRN'}
+          </button>
+        </div>
       </div>
 
       {error && <div className="error-text">{error}</div>}
@@ -119,6 +128,12 @@ export default function InboundAdviceDetail() {
         linkedRecordId={adviceId}
         bucketKey="CARGO_PHOTOS"
         title="Receiving Photos"
+      />
+      <SignaturePad
+        linkedModule="Inbound Operations Photos"
+        linkedRecordId={adviceId}
+        docType="Driver Signature (Receiving)"
+        title="Driver Signature (Receiving)"
       />
 
       <RecordTasks moduleRef="Inbound Operations" recordRefId={adviceId} />
