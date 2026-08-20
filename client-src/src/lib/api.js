@@ -383,8 +383,12 @@ export const listRolePermissions = () => getAllRows('RolePermissions', 500);
 export const inviteUser = (firstName, lastName, email, businessRole, redirectUrl, warehouseId) =>
   callFunction('inviteUser', { firstName, lastName, email, businessRole, redirectUrl, warehouseId });
 
-// -- Settings: audit trail --
-export const listRecentAuditLog = (limit = 100) =>
-  zcql(`SELECT ROWID, user_id, action_type, module, record_id, event_timestamp FROM AuditLog ORDER BY CREATEDTIME DESC`).then(
-    (rows) => rows.slice(0, limit).map((r) => r.AuditLog)
-  );
+// -- Audit trail, scoped per module (shown inline on each module's pages) --
+export const listAuditLogForModule = (modules, recordId, limit = 50) => {
+  const moduleList = Array.isArray(modules) ? modules : [modules];
+  const moduleClause = moduleList.map((m) => `module = '${m}'`).join(' OR ');
+  const recordClause = recordId != null ? ` AND record_id = '${recordId}'` : '';
+  return zcql(
+    `SELECT ROWID, user_id, action_type, module, record_id, event_timestamp FROM AuditLog WHERE (${moduleClause})${recordClause} ORDER BY CREATEDTIME DESC`
+  ).then((rows) => rows.slice(0, limit).map((r) => r.AuditLog));
+};

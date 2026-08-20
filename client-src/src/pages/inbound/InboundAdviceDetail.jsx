@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import DocumentUploader from '../../components/DocumentUploader';
 import RecordTasks from '../../components/RecordTasks';
 import SignaturePad from '../../components/SignaturePad';
+import AuditTrail from '../../components/AuditTrail';
 
 export default function InboundAdviceDetail() {
   const { adviceId } = useParams();
@@ -223,6 +224,8 @@ export default function InboundAdviceDetail() {
           )}
         </tbody>
       </table>
+
+      <AuditTrail modules={['Inbound Operations', 'Inbound Operations Photos']} recordId={adviceId} />
     </div>
   );
 }

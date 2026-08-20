@@ -42,12 +42,12 @@ const NAV_GROUPS = [
   },
   {
     label: 'Insights',
-    items: [{ to: '/reports', label: 'Reports & Dashboards', icon: IconChart }],
+    items: [{ to: '/reports', label: 'Reports', icon: IconChart }],
   },
   {
     label: 'Administration',
     items: [
-      { to: '/admin', label: 'System Administration', icon: IconGear },
+      { to: '/admin', label: 'Users', icon: IconGear },
       { to: '/settings', label: 'Settings', icon: IconSettings },
     ],
   },

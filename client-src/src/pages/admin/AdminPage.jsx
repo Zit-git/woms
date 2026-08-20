@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { listAppUsers, listRolePermissions, inviteUser, listWarehouses } from '../../lib/api';
+import AuditTrail from '../../components/AuditTrail';
 
 const MODULE_ORDER = [
   'Customer Management',
@@ -199,6 +200,8 @@ export default function AdminPage() {
               </tbody>
             </table>
           </div>
+
+          <AuditTrail modules="System Administration" />
         </>
       )}
     </div>

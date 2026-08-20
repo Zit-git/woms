@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { listCargoPendingPutAway, listStoredCargo, listAllStorageLocations, recordScan } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
-import QrScannerModal from '../../components/QrScannerModal';
+
+const QrScannerModal = lazy(() => import('../../components/QrScannerModal'));
 
 export default function StoragePage() {
   const { businessRole, warehouseId, user } = useAuth();
@@ -79,7 +80,11 @@ export default function StoragePage() {
         </button>
       </div>
 
-      {showScanner && <QrScannerModal onDecode={handleScanned} onClose={() => setShowScanner(false)} />}
+      {showScanner && (
+        <Suspense fallback={null}>
+          <QrScannerModal onDecode={handleScanned} onClose={() => setShowScanner(false)} />
+        </Suspense>
+      )}
 
       {error && <div className="error-text">{error}</div>}
 

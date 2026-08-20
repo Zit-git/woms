@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   getOutboundRequestById,
@@ -15,9 +15,11 @@ import {
 } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import DocumentUploader from '../../components/DocumentUploader';
-import QrScannerModal from '../../components/QrScannerModal';
 import RecordTasks from '../../components/RecordTasks';
 import SignaturePad from '../../components/SignaturePad';
+import AuditTrail from '../../components/AuditTrail';
+
+const QrScannerModal = lazy(() => import('../../components/QrScannerModal'));
 
 export default function OutboundRequestDetail() {
   const { requestId } = useParams();
@@ -207,7 +209,11 @@ export default function OutboundRequestDetail() {
         </div>
       </div>
 
-      {showScanner && <QrScannerModal onDecode={handleScanned} onClose={() => setShowScanner(false)} />}
+      {showScanner && (
+        <Suspense fallback={null}>
+          <QrScannerModal onDecode={handleScanned} onClose={() => setShowScanner(false)} />
+        </Suspense>
+      )}
 
       {showPickForm && (
         <form className="card" onSubmit={addPickTask}>
@@ -312,6 +318,8 @@ export default function OutboundRequestDetail() {
           {!allPicked && <p className="muted small">All pick lines must be scanned & picked before dispatch.</p>}
         </div>
       )}
+
+      <AuditTrail modules={['Outbound Operations', 'Outbound Operations Photos']} recordId={requestId} />
     </div>
   );
 }
