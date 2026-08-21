@@ -1,4 +1,5 @@
 import { addRow, updateRow, deleteRow, getAllRows, zcql, callFunction } from './catalystClient';
+import { formatSequentialRef } from './reference';
 
 const TABLES = {
   CUSTOMERS: 'Customers',
@@ -139,30 +140,80 @@ export const getWarehouseMap = (warehouseId) =>
 // -- Inbound Operations --
 export const listInboundAdvice = (viewer) =>
   zcql(
-    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, InboundAdvice.reference_number, Customers.name, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID WHERE InboundAdvice.ROWID != 0${visibilityClause(viewer, { warehouseCol: 'InboundAdvice.warehouse_id' })} ORDER BY InboundAdvice.CREATEDTIME DESC`
+    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, InboundAdvice.reference_number, InboundAdvice.inbound_reference, InboundAdvice.destination, Customers.name, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID WHERE InboundAdvice.ROWID != 0${visibilityClause(viewer, { warehouseCol: 'InboundAdvice.warehouse_id' })} ORDER BY InboundAdvice.CREATEDTIME DESC`
   ).then((rows) =>
     rows.map((r) => ({ ...r.InboundAdvice, customer_name: r.Customers?.name, transporter_name: r.Transporters?.name }))
   );
 export const createInboundAdvice = (row) => addRow(TABLES.INBOUND_ADVICE, row);
 export const editInboundAdvice = (row) => updateRow(TABLES.INBOUND_ADVICE, row);
+
+// Creates a bare draft row and immediately assigns its reference (derived
+// from the new ROWID, so it's collision-free without a separate counter),
+// ready for the wizard to open straight into Step 1.
+export const startNewInboundAdvice = (warehouseId) =>
+  createInboundAdvice({ warehouse_id: warehouseId || undefined, status: 'Pending' }).then((created) => {
+    if (!created?.ROWID) throw new Error('Could not create the inbound draft.');
+    return editInboundAdvice({ ROWID: created.ROWID, inbound_reference: formatSequentialRef('IB', created.ROWID) });
+  });
+
+const INBOUND_ADVICE_FIELDS = [
+  'ROWID',
+  'CREATEDTIME',
+  'CREATORID',
+  'expected_date',
+  'transport_details',
+  'status',
+  'reference_number',
+  'customer_id',
+  'transporter_id',
+  'warehouse_id',
+  'inbound_reference',
+  'expected_colli',
+  'destination',
+  'reference_client',
+  'supplier_id',
+  'transport_type',
+  'cmr_number',
+  'warehouse_unloading_date',
+  'warehouse_unloading_time',
+  'received_piece_count',
+  'license_plate',
+  'driver_name',
+  'adr_status',
+  'remarks',
+].map((f) => `InboundAdvice.${f}`);
+
+// Supplier reuses the Customers directory, but ZCQL doesn't support
+// self-joins with an alias (tried: "Unkown Table Suppliers in SELECT"), so
+// its name is resolved client-side from the already-loaded customers list
+// (StepGeneral/StepCheck both load listCustomers() anyway for the lookup).
 export const getInboundAdviceById = (id) =>
   zcql(
-    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, InboundAdvice.reference_number, InboundAdvice.customer_id, InboundAdvice.transporter_id, InboundAdvice.warehouse_id, Customers.name, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID WHERE InboundAdvice.ROWID = ${id}`
+    `SELECT ${INBOUND_ADVICE_FIELDS.join(', ')}, Customers.name, Customers.email, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID WHERE InboundAdvice.ROWID = ${id}`
   ).then((rows) => {
     const row = rows[0];
-    return row
-      ? { ...row.InboundAdvice, customer_name: row.Customers?.name, transporter_name: row.Transporters?.name }
-      : null;
+    if (!row) return null;
+    return {
+      ...row.InboundAdvice,
+      customer_name: row.Customers?.name,
+      customer_email: row.Customers?.email,
+      transporter_name: row.Transporters?.name,
+    };
   });
 
 export const listCargoByAdvice = (inboundAdviceId) =>
   zcql(
-    `SELECT ROWID, description, qty, unit, weight, dimensions, qr_code, status FROM Cargo WHERE inbound_advice_id = ${inboundAdviceId} ORDER BY CREATEDTIME`
+    `SELECT ROWID, description, qty, unit, weight, dimensions, outer_package_no, length_cm, width_cm, height_cm, qr_code, status FROM Cargo WHERE inbound_advice_id = ${inboundAdviceId} ORDER BY CREATEDTIME`
   ).then((rows) => rows.map((r) => r.Cargo));
 export const createCargo = (row) => addRow(TABLES.CARGO, row);
+export const editCargo = (row) => updateRow(TABLES.CARGO, row);
+export const deleteCargo = (rowId) => deleteRow(TABLES.CARGO, rowId);
 
 export const generateQRCode = (cargoId) => callFunction('generateQRCode', { cargoId });
 export const createGRN = (inboundAdviceId, verifiedBy) => callFunction('createGRN', { inboundAdviceId, verifiedBy });
+
+export const sendInboundConfirmationEmail = (inboundAdviceId, recipientEmail, message) =>
+  notifyEvent('INBOUND_COMPLETED', recipientEmail, String(inboundAdviceId), message, 'Inbound Operations');
 
 // -- Storage (put-away / relocation) --
 export const listAllStorageLocations = () =>

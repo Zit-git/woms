@@ -32,10 +32,16 @@ export default function InboundPrint() {
       <table className="print-meta">
         <tbody>
           <tr>
-            <td>Reference</td>
-            <td>{advice.reference_number || '—'}</td>
+            <td>Inbound Reference</td>
+            <td>{advice.inbound_reference || '—'}</td>
             <td>Advice #</td>
             <td>{advice.ROWID}</td>
+          </tr>
+          <tr>
+            <td>Customer Reference</td>
+            <td>{advice.reference_number || '—'}</td>
+            <td>Destination</td>
+            <td>{advice.destination || '—'}</td>
           </tr>
           <tr>
             <td>Customer</td>
