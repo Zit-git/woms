@@ -52,8 +52,12 @@ function WarehousesTab() {
 
   return (
     <div>
-      <form className="toolbar" onSubmit={add}>
-        <input placeholder="New warehouse name" value={name} onChange={(e) => setName(e.target.value)} />
+      <form className="card" onSubmit={add}>
+        <h3>Add Warehouse</h3>
+        <div className="form-row" style={{ maxWidth: 300 }}>
+          <label>Warehouse name</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Rotterdam DC" />
+        </div>
         <button className="btn" type="submit">
           + Add Warehouse
         </button>
@@ -141,9 +145,18 @@ function ZonesTab() {
         </select>
       </div>
 
-      <form className="toolbar" onSubmit={add}>
-        <input placeholder="Zone name" value={name} onChange={(e) => setName(e.target.value)} />
-        <input placeholder="Zone type (e.g. Ambient)" value={zoneType} onChange={(e) => setZoneType(e.target.value)} />
+      <form className="card" onSubmit={add}>
+        <h3>Add Zone</h3>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div className="form-row" style={{ maxWidth: 220 }}>
+            <label>Zone name</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Cold Storage" />
+          </div>
+          <div className="form-row" style={{ maxWidth: 220 }}>
+            <label>Zone type</label>
+            <input value={zoneType} onChange={(e) => setZoneType(e.target.value)} placeholder="e.g. Ambient" />
+          </div>
+        </div>
         <button className="btn" type="submit" disabled={!warehouseId}>
           + Add Zone
         </button>
@@ -236,8 +249,12 @@ function RacksTab() {
         </div>
       </div>
 
-      <form className="toolbar" onSubmit={add}>
-        <input placeholder="Rack code (e.g. A-01)" value={code} onChange={(e) => setCode(e.target.value)} />
+      <form className="card" onSubmit={add}>
+        <h3>Add Rack</h3>
+        <div className="form-row" style={{ maxWidth: 220 }}>
+          <label>Rack code</label>
+          <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. A-01" />
+        </div>
         <button className="btn" type="submit" disabled={!zoneId}>
           + Add Rack
         </button>
@@ -350,9 +367,18 @@ function LocationsTab() {
         </div>
       </div>
 
-      <form className="toolbar" onSubmit={add}>
-        <input placeholder="Location code (e.g. A-01-01)" value={locationCode} onChange={(e) => setLocationCode(e.target.value)} />
-        <input placeholder="Capacity" type="number" value={capacity} onChange={(e) => setCapacity(e.target.value)} style={{ width: 100 }} />
+      <form className="card" onSubmit={add}>
+        <h3>Add Storage Location</h3>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div className="form-row" style={{ maxWidth: 220 }}>
+            <label>Location code</label>
+            <input value={locationCode} onChange={(e) => setLocationCode(e.target.value)} placeholder="e.g. A-01-01" />
+          </div>
+          <div className="form-row" style={{ maxWidth: 140 }}>
+            <label>Capacity</label>
+            <input type="number" value={capacity} onChange={(e) => setCapacity(e.target.value)} placeholder="e.g. 10" />
+          </div>
+        </div>
         <button className="btn" type="submit" disabled={!rackId}>
           + Add Location
         </button>
