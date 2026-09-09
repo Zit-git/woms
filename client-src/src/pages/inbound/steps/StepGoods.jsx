@@ -99,7 +99,7 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
       </div>
 
       <div className="line-items-panel">
-        <table>
+        <table className="line-items-table">
           <thead>
             <tr>
               <th>#</th>

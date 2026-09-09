@@ -126,6 +126,29 @@ export const IconSettings = (p) => (
   </svg>
 );
 
+export const IconMenu = (p) => (
+  <svg {...base} {...p}>
+    <path d="M4 6h16" />
+    <path d="M4 12h16" />
+    <path d="M4 18h16" />
+  </svg>
+);
+
+export const IconClose = (p) => (
+  <svg {...base} {...p}>
+    <path d="M6 6l12 12" />
+    <path d="M18 6L6 18" />
+  </svg>
+);
+
+export const IconDots = (p) => (
+  <svg {...base} {...p}>
+    <circle cx="5" cy="12" r="1.6" />
+    <circle cx="12" cy="12" r="1.6" />
+    <circle cx="19" cy="12" r="1.6" />
+  </svg>
+);
+
 export const IconLogout = (p) => (
   <svg {...base} {...p}>
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

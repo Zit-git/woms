@@ -2,14 +2,15 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getDashboardStats } from '../lib/api';
+import { IconInbound, IconOutbound, IconBox, IconChecklist, IconLayers, IconUsers, IconWarehouse } from '../layout/icons';
 
 const CARDS = [
-  { key: 'todaysInbound', title: "Today's Inbound", suffix: 'advices', to: '/inbound' },
-  { key: 'todaysOutbound', title: "Today's Outbound", suffix: 'requests', to: '/outbound' },
-  { key: 'activeCargo', title: 'Cargo In Warehouse', suffix: 'items', to: '/reports' },
-  { key: 'pendingTasks', title: 'Pending Tasks', suffix: 'open', to: '/tasks' },
-  { key: 'pendingVal', title: 'Pending VAL', suffix: 'open', to: '/val' },
-  { key: 'totalCustomers', title: 'Customers', suffix: 'total', to: '/customers' },
+  { key: 'todaysInbound', title: "Today's Inbound", suffix: 'advices', to: '/inbound', icon: IconInbound, tone: 'teal' },
+  { key: 'todaysOutbound', title: "Today's Outbound", suffix: 'requests', to: '/outbound', icon: IconOutbound, tone: 'violet' },
+  { key: 'activeCargo', title: 'Cargo In Warehouse', suffix: 'items', to: '/reports', icon: IconBox, tone: 'amber' },
+  { key: 'pendingTasks', title: 'Pending Tasks', suffix: 'open', to: '/tasks', icon: IconChecklist, tone: 'rose' },
+  { key: 'pendingVal', title: 'Pending VAL', suffix: 'open', to: '/val', icon: IconLayers, tone: 'indigo' },
+  { key: 'totalCustomers', title: 'Customers', suffix: 'total', to: '/customers', icon: IconUsers, tone: 'green' },
 ];
 
 export default function DashboardHome() {
@@ -35,6 +36,9 @@ export default function DashboardHome() {
 
       <div className="card-grid">
         <div className="card kpi-card">
+          <div className="kpi-icon tone-blue">
+            <IconWarehouse width={20} height={20} />
+          </div>
           <h3>Warehouse Occupancy</h3>
           {stats ? (
             <>
@@ -48,13 +52,19 @@ export default function DashboardHome() {
           )}
         </div>
 
-        {CARDS.map((c) => (
-          <Link className="card kpi-card" key={c.key} to={c.to}>
-            <h3>{c.title}</h3>
-            <div className="kpi-value">{stats ? stats[c.key] : '—'}</div>
-            <p className="muted small">{c.suffix}</p>
-          </Link>
-        ))}
+        {CARDS.map((c) => {
+          const Icon = c.icon;
+          return (
+            <Link className="card kpi-card" key={c.key} to={c.to}>
+              <div className={`kpi-icon tone-${c.tone}`}>
+                <Icon width={20} height={20} />
+              </div>
+              <h3>{c.title}</h3>
+              <div className="kpi-value">{stats ? stats[c.key] : '—'}</div>
+              <p className="muted small">{c.suffix}</p>
+            </Link>
+          );
+        })}
       </div>
     </div>
   );
