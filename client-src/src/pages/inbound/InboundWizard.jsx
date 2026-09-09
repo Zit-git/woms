@@ -6,6 +6,7 @@ import {
   listCargoByAdvice,
   listCustomers,
   listTransporters,
+  listSuppliers,
 } from '../../lib/api';
 import Stepper from '../../components/Stepper';
 import StepGeneral from './steps/StepGeneral';
@@ -13,6 +14,7 @@ import StepGoods from './steps/StepGoods';
 import StepDocuments from './steps/StepDocuments';
 import StepCheck from './steps/StepCheck';
 import StepFinish from './steps/StepFinish';
+import InboundDetailView from './InboundDetailView';
 import { computeInboundSummary } from '../../lib/inboundSummary';
 
 const STEPS = [
@@ -31,11 +33,16 @@ export default function InboundWizard() {
   const [cargoRows, setCargoRows] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [transporters, setTransporters] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [stepKey, setStepKey] = useState('general');
   const [furthestIndex, setFurthestIndex] = useState(0);
   const [saving, setSaving] = useState(false);
+  // null until the advice loads once; then: 'view' for an already-finished
+  // record (Ready/Completed) so it opens as a plain summary, not mid-wizard;
+  // 'edit' for a Pending one, which is still an active workflow.
+  const [mode, setMode] = useState(null);
 
   const loadAdvice = useCallback(
     () => getInboundAdviceById(adviceId).then(setAdvice),
@@ -45,20 +52,23 @@ export default function InboundWizard() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([loadAdvice(), loadCargo(), listCustomers(), listTransporters()])
-      .then(([, , c, t]) => {
+    Promise.all([loadAdvice(), loadCargo(), listCustomers(), listTransporters(), listSuppliers()])
+      .then(([, , c, t, s]) => {
         setCustomers(c);
         setTransporters(t);
+        setSuppliers(s);
       })
       .catch((err) => setError(err.message || String(err)))
       .finally(() => setLoading(false));
   }, [loadAdvice, loadCargo]);
 
   useEffect(() => {
-    // A completed/ready advice can be revisited at any step.
-    if (advice?.status === 'Ready' || advice?.status === 'Completed') {
+    if (!advice) return;
+    // A completed/ready advice can be revisited at any step once editing.
+    if (advice.status === 'Ready' || advice.status === 'Completed') {
       setFurthestIndex(STEPS.length - 1);
     }
+    setMode((m) => m ?? (advice.status === 'Pending' ? 'edit' : 'view'));
   }, [advice?.status]);
 
   const patchAdvice = (fields) => {
@@ -94,6 +104,8 @@ export default function InboundWizard() {
     cargoRows,
     customers,
     transporters,
+    suppliers,
+    reloadSuppliers: () => listSuppliers().then(setSuppliers),
     patchAdvice,
     reloadCargo: loadCargo,
     goNext,
@@ -102,31 +114,66 @@ export default function InboundWizard() {
     setError,
   };
 
+  const isPending = advice.status === 'Pending';
+
   return (
     <div>
       <div className="toolbar">
         <div>
-          <h2>New Inbound</h2>
-          <p className="muted small" style={{ marginTop: -8 }}>
-            Create a new inbound and confirm unloading
-          </p>
+          {isPending ? (
+            <>
+              <h2>New Inbound</h2>
+              <p className="muted small" style={{ marginTop: -8 }}>
+                Create a new inbound and confirm unloading
+              </p>
+            </>
+          ) : (
+            <>
+              <h2>{advice.inbound_reference}</h2>
+              <p className="muted small" style={{ marginTop: -8 }}>
+                {mode === 'edit' ? 'Editing inbound record' : 'Inbound record'}
+              </p>
+            </>
+          )}
         </div>
-        <Link className="link-btn" to="/inbound">
-          &larr; Back to Inbound Operations
-        </Link>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          {!isPending && mode === 'edit' && (
+            <button className="link-btn" onClick={() => setMode('view')}>
+              &larr; Back to Overview
+            </button>
+          )}
+          <Link className="link-btn" to="/inbound">
+            &larr; Back to Inbound Operations
+          </Link>
+        </div>
       </div>
 
       {error && <div className="error-text">{error}</div>}
 
-      <Stepper steps={STEPS} currentKey={stepKey} furthestIndex={furthestIndex} onStepClick={goToStep} />
+      {mode === 'edit' && (
+        <Stepper steps={STEPS} currentKey={stepKey} furthestIndex={furthestIndex} onStepClick={goToStep} />
+      )}
 
       <div className="wizard-layout">
         <div className="wizard-main">
-          {stepKey === 'general' && <StepGeneral {...stepProps} />}
-          {stepKey === 'goods' && <StepGoods {...stepProps} />}
-          {stepKey === 'documents' && <StepDocuments {...stepProps} />}
-          {stepKey === 'check' && <StepCheck {...stepProps} goToStep={goToStep} />}
-          {stepKey === 'finish' && <StepFinish {...stepProps} />}
+          {mode === 'view' ? (
+            <InboundDetailView
+              advice={advice}
+              cargoRows={cargoRows}
+              customers={customers}
+              transporters={transporters}
+              suppliers={suppliers}
+              onEdit={() => setMode('edit')}
+            />
+          ) : (
+            <>
+              {stepKey === 'general' && <StepGeneral {...stepProps} />}
+              {stepKey === 'goods' && <StepGoods {...stepProps} />}
+              {stepKey === 'documents' && <StepDocuments {...stepProps} />}
+              {stepKey === 'check' && <StepCheck {...stepProps} goToStep={goToStep} />}
+              {stepKey === 'finish' && <StepFinish {...stepProps} />}
+            </>
+          )}
         </div>
 
         <div className="wizard-sidebar">
