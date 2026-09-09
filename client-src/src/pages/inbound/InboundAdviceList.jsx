@@ -4,7 +4,7 @@ import { listInboundAdvice, listCargoStatusForAllAdvices, listCustomers, startNe
 import SortableTh from '../../components/SortableTh';
 import { useSortableData } from '../../lib/useSortableData';
 import { useAuth } from '../../context/AuthContext';
-import { computeFulfillmentStatus, fulfillmentStatusClass } from '../../lib/fulfillmentStatus';
+import { FULFILLMENT_STATUSES, computeFulfillmentStatus, fulfillmentStatusClass } from '../../lib/fulfillmentStatus';
 
 export default function InboundAdviceList() {
   const navigate = useNavigate();
@@ -16,6 +16,7 @@ export default function InboundAdviceList() {
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
   const [customerFilter, setCustomerFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -47,11 +48,12 @@ export default function InboundAdviceList() {
     () =>
       advices.filter((a) => {
         if (customerFilter && String(a.customer_id) !== customerFilter) return false;
+        if (statusFilter && a.fulfillment_status !== statusFilter) return false;
         if (dateFrom && (!a.expected_date || a.expected_date < dateFrom)) return false;
         if (dateTo && (!a.expected_date || a.expected_date > dateTo)) return false;
         return true;
       }),
-    [advices, customerFilter, dateFrom, dateTo]
+    [advices, customerFilter, statusFilter, dateFrom, dateTo]
   );
   const { sorted, toggleSort, arrowFor } = useSortableData(filtered);
 
@@ -68,10 +70,11 @@ export default function InboundAdviceList() {
 
   const clearFilters = () => {
     setCustomerFilter('');
+    setStatusFilter('');
     setDateFrom('');
     setDateTo('');
   };
-  const filtersActive = customerFilter || dateFrom || dateTo;
+  const filtersActive = customerFilter || statusFilter || dateFrom || dateTo;
 
   return (
     <div>
@@ -92,6 +95,17 @@ export default function InboundAdviceList() {
             {customers.map((c) => (
               <option key={c.ROWID} value={c.ROWID}>
                 {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="form-row">
+          <label>Status</label>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">All statuses</option>
+            {FULFILLMENT_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
               </option>
             ))}
           </select>
