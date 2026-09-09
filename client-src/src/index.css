@@ -346,7 +346,13 @@ tr.clickable-row:hover td { background: var(--surface-soft); }
 
 .mobile-topbar { display: none; }
 .sidebar-backdrop { display: none; }
-.sidebar-mobile-head { display: none; }
+.sidebar-mobile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.sidebar-close-btn { display: none; }
 
 @media (max-width: 768px) {
   .app-shell { flex-direction: column; }
@@ -405,12 +411,6 @@ tr.clickable-row:hover td { background: var(--surface-soft); }
   }
   .sidebar.mobile-open { transform: translateX(0); }
 
-  .sidebar-mobile-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 20px;
-  }
   .sidebar-mobile-head .brand { width: auto; margin-bottom: 0; justify-content: flex-start; }
   .sidebar-close-btn {
     background: none;
