@@ -1,21 +1,26 @@
 import { useEffect, useState } from 'react';
-import { listDocumentsForRecord } from '../../../lib/api';
+import { listDocumentsForRecord, createSupplier } from '../../../lib/api';
 import DocumentSlot from '../../../components/DocumentSlot';
 import SignaturePad from '../../../components/SignaturePad';
+import { COUNTRIES } from '../../../lib/countries';
 
 const TRANSPORT_TYPES = ['Sea/Ocean Freight', 'Air Freight', 'Road Freight', 'Rail Freight', 'Courier', 'Other'];
-const COUNTRY_SUGGESTIONS = [
-  'Germany', 'Netherlands', 'Belgium', 'France', 'United Kingdom', 'United States',
-  'Spain', 'Italy', 'Poland', 'China', 'India', 'Other',
-];
 
 const DRIVER_SIGNATURE_DOC_TYPE = 'Driver Signature (Receiving)';
+const NEW_SUPPLIER = '__new__';
 
-export default function StepGeneral({ advice, customers, transporters, patchAdvice, goNext, saving }) {
+export default function StepGeneral({ advice, customers, transporters, suppliers, reloadSuppliers, patchAdvice, goNext, saving, setError }) {
   const [form, setForm] = useState(advice);
   const [hasSignature, setHasSignature] = useState(false);
+  const [otherDestination, setOtherDestination] = useState(false);
+  const [addingSupplier, setAddingSupplier] = useState(false);
+  const [newSupplierName, setNewSupplierName] = useState('');
+  const [savingSupplier, setSavingSupplier] = useState(false);
 
-  useEffect(() => setForm(advice), [advice]);
+  useEffect(() => {
+    setForm(advice);
+    setOtherDestination(Boolean(advice.destination) && !COUNTRIES.includes(advice.destination));
+  }, [advice]);
 
   useEffect(() => {
     listDocumentsForRecord('Inbound Operations', advice.ROWID).then((docs) =>
@@ -28,6 +33,23 @@ export default function StepGeneral({ advice, customers, transporters, patchAdvi
     if (form[field] !== advice[field]) patchAdvice({ [field]: form[field] || null });
   };
   const saveNow = (field, value) => patchAdvice({ [field]: value || null });
+
+  const saveNewSupplier = () => {
+    if (!newSupplierName.trim()) return;
+    setSavingSupplier(true);
+    createSupplier({ name: newSupplierName.trim(), status: 'Active' })
+      .then((created) => {
+        if (!created?.ROWID) throw new Error('Could not create the supplier.');
+        return reloadSuppliers().then(() => {
+          setAddingSupplier(false);
+          setNewSupplierName('');
+          setForm((f) => ({ ...f, supplier_id: created.ROWID }));
+          return saveNow('supplier_id', created.ROWID);
+        });
+      })
+      .catch((err) => setError?.(err.message || String(err)))
+      .finally(() => setSavingSupplier(false));
+  };
 
   const required = {
     expected_colli: form.expected_colli,
@@ -65,18 +87,39 @@ export default function StepGeneral({ advice, customers, transporters, patchAdvi
         </div>
         <div className="form-row">
           <label>Destination (Country) *</label>
-          <input
-            list="country-suggestions"
-            value={form.destination ?? ''}
-            onChange={set('destination')}
-            onBlur={save('destination')}
-            placeholder="Search country or enter manually..."
-          />
-          <datalist id="country-suggestions">
-            {COUNTRY_SUGGESTIONS.map((c) => (
-              <option key={c} value={c} />
+          <select
+            value={otherDestination ? 'Other' : (form.destination ?? '')}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value === 'Other') {
+                setOtherDestination(true);
+                // Switching away from a real country selection should start
+                // the free-text field blank, not pre-filled with the old country.
+                if (COUNTRIES.includes(form.destination)) setForm((f) => ({ ...f, destination: '' }));
+              } else {
+                setOtherDestination(false);
+                setForm((f) => ({ ...f, destination: value }));
+                saveNow('destination', value);
+              }
+            }}
+          >
+            <option value="">Select country...</option>
+            {COUNTRIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
             ))}
-          </datalist>
+            <option value="Other">Other</option>
+          </select>
+          {otherDestination && (
+            <input
+              style={{ marginTop: 6 }}
+              value={form.destination ?? ''}
+              onChange={set('destination')}
+              onBlur={save('destination')}
+              placeholder="Enter destination"
+            />
+          )}
         </div>
       </div>
 
@@ -111,20 +154,51 @@ export default function StepGeneral({ advice, customers, transporters, patchAdvi
       <div className="form-grid-3">
         <div className="form-row">
           <label>Supplier</label>
-          <select
-            value={form.supplier_id ?? ''}
-            onChange={(e) => {
-              set('supplier_id')(e);
-              saveNow('supplier_id', e.target.value);
-            }}
-          >
-            <option value="">None</option>
-            {customers.map((c) => (
-              <option key={c.ROWID} value={c.ROWID}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          {addingSupplier ? (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                autoFocus
+                value={newSupplierName}
+                onChange={(e) => setNewSupplierName(e.target.value)}
+                placeholder="New supplier name"
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), saveNewSupplier())}
+              />
+              <button type="button" className="btn secondary small-btn" onClick={saveNewSupplier} disabled={savingSupplier}>
+                {savingSupplier ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                type="button"
+                className="btn secondary small-btn"
+                onClick={() => {
+                  setAddingSupplier(false);
+                  setNewSupplierName('');
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <select
+              value={form.supplier_id ?? ''}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value === NEW_SUPPLIER) {
+                  setAddingSupplier(true);
+                  return;
+                }
+                set('supplier_id')({ target: { value } });
+                saveNow('supplier_id', value);
+              }}
+            >
+              <option value="">None</option>
+              {suppliers.map((s) => (
+                <option key={s.ROWID} value={s.ROWID}>
+                  {s.name}
+                </option>
+              ))}
+              <option value={NEW_SUPPLIER}>+ Add new supplier...</option>
+            </select>
+          )}
         </div>
         <div className="form-row">
           <label>Carrier / Transporter</label>
