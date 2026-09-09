@@ -30,8 +30,20 @@ export default function CustomerList() {
 
   const handleSave = (form) => {
     setSaving(true);
-    const action = editing === 'new' ? createCustomer(form) : editCustomer({ ...form, ROWID: editing.ROWID });
-    action
+    if (editing === 'new') {
+      // Jump straight into the new customer's detail page so a contact can
+      // be added right away, instead of leaving them on the bare list.
+      createCustomer(form)
+        .then((created) => {
+          setEditing(null);
+          if (created?.ROWID) navigate(`/customers/${created.ROWID}`);
+          else load();
+        })
+        .catch((err) => setError(err.message || String(err)))
+        .finally(() => setSaving(false));
+      return;
+    }
+    editCustomer({ ...form, ROWID: editing.ROWID })
       .then(() => {
         setEditing(null);
         load();
@@ -113,7 +125,6 @@ export default function CustomerList() {
                 <input type="checkbox" checked={selected.size === sorted.length && sorted.length > 0} onChange={toggleSelectAll} />
               </th>
               <SortableTh label="Name" sortKey="name" onSort={toggleSort} arrowFor={arrowFor} />
-              <SortableTh label="Contact" sortKey="contact_person" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Email" sortKey="email" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Phone" sortKey="phone" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Status" sortKey="status" onSort={toggleSort} arrowFor={arrowFor} />
@@ -127,7 +138,6 @@ export default function CustomerList() {
                   <input type="checkbox" checked={selected.has(c.ROWID)} onChange={() => toggleSelected(c.ROWID)} />
                 </td>
                 <td>{c.name}</td>
-                <td>{c.contact_person}</td>
                 <td>{c.email}</td>
                 <td>{c.phone}</td>
                 <td>
@@ -145,7 +155,7 @@ export default function CustomerList() {
             ))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={7} className="muted">
+                <td colSpan={6} className="muted">
                   No customers yet.
                 </td>
               </tr>

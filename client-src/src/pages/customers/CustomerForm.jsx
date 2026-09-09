@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const EMPTY = { name: '', contact_person: '', email: '', phone: '', address: '', status: 'Active' };
+const EMPTY = { name: '', email: '', phone: '', address: '', status: 'Active' };
 
 export default function CustomerForm({ initial, onSave, onCancel, saving }) {
   const [form, setForm] = useState(initial || EMPTY);
@@ -19,10 +19,6 @@ export default function CustomerForm({ initial, onSave, onCancel, saving }) {
       <div className="form-row">
         <label>Name *</label>
         <input value={form.name} onChange={set('name')} required />
-      </div>
-      <div className="form-row">
-        <label>Contact person</label>
-        <input value={form.contact_person} onChange={set('contact_person')} />
       </div>
       <div className="form-row">
         <label>Email</label>

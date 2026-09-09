@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getCustomerById, getCustomerActivity, editCustomer } from '../../lib/api';
 import CustomerForm from './CustomerForm';
+import ContactList from '../../components/ContactList';
 
 export default function CustomerDetail() {
   const { customerId } = useParams();
@@ -80,6 +81,8 @@ export default function CustomerDetail() {
           </p>
         </div>
       )}
+
+      <ContactList customerId={customerId} />
 
       <h3>Inbound Advices ({activity.inbound.length})</h3>
       <table>
