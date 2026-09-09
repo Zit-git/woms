@@ -98,7 +98,7 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
         </button>
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
+      <div className="line-items-panel">
         <table>
           <thead>
             <tr>
@@ -115,7 +115,7 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.ROWID}>
+              <tr key={r.ROWID} className="line-item-row">
                 <td>
                   <input
                     style={{ width: 50 }}

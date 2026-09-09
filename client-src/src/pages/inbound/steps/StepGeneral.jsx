@@ -76,6 +76,7 @@ export default function StepGeneral({ advice, customers, transporters, suppliers
         <div className="wizard-ref-value">{advice.inbound_reference || 'Will be generated after confirmation'}</div>
       </div>
 
+      <div className="form-section-title">Shipment Details</div>
       <div className="form-grid-3">
         <div className="form-row">
           <label>Expected Colli *</label>
@@ -125,6 +126,7 @@ export default function StepGeneral({ advice, customers, transporters, suppliers
         </div>
       </div>
 
+      <div className="form-section-title">Customer &amp; Reference</div>
       <div className="form-grid-3">
         <div className="form-row">
           <label>Customer *</label>
@@ -153,6 +155,7 @@ export default function StepGeneral({ advice, customers, transporters, suppliers
         </div>
       </div>
 
+      <div className="form-section-title">Supplier &amp; Transport</div>
       <div className="form-grid-3">
         <div className="form-row">
           <label>Supplier</label>
@@ -225,6 +228,7 @@ export default function StepGeneral({ advice, customers, transporters, suppliers
         </div>
       </div>
 
+      <div className="form-section-title">Arrival &amp; Remarks</div>
       <div className="form-grid-3">
         <div className="form-row">
           <label>Expected Arrival (ETA) *</label>
@@ -254,7 +258,7 @@ export default function StepGeneral({ advice, customers, transporters, suppliers
       </div>
 
       <hr className="divider" />
-      <h3>Warehouse Unloading Information</h3>
+      <div className="form-section-title" style={{ marginTop: 0 }}>Warehouse Unloading Information</div>
       <div className="form-grid-3">
         <div className="form-row">
           <label>Warehouse Unloading Date *</label>
@@ -296,7 +300,10 @@ export default function StepGeneral({ advice, customers, transporters, suppliers
         </div>
       </div>
 
+      <hr className="divider" />
+      <div className="form-section-title" style={{ marginTop: 0 }}>Confirm &amp; Attach</div>
       <SignaturePad
+        embedded
         linkedModule="Inbound Operations"
         linkedRecordId={advice.ROWID}
         docType={DRIVER_SIGNATURE_DOC_TYPE}

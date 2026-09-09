@@ -169,9 +169,16 @@ export const getWarehouseMap = (warehouseId) =>
 // -- Inbound Operations --
 export const listInboundAdvice = (viewer) =>
   zcql(
-    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, InboundAdvice.reference_number, InboundAdvice.inbound_reference, InboundAdvice.destination, Customers.name, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID WHERE InboundAdvice.ROWID != 0${visibilityClause(viewer, { warehouseCol: 'InboundAdvice.warehouse_id' })} ORDER BY InboundAdvice.CREATEDTIME DESC`
+    `SELECT InboundAdvice.ROWID, InboundAdvice.expected_date, InboundAdvice.transport_details, InboundAdvice.status, InboundAdvice.reference_number, InboundAdvice.inbound_reference, InboundAdvice.destination, InboundAdvice.customer_id, InboundAdvice.expected_colli, Customers.name, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID WHERE InboundAdvice.ROWID != 0${visibilityClause(viewer, { warehouseCol: 'InboundAdvice.warehouse_id' })} ORDER BY InboundAdvice.CREATEDTIME DESC`
   ).then((rows) =>
     rows.map((r) => ({ ...r.InboundAdvice, customer_name: r.Customers?.name, transporter_name: r.Transporters?.name }))
+  );
+
+// Cargo status per inbound, for computing each row's Fulfillment Status in
+// the Inbounds list without a per-advice round trip (see fulfillmentStatus.js).
+export const listCargoStatusForAllAdvices = () =>
+  zcql(`SELECT Cargo.inbound_advice_id, Cargo.status FROM Cargo WHERE Cargo.inbound_advice_id IS NOT NULL`).then(
+    (rows) => rows.map((r) => r.Cargo)
   );
 export const createInboundAdvice = (row) => addRow(TABLES.INBOUND_ADVICE, row);
 export const editInboundAdvice = (row) => updateRow(TABLES.INBOUND_ADVICE, row);

@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 // Captures a driver signature on receipt/handover and stores it through the
 // same Documents pipeline as photos/paperwork, tagged with docType so it
 // shows up alongside them on the record.
-export default function SignaturePad({ linkedModule, linkedRecordId, docType, title = 'Driver Signature' }) {
+export default function SignaturePad({ linkedModule, linkedRecordId, docType, title = 'Driver Signature', embedded = false }) {
   const { user } = useAuth();
   const canvasRef = useRef(null);
   const drawing = useRef(false);
@@ -104,7 +104,7 @@ export default function SignaturePad({ linkedModule, linkedRecordId, docType, ti
   };
 
   return (
-    <div className="card">
+    <div className={embedded ? '' : 'card'}>
       <h3>{title}</h3>
       {error && <div className="error-text">{error}</div>}
 
