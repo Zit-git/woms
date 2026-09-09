@@ -112,9 +112,23 @@ export function zcql(query) {
     .then((res) => res.content || []);
 }
 
+// This project's function domain -- stable per Catalyst project/environment,
+// confirmed against this project's actual deployed function invoke_urls.
+const FUNCTIONS_BASE_URL = 'https://woms-775318997.development.catalystserverless.com';
+
 export function callFunction(functionName, args = {}, method = 'POST') {
+  // The SDK's own function.execute() never attaches a valid auth header for
+  // an authenticated function (401 even same-origin on localhost, not just
+  // cross-domain on Slate) -- Catalyst's documented fix is generateAuthToken()
+  // plus a manual fetch carrying that token, bypassing execute() entirely.
   return sdk()
-    .function.functionId(functionName)
-    .execute({ method, args })
+    .auth.generateAuthToken()
+    .then(({ access_token }) =>
+      fetch(`${FUNCTIONS_BASE_URL}/server/${functionName}/`, {
+        method,
+        headers: { Authorization: access_token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(args),
+      })
+    )
     .then((res) => res.json());
 }
