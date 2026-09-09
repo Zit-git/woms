@@ -1,6 +1,8 @@
 // Generic N-step progress indicator. `steps` is [{ key, label, sublabel }],
 // `currentKey` is the active step, `furthestIndex` is the highest step the
-// user has already reached (steps up to it are clickable to go back).
+// user has already reached (used only to mark steps as "done" -- every step
+// is freely clickable regardless, so users can fill in basic details and
+// jump back and forth instead of being forced through a strict sequence).
 export default function Stepper({ steps, currentKey, furthestIndex, onStepClick }) {
   const currentIndex = steps.findIndex((s) => s.key === currentKey);
 
@@ -9,7 +11,7 @@ export default function Stepper({ steps, currentKey, furthestIndex, onStepClick 
       {steps.map((step, i) => {
         const done = i < currentIndex || i < furthestIndex;
         const active = i === currentIndex;
-        const clickable = i <= furthestIndex && !active;
+        const clickable = !active;
         return (
           <div className="stepper-item" key={step.key}>
             <button

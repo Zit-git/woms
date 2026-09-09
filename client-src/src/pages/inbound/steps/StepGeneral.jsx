@@ -62,8 +62,10 @@ export default function StepGeneral({ advice, customers, transporters, suppliers
     license_plate: form.license_plate,
     driver_name: form.driver_name,
   };
+  // Missing required fields / signature are surfaced as a hint, not a hard
+  // block -- the wizard allows moving on with just the basics filled in and
+  // completing the rest (including the signature) later, in any order.
   const missing = Object.entries(required).filter(([, v]) => v === null || v === undefined || v === '');
-  const canProceed = missing.length === 0 && hasSignature;
 
   return (
     <div className="card">
@@ -318,7 +320,7 @@ export default function StepGeneral({ advice, customers, transporters, suppliers
       )}
 
       <div className="form-actions" style={{ justifyContent: 'flex-end' }}>
-        <button className="btn" onClick={goNext} disabled={!canProceed || saving}>
+        <button className="btn" onClick={goNext} disabled={saving}>
           Next: Line Items &rarr;
         </button>
       </div>

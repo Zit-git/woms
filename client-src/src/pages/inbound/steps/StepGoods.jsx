@@ -69,10 +69,13 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
 
   const summary = computeInboundSummary({ ...advice, remarks }, rows);
 
+  // Surfaced as a hint only -- the wizard allows moving on before every
+  // column is filled in, so users can add lines in any order and finish
+  // details later.
   const requiredMissing = rows.some(
     (r) => !r.unit || !r.description || r.weight === null || r.weight === '' || r.weight === undefined || !r.length_cm || !r.width_cm || !r.height_cm
   );
-  const canProceed = rows.length > 0 && !requiredMissing;
+  const showHint = rows.length === 0 || requiredMissing;
 
   const finishAndReload = () => Promise.allSettled(pendingSaves.current).then(() => reloadCargo()).then(goNext);
 
@@ -245,15 +248,15 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
         </div>
       </div>
 
-      {!canProceed && (
-        <p className="muted small">Add at least one cargo line and fill in all required (*) columns to continue.</p>
+      {showHint && (
+        <p className="muted small">Add at least one cargo line and fill in all required (*) columns before completing the inbound.</p>
       )}
 
       <div className="form-actions" style={{ justifyContent: 'space-between' }}>
         <button className="btn secondary" onClick={goBack}>
           &larr; Back
         </button>
-        <button className="btn" onClick={finishAndReload} disabled={!canProceed || saving}>
+        <button className="btn" onClick={finishAndReload} disabled={saving}>
           Next: Documents &rarr;
         </button>
       </div>

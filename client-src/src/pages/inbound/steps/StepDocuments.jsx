@@ -21,7 +21,9 @@ export default function StepDocuments({ advice, goNext, goBack, saving }) {
 
   const hasType = (t) => docs.some((d) => d.doc_type === t);
   const needsAdrDoc = advice.adr_status === 'Yes';
-  const canProceed = REQUIRED_TYPES.every(hasType) && (!needsAdrDoc || hasType('ADR Document'));
+  // Surfaced as a hint only -- documents can be uploaded later, so this
+  // doesn't block moving on to the next step.
+  const showHint = !REQUIRED_TYPES.every(hasType) || (needsAdrDoc && !hasType('ADR Document'));
 
   return (
     <div className="card">
@@ -76,13 +78,13 @@ export default function StepDocuments({ advice, goNext, goBack, saving }) {
         </p>
       </div>
 
-      {!loading && !canProceed && <p className="muted small">Upload all required (*) documents to continue.</p>}
+      {!loading && showHint && <p className="muted small">Upload all required (*) documents before completing the inbound.</p>}
 
       <div className="form-actions" style={{ justifyContent: 'space-between' }}>
         <button className="btn secondary" onClick={goBack}>
           &larr; Back
         </button>
-        <button className="btn" onClick={goNext} disabled={!canProceed || saving}>
+        <button className="btn" onClick={goNext} disabled={saving}>
           Next: Verify Information &rarr;
         </button>
       </div>
