@@ -17,6 +17,8 @@ const TABLES = {
   VAL_REQUEST: 'VALRequest',
   VAL_TASK: 'VALTask',
   TRANSPORTERS: 'Transporters',
+  CONTACTS: 'Contacts',
+  SUPPLIERS: 'Suppliers',
 };
 
 // Tier-based visibility: System Administrator sees everything; Warehouse
@@ -70,6 +72,33 @@ export const removeCustomers = (rowIds) => Promise.all(rowIds.map((id) => delete
 
 export const getCustomerById = (id) =>
   zcql(`SELECT * FROM Customers WHERE ROWID = ${id}`).then((rows) => rows[0]?.Customers || null);
+
+// -- Suppliers (a separate directory from Customers -- who shipped the
+// goods to the warehouse, vs. who the goods belong to) --
+export const listSuppliers = () => getAllRows(TABLES.SUPPLIERS);
+export const createSupplier = (row) => addRow(TABLES.SUPPLIERS, row);
+export const editSupplier = (row) => updateRow(TABLES.SUPPLIERS, row);
+export const removeSupplier = (rowId) => deleteRow(TABLES.SUPPLIERS, rowId);
+
+// -- Customer Contacts (a customer can have several; one may be marked primary) --
+export const listContactsByCustomer = (customerId) =>
+  zcql(
+    `SELECT ROWID, salutation, first_name, last_name, email, phone, is_primary FROM Contacts WHERE customer_id = ${customerId} ORDER BY is_primary DESC, CREATEDTIME`
+  ).then((rows) => rows.map((r) => r.Contacts));
+export const createContact = (row) => addRow(TABLES.CONTACTS, row);
+export const editContact = (row) => updateRow(TABLES.CONTACTS, row);
+export const removeContact = (rowId) => deleteRow(TABLES.CONTACTS, rowId);
+
+// Only one contact per customer can be primary -- clear the others first so
+// the "is_primary" flag stays exclusive without needing a DB-level constraint.
+export const setPrimaryContact = (customerId, contactId) =>
+  listContactsByCustomer(customerId).then((contacts) =>
+    Promise.all(
+      contacts
+        .filter((c) => c.ROWID !== contactId && (c.is_primary === true || c.is_primary === 'true'))
+        .map((c) => editContact({ ROWID: c.ROWID, is_primary: false }))
+    ).then(() => editContact({ ROWID: contactId, is_primary: true }))
+  );
 
 export const getCustomerActivity = (customerId) =>
   Promise.all([
