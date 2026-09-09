@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   listWarehouses,
   createWarehouse,
+  editWarehouse,
   removeWarehouse,
   listZonesByWarehouse,
   createZone,
@@ -40,23 +41,49 @@ function useList(loader, deps) {
 function WarehousesTab() {
   const { items, loading, error, reload } = useList(listWarehouses, []);
   const [name, setName] = useState('');
+  const [address, setAddress] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [busyId, setBusyId] = useState(null);
 
   const add = (e) => {
     e.preventDefault();
     if (!name.trim()) return;
-    createWarehouse({ name, status: 'Active' }).then(() => {
+    createWarehouse({ name, address: address || undefined, status: 'Active' }).then(() => {
       setName('');
+      setAddress('');
       reload();
     });
+  };
+
+  const startEdit = (w) => {
+    setEditingId(w.ROWID);
+    setEditForm({ name: w.name, address: w.address || '', status: w.status || 'Active' });
+  };
+
+  const saveEdit = () => {
+    setBusyId(editingId);
+    editWarehouse({ ROWID: editingId, ...editForm })
+      .then(() => setEditingId(null))
+      .finally(() => {
+        setBusyId(null);
+        reload();
+      });
   };
 
   return (
     <div>
       <form className="card" onSubmit={add}>
         <h3>Add Warehouse</h3>
-        <div className="form-row" style={{ maxWidth: 300 }}>
-          <label>Warehouse name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Rotterdam DC" />
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div className="form-row" style={{ maxWidth: 300 }}>
+            <label>Warehouse name</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Rotterdam DC" />
+          </div>
+          <div className="form-row" style={{ maxWidth: 300 }}>
+            <label>Address (optional)</label>
+            <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="e.g. Havenweg 12, Rotterdam" />
+          </div>
         </div>
         <button className="btn" type="submit">
           + Add Warehouse
@@ -76,24 +103,52 @@ function WarehousesTab() {
             </tr>
           </thead>
           <tbody>
-            {items.map((w) => (
-              <tr key={w.ROWID}>
-                <td>{w.name}</td>
-                <td>{w.address}</td>
-                <td>
-                  <span className="status-badge">{w.status}</span>
-                </td>
-                <td>
-                  <button
-                    className="link-btn"
-                    style={{ color: 'var(--danger)' }}
-                    onClick={() => removeWarehouse(w.ROWID).then(reload)}
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {items.map((w) =>
+              editingId === w.ROWID ? (
+                <tr key={w.ROWID}>
+                  <td>
+                    <input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+                  </td>
+                  <td>
+                    <input value={editForm.address} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} />
+                  </td>
+                  <td>
+                    <select value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
+                      <option value="Active">Active</option>
+                      <option value="Inactive">Inactive</option>
+                    </select>
+                  </td>
+                  <td>
+                    <button className="link-btn" onClick={saveEdit} disabled={busyId === w.ROWID}>
+                      Save
+                    </button>{' '}
+                    <button className="link-btn" onClick={() => setEditingId(null)}>
+                      Cancel
+                    </button>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={w.ROWID}>
+                  <td>{w.name}</td>
+                  <td>{w.address}</td>
+                  <td>
+                    <span className="status-badge">{w.status}</span>
+                  </td>
+                  <td>
+                    <button className="link-btn" onClick={() => startEdit(w)}>
+                      Edit
+                    </button>{' '}
+                    <button
+                      className="link-btn"
+                      style={{ color: 'var(--danger)' }}
+                      onClick={() => removeWarehouse(w.ROWID).then(reload)}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              )
+            )}
             {items.length === 0 && (
               <tr>
                 <td colSpan={4} className="muted">
