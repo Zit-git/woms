@@ -3,11 +3,11 @@ import RecordTasks from '../../components/RecordTasks';
 import AuditTrail from '../../components/AuditTrail';
 import DocumentsSummary from '../../components/DocumentsSummary';
 
-// A finished (Ready/Completed) inbound is no longer a workflow in progress --
-// this is a plain read-only record of what happened, separate from the
-// step-by-step wizard used while it's still Pending. "Edit" is the one
-// deliberate door back into that wizard, not an accident of clicking a step.
-export default function InboundDetailView({ advice, cargoRows, customers, transporters, suppliers, onEdit }) {
+// Plain read-only record view, used by InboundMaster regardless of status --
+// separate from the step-by-step InboundWizard. The one action button is a
+// deliberate door into that wizard (labeled "Continue"/"Edit" by the caller),
+// not an accident of clicking some other control.
+export default function InboundDetailView({ advice, cargoRows, customers, transporters, suppliers, onEdit, editLabel = 'Edit' }) {
   const supplier = suppliers.find((s) => String(s.ROWID) === String(advice.supplier_id));
   const transporter = transporters.find((t) => String(t.ROWID) === String(advice.transporter_id));
   const summary = computeInboundSummary(advice, cargoRows);
@@ -22,7 +22,7 @@ export default function InboundDetailView({ advice, cargoRows, customers, transp
           <div className="wizard-ref-value">{advice.inbound_reference || '—'}</div>
         </div>
         <button className="btn secondary" onClick={onEdit}>
-          Edit
+          {editLabel}
         </button>
       </div>
 

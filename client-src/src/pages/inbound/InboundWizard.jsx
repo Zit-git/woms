@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import {
   getInboundAdviceById,
   editInboundAdvice,
@@ -14,7 +14,7 @@ import StepGoods from './steps/StepGoods';
 import StepDocuments from './steps/StepDocuments';
 import StepCheck from './steps/StepCheck';
 import StepFinish from './steps/StepFinish';
-import InboundDetailView from './InboundDetailView';
+import InboundSidebar from './InboundSidebar';
 import { computeInboundSummary } from '../../lib/inboundSummary';
 
 const STEPS = [
@@ -25,9 +25,11 @@ const STEPS = [
   { key: 'finish', label: 'Finish', sublabel: 'Complete inbound' },
 ];
 
+// The step-by-step intake workflow -- separate page/route from InboundMaster
+// (the plain record view). This component is only ever the wizard; it does
+// not also render a read-only summary internally.
 export default function InboundWizard() {
   const { adviceId } = useParams();
-  const navigate = useNavigate();
 
   const [advice, setAdvice] = useState(null);
   const [cargoRows, setCargoRows] = useState([]);
@@ -39,10 +41,6 @@ export default function InboundWizard() {
   const [stepKey, setStepKey] = useState('general');
   const [furthestIndex, setFurthestIndex] = useState(0);
   const [saving, setSaving] = useState(false);
-  // null until the advice loads once; then: 'view' for an already-finished
-  // record (Ready/Completed) so it opens as a plain summary, not mid-wizard;
-  // 'edit' for a Pending one, which is still an active workflow.
-  const [mode, setMode] = useState(null);
 
   const loadAdvice = useCallback(
     () => getInboundAdviceById(adviceId).then(setAdvice),
@@ -63,12 +61,10 @@ export default function InboundWizard() {
   }, [loadAdvice, loadCargo]);
 
   useEffect(() => {
-    if (!advice) return;
-    // A completed/ready advice can be revisited at any step once editing.
-    if (advice.status === 'Ready' || advice.status === 'Completed') {
+    // A completed/ready advice being re-edited can be revisited at any step.
+    if (advice?.status === 'Ready' || advice?.status === 'Completed') {
       setFurthestIndex(STEPS.length - 1);
     }
-    setMode((m) => m ?? (advice.status === 'Pending' ? 'edit' : 'view'));
   }, [advice?.status]);
 
   const patchAdvice = (fields) => {
@@ -114,34 +110,19 @@ export default function InboundWizard() {
     setError,
   };
 
-  const isPending = advice.status === 'Pending';
-
   return (
     <div>
       <div className="toolbar">
         <div>
-          {isPending ? (
-            <>
-              <h2>New Inbound</h2>
-              <p className="muted small" style={{ marginTop: -8 }}>
-                Create a new inbound and confirm unloading
-              </p>
-            </>
-          ) : (
-            <>
-              <h2>{advice.inbound_reference}</h2>
-              <p className="muted small" style={{ marginTop: -8 }}>
-                {mode === 'edit' ? 'Editing inbound record' : 'Inbound record'}
-              </p>
-            </>
-          )}
+          <h2>{advice.inbound_reference ? `Editing ${advice.inbound_reference}` : 'New Inbound'}</h2>
+          <p className="muted small" style={{ marginTop: -8 }}>
+            Create a new inbound and confirm unloading
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          {!isPending && mode === 'edit' && (
-            <button className="link-btn" onClick={() => setMode('view')}>
-              &larr; Back to Overview
-            </button>
-          )}
+          <Link className="link-btn" to={`/inbound/${adviceId}`}>
+            &larr; Back to Inbound Master
+          </Link>
           <Link className="link-btn" to="/inbound">
             &larr; Back to Inbound Operations
           </Link>
@@ -150,108 +131,18 @@ export default function InboundWizard() {
 
       {error && <div className="error-text">{error}</div>}
 
-      {mode === 'edit' && (
-        <Stepper steps={STEPS} currentKey={stepKey} furthestIndex={furthestIndex} onStepClick={goToStep} />
-      )}
+      <Stepper steps={STEPS} currentKey={stepKey} furthestIndex={furthestIndex} onStepClick={goToStep} />
 
       <div className="wizard-layout">
         <div className="wizard-main">
-          {mode === 'view' ? (
-            <InboundDetailView
-              advice={advice}
-              cargoRows={cargoRows}
-              customers={customers}
-              transporters={transporters}
-              suppliers={suppliers}
-              onEdit={() => setMode('edit')}
-            />
-          ) : (
-            <>
-              {stepKey === 'general' && <StepGeneral {...stepProps} />}
-              {stepKey === 'goods' && <StepGoods {...stepProps} />}
-              {stepKey === 'documents' && <StepDocuments {...stepProps} />}
-              {stepKey === 'check' && <StepCheck {...stepProps} goToStep={goToStep} />}
-              {stepKey === 'finish' && <StepFinish {...stepProps} />}
-            </>
-          )}
+          {stepKey === 'general' && <StepGeneral {...stepProps} />}
+          {stepKey === 'goods' && <StepGoods {...stepProps} />}
+          {stepKey === 'documents' && <StepDocuments {...stepProps} />}
+          {stepKey === 'check' && <StepCheck {...stepProps} goToStep={goToStep} />}
+          {stepKey === 'finish' && <StepFinish {...stepProps} />}
         </div>
 
-        <div className="wizard-sidebar">
-          <div className="card">
-            <h3>Status</h3>
-            <div style={{ marginBottom: 10 }}>
-              <span className={`status-badge ${advice.status === 'Ready' ? 'status-ready' : ''} ${advice.status === 'Completed' ? 'status-completed' : ''}`}>
-                {advice.status === 'Ready' ? 'Inbound Ready' : advice.status === 'Completed' ? 'Completed' : 'Pending'}
-              </span>
-            </div>
-            <div className="sidebar-kv">
-              <span className="muted small">Inbound Number</span>
-              <span>{advice.inbound_reference || '—'}</span>
-            </div>
-            <div className="sidebar-kv">
-              <span className="muted small">Status</span>
-              <span>{advice.status}</span>
-            </div>
-            <div className="sidebar-kv">
-              <span className="muted small">Created On</span>
-              <span>{advice.CREATEDTIME || '—'}</span>
-            </div>
-          </div>
-
-          <div className="card">
-            <h3>Inbound Summary</h3>
-            <div className="sidebar-kv">
-              <span className="muted small">Expected Colli</span>
-              <span>{summary.expectedColli}</span>
-            </div>
-            <div className="sidebar-kv">
-              <span className="muted small">Received Pieces (Inner)</span>
-              <span>{summary.receivedPieces}</span>
-            </div>
-            <div className="sidebar-kv">
-              <span className="muted small">Total Outer Packages</span>
-              <span>{summary.totalOuterPackages}</span>
-            </div>
-            <div className="sidebar-kv">
-              <span className="muted small">Total Weight</span>
-              <span>{summary.totalWeight.toFixed(2)} kg</span>
-            </div>
-            <div className="sidebar-kv">
-              <span className="muted small">Total Volume</span>
-              <span>{summary.totalVolume.toFixed(3)} m³</span>
-            </div>
-            <div className="sidebar-kv">
-              <span className="muted small">Pallets</span>
-              <span>{summary.pallets}</span>
-            </div>
-            <div className="sidebar-kv">
-              <span className="muted small">Items</span>
-              <span>{summary.items}</span>
-            </div>
-          </div>
-
-          <div className="card">
-            <h3>Quick Actions</h3>
-            <div className="form-actions" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-              {(advice.status === 'Ready' || advice.status === 'Completed') && (
-                <a
-                  className="btn secondary"
-                  href={`${import.meta.env.BASE_URL}print/putaway/${adviceId}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Reprint Labels
-                </a>
-              )}
-              <button className="btn secondary" disabled={saving} onClick={() => navigate('/inbound')} title="Fields save automatically as you go">
-                Save as Draft
-              </button>
-              <button className="btn secondary" onClick={() => navigate('/inbound')}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <InboundSidebar advice={advice} summary={summary} adviceId={adviceId} saving={saving} />
       </div>
     </div>
   );

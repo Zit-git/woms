@@ -19,7 +19,7 @@ export default function StepFinish({ advice, patchAdvice, goBack, saving }) {
       .catch(() => null) // notification failure shouldn't block completion
       .then(() => patchAdvice({ status: 'Completed' }))
       .then(() => (target === 'new' ? startNewInboundAdvice(advice.warehouse_id) : Promise.resolve(null)))
-      .then((created) => navigate(target === 'new' ? `/inbound/${created.ROWID}` : '/'))
+      .then((created) => navigate(target === 'new' ? `/inbound/${created.ROWID}/wizard` : '/'))
       .catch((err) => setError(err.message || String(err)))
       .finally(() => setCompleting(null));
   };

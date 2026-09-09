@@ -29,7 +29,7 @@ export default function InboundAdviceList() {
     setCreating(true);
     setError('');
     startNewInboundAdvice(warehouseId)
-      .then((created) => navigate(`/inbound/${created.ROWID}`))
+      .then((created) => navigate(`/inbound/${created.ROWID}/wizard`))
       .catch((err) => {
         setError(err.message || String(err));
         setCreating(false);

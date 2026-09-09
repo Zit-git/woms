@@ -10,6 +10,7 @@ const CustomerDetail = lazy(() => import('./pages/customers/CustomerDetail'));
 const TransportersPage = lazy(() => import('./pages/transporters/TransportersPage'));
 const WarehouseConfig = lazy(() => import('./pages/warehouse/WarehouseConfig'));
 const InboundAdviceList = lazy(() => import('./pages/inbound/InboundAdviceList'));
+const InboundMaster = lazy(() => import('./pages/inbound/InboundMaster'));
 const InboundWizard = lazy(() => import('./pages/inbound/InboundWizard'));
 const StoragePage = lazy(() => import('./pages/storage/StoragePage'));
 const OutboundRequestList = lazy(() => import('./pages/outbound/OutboundRequestList'));
@@ -69,7 +70,8 @@ function Gate() {
         <Route path="transporters" element={<TransportersPage />} />
         <Route path="warehouse" element={<WarehouseConfig />} />
         <Route path="inbound" element={<InboundAdviceList />} />
-        <Route path="inbound/:adviceId" element={<InboundWizard />} />
+        <Route path="inbound/:adviceId" element={<InboundMaster />} />
+        <Route path="inbound/:adviceId/wizard" element={<InboundWizard />} />
         <Route path="storage" element={<StoragePage />} />
         <Route path="outbound" element={<OutboundRequestList />} />
         <Route path="outbound/:requestId" element={<OutboundRequestDetail />} />
