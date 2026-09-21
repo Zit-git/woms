@@ -14,7 +14,7 @@ const CARDS = [
 ];
 
 export default function DashboardHome() {
-  const { user, businessRole } = useAuth();
+  const { user, businessRole, canAccessPath } = useAuth();
   const [stats, setStats] = useState(null);
   const [error, setError] = useState('');
 
@@ -52,7 +52,7 @@ export default function DashboardHome() {
           )}
         </div>
 
-        {CARDS.map((c) => {
+        {CARDS.filter((c) => canAccessPath(c.to)).map((c) => {
           const Icon = c.icon;
           return (
             <Link className="card kpi-card" key={c.key} to={c.to}>

@@ -1,12 +1,14 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { getCurrentUser } from '../lib/catalystClient';
-import { getAppUserByEmail } from '../lib/api';
+import { getAppUserByEmail, listRolePermissions } from '../lib/api';
+import { moduleForPath } from '../lib/permissions';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [appUser, setAppUser] = useState(null);
+  const [allowedModules, setAllowedModules] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -20,9 +22,15 @@ export function AuthProvider({ children }) {
         return;
       }
       getAppUserByEmail(currentUser.email_id)
-        .then((row) => {
-          if (!cancelled) setAppUser(row);
+        .then(async (row) => {
+          if (cancelled) return;
+          setAppUser(row);
+          if (row?.business_role) {
+            const perms = await listRolePermissions();
+            if (!cancelled) setAllowedModules(new Set(perms.filter((p) => p.role === row.business_role).map((p) => p.module)));
+          }
         })
+        .catch(() => null)
         .finally(() => {
           if (!cancelled) setLoading(false);
         });
@@ -41,7 +49,14 @@ export function AuthProvider({ children }) {
   const clearSession = () => {
     setUser(null);
     setAppUser(null);
+    setAllowedModules(new Set());
   };
+
+  // A signed-in user with no active app role gets no access at all (fail closed);
+  // the dashboard is open to any active role, every other page needs its module.
+  const hasActiveRole = !!appUser?.business_role && appUser.user_status !== 'Inactive';
+  const canAccessModule = (module) => hasActiveRole && (!module || allowedModules.has(module));
+  const canAccessPath = (pathname) => canAccessModule(moduleForPath(pathname));
 
   const value = {
     user,
@@ -49,6 +64,9 @@ export function AuthProvider({ children }) {
     warehouseId: appUser?.warehouse_id || null,
     loading,
     isAuthenticated: !!user,
+    hasActiveRole,
+    canAccessModule,
+    canAccessPath,
     clearSession,
   };
 

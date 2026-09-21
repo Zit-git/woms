@@ -28,8 +28,22 @@ const PutawayPrint = lazy(() => import('./pages/print/PutawayPrint'));
 
 const PageLoading = () => <div style={{ padding: 40 }}>Loading...</div>;
 
+function NoAccess({ title = 'No access', message }) {
+  return (
+    <div className="card" style={{ maxWidth: 520, margin: '60px auto' }}>
+      <h2>{title}</h2>
+      <p className="muted">{message}</p>
+    </div>
+  );
+}
+
+function Guarded({ module, children }) {
+  const { canAccessModule } = useAuth();
+  return canAccessModule(module) ? children : <NoAccess message="Your role does not include this area. Ask an administrator if you need it." />;
+}
+
 function Gate() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, hasActiveRole, clearSession } = useAuth();
 
   if (loading) {
     return <div style={{ padding: 40 }}>Loading...</div>;
@@ -37,31 +51,52 @@ function Gate() {
   if (!isAuthenticated) {
     return <Login />;
   }
+  if (!hasActiveRole) {
+    return (
+      <div style={{ padding: 24 }}>
+        <NoAccess
+          title="Your account has no role yet"
+          message="You are signed in, but no active role is assigned to this account. Ask a System Administrator to assign one, then reload."
+        />
+        <div style={{ textAlign: 'center' }}>
+          <button className="btn secondary" onClick={clearSession}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Routes>
       <Route
         path="/print/inbound/:adviceId"
         element={
-          <Suspense fallback={<PageLoading />}>
-            <InboundPrint />
-          </Suspense>
+          <Guarded module="Inbound Operations">
+            <Suspense fallback={<PageLoading />}>
+              <InboundPrint />
+            </Suspense>
+          </Guarded>
         }
       />
       <Route
         path="/print/outbound/:requestId"
         element={
-          <Suspense fallback={<PageLoading />}>
-            <OutboundPrint />
-          </Suspense>
+          <Guarded module="Outbound Operations">
+            <Suspense fallback={<PageLoading />}>
+              <OutboundPrint />
+            </Suspense>
+          </Guarded>
         }
       />
       <Route
         path="/print/putaway/:adviceId"
         element={
-          <Suspense fallback={<PageLoading />}>
-            <PutawayPrint />
-          </Suspense>
+          <Guarded module="Inbound Operations">
+            <Suspense fallback={<PageLoading />}>
+              <PutawayPrint />
+            </Suspense>
+          </Guarded>
         }
       />
       <Route path="/" element={<AppShell />}>

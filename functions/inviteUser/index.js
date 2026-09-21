@@ -16,6 +16,23 @@ const CATALYST_ROLE_ID = {
   default: '11648000001127007', // App User
 };
 
+// Only an active System Administrator may invite users or assign roles.
+// Identity comes from the authenticated request, never from the body, and an
+// unidentifiable caller is rejected (fails closed).
+async function isSystemAdministrator(catalystApp, req) {
+  let callerId = req.headers['x-catalyst-user-id'];
+  if (!callerId) {
+    const current = await catalystApp.userManagement().getCurrentUser().catch(() => null);
+    callerId = current && current.user_id;
+  }
+  if (!callerId || !/^\d+$/.test(String(callerId))) return false;
+  const rows = await catalystApp
+    .zcql()
+    .executeZCQLQuery(`SELECT business_role, user_status FROM AppUsers WHERE catalyst_user_id = '${callerId}'`);
+  const row = rows[0] && rows[0].AppUsers;
+  return !!row && row.business_role === 'System Administrator' && row.user_status === 'Active';
+}
+
 // POST body: { firstName, lastName, email, businessRole, redirectUrl, warehouseId? }
 // Invites a new Catalyst project user and creates the matching AppUsers row
 // that drives business-role-based UI gating.
@@ -23,6 +40,10 @@ app.post('/', async (req, res) => {
   const catalystApp = catalystSDK.initialize(req);
 
   try {
+    if (!(await isSystemAdministrator(catalystApp, req))) {
+      return res.status(403).send({ error: 'Only a System Administrator can invite users.' });
+    }
+
     const { firstName, lastName, email, businessRole, redirectUrl, warehouseId } = req.body;
     if (!firstName || !email || !businessRole || !redirectUrl) {
       return res.status(400).send({ error: 'firstName, email, businessRole and redirectUrl are required' });

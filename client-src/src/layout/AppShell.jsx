@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { moduleForPath } from '../lib/permissions';
 import { useAuth } from '../context/AuthContext';
 import { signOut } from '../lib/catalystClient';
 import {
@@ -63,12 +64,18 @@ const NAV_GROUPS = [
 // of Operations) is one tap away behind "More", which opens the same full
 // nav as the desktop sidebar rather than hiding those sections entirely.
 const BOTTOM_NAV_KEYS = ['/', '/inbound', '/storage', '/outbound'];
-const BOTTOM_NAV_ITEMS = NAV_GROUPS.flatMap((g) => g.items).filter((item) => BOTTOM_NAV_KEYS.includes(item.to));
 
 export default function AppShell() {
-  const { user, businessRole, clearSession } = useAuth();
+  const { user, businessRole, clearSession, canAccessPath } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+
+  // Only show what this role may open; drop groups that end up empty.
+  const visibleGroups = NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((item) => canAccessPath(item.to)) })).filter(
+    (g) => g.items.length > 0
+  );
+  const BOTTOM_NAV_ITEMS = visibleGroups.flatMap((g) => g.items).filter((item) => BOTTOM_NAV_KEYS.includes(item.to));
+  const pageAllowed = canAccessPath(location.pathname);
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
 
@@ -79,7 +86,7 @@ export default function AppShell() {
 
   const nav = (
     <nav>
-      {NAV_GROUPS.map((group) => (
+      {visibleGroups.map((group) => (
         <div className="nav-group" key={group.label || 'root'}>
           {group.label && <div className="nav-group-label">{group.label}</div>}
           {group.items.map((item) => {
@@ -143,9 +150,16 @@ export default function AppShell() {
       </aside>
 
       <main className="main-content">
-        <Suspense fallback={null}>
-          <Outlet />
-        </Suspense>
+        {pageAllowed ? (
+          <Suspense fallback={null}>
+            <Outlet />
+          </Suspense>
+        ) : (
+          <div className="card" style={{ maxWidth: 520 }}>
+            <h2>No access</h2>
+            <p className="muted">Your role does not include this area. Ask an administrator if you need it.</p>
+          </div>
+        )}
       </main>
 
       <nav className="bottom-nav">

@@ -100,10 +100,17 @@ export function deleteRow(tableName, rowId) {
     .delete();
 }
 
+// The API rejects max_rows above 300 (with a 400 the SDK still resolves), so
+// cap it and surface any failure instead of returning an empty result.
 export function getAllRows(tableName, maxRows = 200) {
   return table(tableName)
-    .getPagedRows({ max_rows: maxRows })
-    .then((res) => res.content || []);
+    .getPagedRows({ max_rows: Math.min(maxRows, 300) })
+    .then((res) => {
+      if (res.status && res.status !== 200) {
+        throw new Error(res.message || `Could not load ${tableName} (${res.status})`);
+      }
+      return res.content || [];
+    });
 }
 
 export function zcql(query) {
