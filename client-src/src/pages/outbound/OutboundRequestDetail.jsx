@@ -10,7 +10,8 @@ import {
   listDispatchesByRequest,
   createDispatch,
   editOutboundRequest,
-  notifyEvent,
+  notifySafe,
+  logAudit,
   markCargoDelivered,
 } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
@@ -83,7 +84,7 @@ export default function OutboundRequestDetail() {
 
   const handleScanPick = (task) => {
     setBusyRow(task.ROWID);
-    recordScan(task.cargo_id, user?.email_id || '', 'dispatch')
+    recordScan(task.cargo_id, user?.email_id || '', 'pick')
       .then(() => editPickTask({ ROWID: task.ROWID, status: 'Picked' }))
       .then(() => load())
       .catch((err) => setError(err.error || err.message || String(err)))
@@ -109,7 +110,10 @@ export default function OutboundRequestDetail() {
 
   const handleMarkDelivered = () => {
     setMarkingDelivered(true);
-    markCargoDelivered(pickTasks.map((t) => t.cargo_id))
+    markCargoDelivered(pickTasks.map((t) => t.cargo_id), user?.email_id || '')
+      .then(() =>
+        logAudit({ userId: user?.email_id, actionType: 'DELIVERY_CONFIRMED', module: 'Outbound Operations', recordId: requestId, details: { packages: pickTasks.length } })
+      )
       .then(load)
       .catch((err) => setError(err.message || String(err)))
       .finally(() => setMarkingDelivered(false));
@@ -117,22 +121,34 @@ export default function OutboundRequestDetail() {
 
   const handleConfirmDispatch = () => {
     setDispatching(true);
-    createDispatch({
-      outbound_request_id: requestId,
-      vehicle_details: vehicleDetails,
-      dispatched_by: user?.email_id || '',
-      status: 'Dispatched',
-    })
+    // Cargo only counts as Dispatched (in transit) once the dispatch is confirmed,
+    // not merely when it was picked.
+    Promise.all(pickTasks.map((t) => recordScan(t.cargo_id, user?.email_id || '', 'dispatch')))
+      .then(() =>
+        createDispatch({
+          outbound_request_id: requestId,
+          vehicle_details: vehicleDetails,
+          dispatched_by: user?.email_id || '',
+          status: 'Dispatched',
+        })
+      )
       .then(() => editOutboundRequest({ ROWID: requestId, status: 'Dispatched' }))
+      .then(() =>
+        logAudit({ userId: user?.email_id, actionType: 'DISPATCH_CONFIRMED', module: 'Outbound Operations', recordId: requestId, details: { vehicle: vehicleDetails, packages: pickTasks.length } })
+      )
       .then(() => {
+        // Deliberately not awaited: the dispatch is already done, and a mail
+        // problem must be reported, not allowed to hold up the screen.
         if (request?.customer_email) {
-          return notifyEvent(
+          notifySafe(
             'DISPATCH_CONFIRMATION',
             request.customer_email,
             requestId,
             `Your outbound request #${requestId} has been dispatched.`,
             'Outbound Operations'
-          ).catch(() => null); // notification failure shouldn't block the dispatch itself
+          ).then((r) => {
+            if (!r.ok) setError(`Dispatch confirmed, but the customer email could not be sent: ${r.error}`);
+          });
         }
       })
       .then(() => load())
@@ -223,7 +239,15 @@ export default function OutboundRequestDetail() {
               <option value="">Select cargo...</option>
               {availableCargo.map((c) => (
                 <option key={c.ROWID} value={c.ROWID}>
-                  {c.description} ({c.qty} {c.unit}) - {c.status}
+                  {[
+                    c.description || 'Package',
+                    c.outer_package_no && `#${c.outer_package_no}`,
+                    c.unit && (c.qty ? `${c.qty} ${c.unit}` : c.unit),
+                    c.inbound_reference,
+                    c.location_code ? `in ${c.location_code}` : c.status,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </option>
               ))}
             </select>

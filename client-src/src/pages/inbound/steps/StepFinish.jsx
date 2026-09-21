@@ -9,19 +9,50 @@ export default function StepFinish({ advice, patchAdvice, goBack, saving }) {
   const [completing, setCompleting] = useState(null); // 'new' | 'dashboard' | null
   const [error, setError] = useState('');
 
+  const [emailWarning, setEmailWarning] = useState('');
+  const [resumeTarget, setResumeTarget] = useState(null);
+
   const alreadyCompleted = advice.status === 'Completed';
+
+  const proceed = (target) =>
+    target === 'new'
+      ? startNewInboundAdvice(advice.warehouse_id).then((created) => navigate(`/inbound/${created.ROWID}/wizard`))
+      : Promise.resolve(navigate('/'));
+
+  // Sends the confirmation email; resolves true if it went out. A failure is
+  // shown to the user (with a retry) but never undoes the completed inbound.
+  const sendEmail = () =>
+    sendInboundConfirmationEmail(advice.ROWID, to, `Inbound ${advice.inbound_reference} has been received and is now in stock.`)
+      .then(() => true)
+      .catch((err) => {
+        setEmailWarning(`The inbound is completed, but the confirmation email could not be sent: ${err?.error || err?.message || err}`);
+        return false;
+      });
 
   const complete = (target) => {
     setCompleting(target);
     setError('');
-    const message = `Inbound ${advice.inbound_reference} has been received and is now in stock.`;
-    sendInboundConfirmationEmail(advice.ROWID, to, message)
-      .catch(() => null) // notification failure shouldn't block completion
-      .then(() => patchAdvice({ status: 'Completed' }))
-      .then(() => (target === 'new' ? startNewInboundAdvice(advice.warehouse_id) : Promise.resolve(null)))
-      .then((created) => navigate(target === 'new' ? `/inbound/${created.ROWID}/wizard` : '/'))
+    setEmailWarning('');
+    setResumeTarget(target);
+    patchAdvice({ status: 'Completed' })
+      .then(sendEmail)
+      .then((sent) => (sent ? proceed(target) : null))
       .catch((err) => setError(err.message || String(err)))
       .finally(() => setCompleting(null));
+  };
+
+  const retryEmail = () => {
+    setCompleting(resumeTarget || 'dashboard');
+    setEmailWarning('');
+    sendEmail()
+      .then((sent) => (sent ? proceed(resumeTarget) : null))
+      .catch((err) => setError(err.message || String(err)))
+      .finally(() => setCompleting(null));
+  };
+
+  const continueWithoutEmail = () => {
+    setEmailWarning('');
+    proceed(resumeTarget).catch((err) => setError(err.message || String(err)));
   };
 
   return (
@@ -53,6 +84,19 @@ export default function StepFinish({ advice, patchAdvice, goBack, saving }) {
       )}
 
       {error && <div className="error-text">{error}</div>}
+      {emailWarning && (
+        <div className="card" style={{ borderColor: 'var(--amber)', background: 'var(--amber-soft)' }}>
+          <p style={{ marginTop: 0 }}>{emailWarning}</p>
+          <div className="form-actions">
+            <button className="btn" onClick={retryEmail} disabled={!!completing}>
+              {completing ? 'Sending...' : 'Send again'}
+            </button>
+            <button className="btn secondary" onClick={continueWithoutEmail} disabled={!!completing}>
+              Continue without email
+            </button>
+          </div>
+        </div>
+      )}
 
       <h3>Inbound Confirmation Email</h3>
       <div className="form-grid-3">

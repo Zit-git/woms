@@ -19,7 +19,16 @@ const TABLES = {
   TRANSPORTERS: 'Transporters',
   CONTACTS: 'Contacts',
   SUPPLIERS: 'Suppliers',
+  SCAN_HISTORY: 'ScanHistory',
+  CARGO_MOVEMENT_LOG: 'CargoMovementLog',
+  AUDIT_LOG: 'AuditLog',
 };
+
+// Cargo lifecycle: Received -> Stored <-> Retrieved -> Picked -> Dispatched -> Delivered.
+// Dispatched/Delivered cargo has left the building; everything else is still
+// physically in the warehouse (in a rack, on the floor, or staged for an order).
+const GONE_SQL = "status != 'Dispatched' AND status != 'Delivered'";
+const goneSql = (alias) => `${alias}.status != 'Dispatched' AND ${alias}.status != 'Delivered'`;
 
 // Tier-based visibility: System Administrator sees everything; Warehouse
 // Manager/Supervisor see everything in their own warehouse; Warehouse
@@ -146,7 +155,7 @@ export const removeLocation = (rowId) => deleteRow(TABLES.STORAGE_LOCATIONS, row
 export const getWarehouseMap = (warehouseId) =>
   Promise.all([
     listZonesByWarehouse(warehouseId),
-    zcql(`SELECT current_location_id FROM Cargo WHERE current_location_id IS NOT NULL AND status != 'Dispatched'`).then(
+    zcql(`SELECT current_location_id FROM Cargo WHERE current_location_id IS NOT NULL AND ${GONE_SQL}`).then(
       (rows) => new Set(rows.map((r) => String(r.Cargo.current_location_id)))
     ),
   ]).then(([zones, occupiedIds]) =>
@@ -245,7 +254,13 @@ export const createCargo = (row) => addRow(TABLES.CARGO, row);
 export const editCargo = (row) => updateRow(TABLES.CARGO, row);
 export const deleteCargo = (rowId) => deleteRow(TABLES.CARGO, rowId);
 
-export const generateQRCode = (cargoId) => callFunction('generateQRCode', { cargoId });
+// The label payload is deterministic, so no server round-trip is needed; the
+// QR image itself is rendered in the browser wherever a label is shown.
+export const generateQRCode = (cargoId) => {
+  assertId(cargoId);
+  const qrPayload = `WOMS-CARGO-${cargoId}`;
+  return updateRow(TABLES.CARGO, { ROWID: cargoId, qr_code: qrPayload }).then(() => ({ cargoId, qrPayload }));
+};
 export const createGRN = (inboundAdviceId, verifiedBy) => callFunction('createGRN', { inboundAdviceId, verifiedBy });
 
 export const sendInboundConfirmationEmail = (inboundAdviceId, recipientEmail, message) =>
@@ -264,21 +279,53 @@ export const listAllStorageLocations = () =>
     }))
   );
 
-export const listCargoPendingPutAway = (viewer) =>
+const STOCK_COLUMNS =
+  'Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.weight, Cargo.qr_code, Cargo.status, Cargo.outer_package_no, Cargo.current_location_id, Cargo.inbound_advice_id, Customers.name, InboundAdvice.inbound_reference, InboundAdvice.destination';
+const STOCK_JOINS =
+  'FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID';
+const toStockRow = (r) => ({
+  ...r.Cargo,
+  customer_name: r.Customers?.name,
+  inbound_reference: r.InboundAdvice?.inbound_reference,
+  destination: r.InboundAdvice?.destination,
+});
+
+// Cargo that is in the building but not in a rack: freshly received (needs
+// put-away) or retrieved (taken out of a rack, on the floor). Cargo already
+// picked for an outbound order is excluded -- it belongs to that order now.
+export const listCargoOutOfRack = (viewer) =>
   zcql(
-    `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.qr_code, Customers.name FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID WHERE Cargo.current_location_id IS NULL AND Cargo.status != 'Dispatched'${visibilityClause(viewer, { warehouseCol: 'Cargo.warehouse_id' })} ORDER BY Cargo.CREATEDTIME`
-  ).then((rows) => rows.map((r) => ({ ...r.Cargo, customer_name: r.Customers?.name })));
+    `SELECT ${STOCK_COLUMNS} ${STOCK_JOINS} WHERE Cargo.current_location_id IS NULL AND ${goneSql('Cargo')} AND Cargo.status != 'Picked'${visibilityClause(viewer, { warehouseCol: 'Cargo.warehouse_id' })} ORDER BY Cargo.CREATEDTIME`
+  ).then((rows) => rows.map(toStockRow));
 
 export const listStoredCargo = (viewer) =>
   zcql(
-    `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.qr_code, Cargo.status, Customers.name, StorageLocations.location_code FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID LEFT JOIN StorageLocations ON Cargo.current_location_id = StorageLocations.ROWID WHERE Cargo.current_location_id IS NOT NULL AND Cargo.status != 'Dispatched'${visibilityClause(viewer, { warehouseCol: 'Cargo.warehouse_id' })} ORDER BY Cargo.CREATEDTIME DESC`
-  ).then((rows) =>
-    rows.map((r) => ({
+    `SELECT ${STOCK_COLUMNS} ${STOCK_JOINS} WHERE Cargo.current_location_id IS NOT NULL AND ${goneSql('Cargo')}${visibilityClause(viewer, { warehouseCol: 'Cargo.warehouse_id' })} ORDER BY Cargo.CREATEDTIME DESC`
+  ).then((rows) => rows.map(toStockRow));
+
+// -- Delivery: cargo that has left the warehouse (Dispatched = in transit,
+// Delivered = handed over), with the outbound order and dispatch it left on. --
+// ZCQL allows at most 4 joins per query, so the inbound reference is looked up
+// separately rather than joined.
+export const listDeliveryGoods = (viewer) =>
+  Promise.all([
+    zcql(
+      `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.weight, Cargo.qr_code, Cargo.status, Cargo.outer_package_no, Cargo.inbound_advice_id, Cargo.MODIFIEDTIME, Customers.name, OutboundRequest.ROWID, OutboundRequest.reference_number, Dispatch.vehicle_details, Dispatch.dispatch_date, Dispatch.dispatched_by FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID LEFT JOIN PickTask ON PickTask.cargo_id = Cargo.ROWID LEFT JOIN OutboundRequest ON PickTask.outbound_request_id = OutboundRequest.ROWID LEFT JOIN Dispatch ON Dispatch.outbound_request_id = OutboundRequest.ROWID WHERE (Cargo.status = 'Dispatched' OR Cargo.status = 'Delivered')${visibilityClause(viewer, { warehouseCol: 'Cargo.warehouse_id' })} ORDER BY Cargo.MODIFIEDTIME DESC`
+    ),
+    zcql('SELECT ROWID, inbound_reference FROM InboundAdvice'),
+  ]).then(([rows, adviceRows]) => {
+    const refById = new Map(adviceRows.map((r) => [String(r.InboundAdvice.ROWID), r.InboundAdvice.inbound_reference]));
+    return rows.map((r) => ({
       ...r.Cargo,
       customer_name: r.Customers?.name,
-      location_code: r.StorageLocations?.location_code,
-    }))
-  );
+      inbound_reference: refById.get(String(r.Cargo.inbound_advice_id)),
+      outbound_request_id: r.OutboundRequest?.ROWID,
+      outbound_reference: r.OutboundRequest?.reference_number,
+      vehicle_details: r.Dispatch?.vehicle_details,
+      dispatch_date: r.Dispatch?.dispatch_date,
+      dispatched_by: r.Dispatch?.dispatched_by,
+    }));
+  });
 
 // -- Operational Task Management --
 export const listTasks = (viewer) =>
@@ -341,8 +388,10 @@ export const getOutboundRequestById = (id) =>
 
 export const listAvailableCargoForCustomer = (customerId) =>
   zcql(
-    `SELECT ROWID, description, qty, unit, status, qr_code FROM Cargo WHERE customer_id = ${customerId} AND status != 'Dispatched' ORDER BY CREATEDTIME DESC`
-  ).then((rows) => rows.map((r) => r.Cargo));
+    `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.status, Cargo.qr_code, Cargo.outer_package_no, StorageLocations.location_code, InboundAdvice.inbound_reference FROM Cargo LEFT JOIN StorageLocations ON Cargo.current_location_id = StorageLocations.ROWID LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID WHERE Cargo.customer_id = ${customerId} AND ${goneSql('Cargo')} AND Cargo.status != 'Picked' ORDER BY Cargo.CREATEDTIME DESC`
+  ).then((rows) =>
+    rows.map((r) => ({ ...r.Cargo, location_code: r.StorageLocations?.location_code, inbound_reference: r.InboundAdvice?.inbound_reference }))
+  );
 
 export const listPickTasksByRequest = (outboundRequestId) =>
   zcql(
@@ -366,10 +415,99 @@ export const listDispatchesByRequest = (outboundRequestId) =>
   ).then((rows) => rows.map((r) => r.Dispatch));
 export const createDispatch = (row) => addRow(TABLES.DISPATCH, { ...row, dispatch_date: formatDatetime() });
 
-export const recordScan = (cargoId, scannedBy, scanContext, locationId) =>
-  callFunction('recordScan', { cargoId, scannedBy, scanContext, locationId });
+// Row IDs here exceed Number.MAX_SAFE_INTEGER, so they must stay strings.
+function assertId(id) {
+  if (!/^\d+$/.test(String(id))) throw new Error(`Invalid record id: ${id}`);
+}
+
+// Best-effort: an audit failure must never block the warehouse action itself.
+export function logAudit({ userId, actionType, module, recordId, details }) {
+  return addRow(TABLES.AUDIT_LOG, {
+    user_id: userId || '',
+    action_type: actionType,
+    module,
+    record_id: String(recordId || ''),
+    details: details ? JSON.stringify(details) : '',
+    event_timestamp: formatDatetime(),
+  }).catch(() => null);
+}
+
+const SCAN_TO_STATUS = {
+  receiving: 'Received',
+  storage: 'Stored',
+  relocation: 'Stored',
+  retrieval: 'Retrieved',
+  pick: 'Picked',
+  val: 'In VAL',
+  dispatch: 'Dispatched',
+  delivery: 'Delivered',
+};
+// Contexts after which the cargo is no longer sitting in a storage location.
+const LEAVES_LOCATION = new Set(['retrieval', 'pick', 'dispatch', 'delivery']);
+const MOVEMENT_TYPE = { storage: 'putaway', relocation: 'relocation', retrieval: 'retrieval', pick: 'pick' };
+
+// Logs the scan, moves the cargo to its new status/location, and records
+// where it came from and went to -- the "which goods are where" trail.
+export async function recordScan(cargoId, scannedBy, scanContext, locationId) {
+  assertId(cargoId);
+  const newStatus = SCAN_TO_STATUS[scanContext];
+  if (!newStatus) throw new Error(`Unknown scan context: ${scanContext}`);
+  if ((scanContext === 'storage' || scanContext === 'relocation') && !locationId) {
+    throw new Error('Choose a storage location first.');
+  }
+
+  let fromLocationId = null;
+  if (scanContext !== 'receiving') {
+    const rows = await zcql(`SELECT current_location_id, status FROM Cargo WHERE ROWID = ${cargoId}`);
+    fromLocationId = rows[0]?.Cargo?.current_location_id || null;
+    if (scanContext === 'retrieval' && !fromLocationId) {
+      throw new Error('This cargo is not in a storage location, so it cannot be retrieved.');
+    }
+  }
+
+  await addRow(TABLES.SCAN_HISTORY, {
+    cargo_id: cargoId,
+    scanned_by: scannedBy || '',
+    scan_context: scanContext,
+    scan_timestamp: formatDatetime(),
+  });
+
+  const update = { ROWID: cargoId, status: newStatus };
+  if (scanContext === 'storage' || scanContext === 'relocation') update.current_location_id = locationId;
+  if (LEAVES_LOCATION.has(scanContext)) update.current_location_id = null;
+  await updateRow(TABLES.CARGO, update);
+
+  if (MOVEMENT_TYPE[scanContext]) {
+    const movement = {
+      cargo_id: cargoId,
+      moved_by: scannedBy || '',
+      movement_type: MOVEMENT_TYPE[scanContext],
+      movement_timestamp: formatDatetime(),
+    };
+    if (locationId && (scanContext === 'storage' || scanContext === 'relocation')) movement.to_location_id = locationId;
+    if (fromLocationId) movement.from_location_id = fromLocationId;
+    await addRow(TABLES.CARGO_MOVEMENT_LOG, movement);
+  }
+
+  logAudit({
+    userId: scannedBy,
+    actionType: 'RECORD_SCAN',
+    module: 'QR Code & Label Management',
+    recordId: cargoId,
+    details: { scanContext, locationId },
+  });
+
+  return { cargoId, scanContext, status: newStatus };
+}
 export const notifyEvent = (eventType, recipientEmail, recordId, message, module) =>
   callFunction('notifyEvent', { eventType, recipientEmail, recordId, message, module });
+
+// Never rejects: resolves { ok, error } so a mail problem can be reported
+// without ever blocking the warehouse action that triggered it.
+export const notifySafe = (...args) =>
+  notifyEvent(...args)
+    .then(() => ({ ok: true }))
+    .catch((err) => ({ ok: false, error: err?.error || err?.message || String(err) }));
 
 // -- Dashboard KPIs --
 function todayStart() {
@@ -393,7 +531,7 @@ export const getDashboardStats = () => {
     countOf('Customers', 'ROWID'),
     countOf('StorageLocations', 'ROWID'),
     countOf('Cargo', 'DISTINCT current_location_id', 'current_location_id IS NOT NULL'),
-    countOf('Cargo', 'ROWID', "status != 'Dispatched'"),
+    countOf('Cargo', 'ROWID', GONE_SQL),
     countOf('InboundAdvice', 'ROWID', `CREATEDTIME >= '${since}'`),
     countOf('OutboundRequest', 'ROWID', `CREATEDTIME >= '${since}'`),
     countOf('Tasks', 'ROWID', "status != 'Completed'"),
@@ -455,8 +593,8 @@ export const getCargoTimeline = (cargoId) =>
     ).then((rows) => rows.map((r) => r.ScanHistory)),
   ]).then(([cargo, movements, scans]) => ({ cargo, movements, scans }));
 
-export const markCargoDelivered = (cargoIds) =>
-  Promise.all(cargoIds.map((id) => updateRow('Cargo', { ROWID: id, status: 'Delivered' })));
+export const markCargoDelivered = (cargoIds, deliveredBy) =>
+  Promise.all(cargoIds.map((id) => recordScan(id, deliveredBy, 'delivery')));
 
 // -- Business role lookup (AppUsers) --
 export const getAppUserByEmail = (email) =>

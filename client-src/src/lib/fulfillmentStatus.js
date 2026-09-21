@@ -14,7 +14,8 @@ export const FULFILLMENT_STATUSES = [
 ];
 
 const isSent = (status) => status === 'Dispatched' || status === 'Delivered';
-const isStoredOrBeyond = (status) => status === 'Stored' || status === 'In VAL' || isSent(status);
+const isStoredOrBeyond = (status) =>
+  status === 'Stored' || status === 'Retrieved' || status === 'Picked' || status === 'In VAL' || isSent(status);
 
 export function computeFulfillmentStatus(expectedColli, cargoRows) {
   const rows = (cargoRows || []).filter(Boolean);

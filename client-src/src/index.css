@@ -727,3 +727,14 @@ tr.clickable-row:hover td { background: var(--surface-soft); }
 }
 .line-items-panel tr:last-child td { border-bottom: none; }
 .line-item-row { animation: wizard-fade-in 0.18s var(--ease); }
+
+.notice-text {
+  color: var(--success);
+  background: var(--success-soft);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 13.5px;
+  margin: 8px 0 14px;
+}
+tr.group-heading td { background: var(--surface-soft); padding-top: 14px; }
+.filter-bar .form-row:first-child { flex: 2 1 240px; }

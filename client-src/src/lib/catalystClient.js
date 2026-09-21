@@ -109,19 +109,30 @@ export function getAllRows(tableName, maxRows = 200) {
 export function zcql(query) {
   return sdk()
     .ZCatalystQL.executeQuery(query)
-    .then((res) => res.content || []);
+    .then((res) => {
+      // The SDK resolves (rather than rejects) on a rejected query, handing
+      // back an empty object; surface the real reason instead of {}.
+      if (res.status && res.status !== 200) {
+        throw new Error(res.message || `Query failed (${res.status})`);
+      }
+      return res.content || [];
+    });
 }
 
 // This project's function domain -- stable per Catalyst project/environment,
 // confirmed against this project's actual deployed function invoke_urls.
 const FUNCTIONS_BASE_URL = 'https://woms-775318997.development.catalystserverless.com';
 
+// If the SDK cannot obtain its auth token it fails *outside* the promise
+// chain we hold, so without a deadline a call could hang the screen forever.
+const FUNCTION_TIMEOUT_MS = 12000;
+
 export function callFunction(functionName, args = {}, method = 'POST') {
   // The SDK's own function.execute() never attaches a valid auth header for
   // an authenticated function (401 even same-origin on localhost, not just
   // cross-domain on Slate) -- Catalyst's documented fix is generateAuthToken()
   // plus a manual fetch carrying that token, bypassing execute() entirely.
-  return sdk()
+  const call = sdk()
     .auth.generateAuthToken()
     .then(({ access_token }) =>
       fetch(`${FUNCTIONS_BASE_URL}/server/${functionName}/`, {
@@ -130,5 +141,21 @@ export function callFunction(functionName, args = {}, method = 'POST') {
         body: JSON.stringify(args),
       })
     )
-    .then((res) => res.json());
+    .then(async (res) => {
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        const message = body?.error || `The server returned an error (${res.status}).`;
+        throw Object.assign(new Error(message), { error: message });
+      }
+      return body;
+    });
+
+  let timer;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const message = 'The server did not respond (the sign-in token could not be obtained). Try again, or sign out and back in.';
+      reject(Object.assign(new Error(message), { error: message }));
+    }, FUNCTION_TIMEOUT_MS);
+  });
+  return Promise.race([call, deadline]).finally(() => clearTimeout(timer));
 }
