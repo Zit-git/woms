@@ -261,7 +261,33 @@ export const generateQRCode = (cargoId) => {
   const qrPayload = `WOMS-CARGO-${cargoId}`;
   return updateRow(TABLES.CARGO, { ROWID: cargoId, qr_code: qrPayload }).then(() => ({ cargoId, qrPayload }));
 };
-export const createGRN = (inboundAdviceId, verifiedBy) => callFunction('createGRN', { inboundAdviceId, verifiedBy });
+// -- Goods Receipt Note: generated when an inbound is completed, then verified
+// by a manager before the customer confirmation goes out. --
+export const getGrnForAdvice = (inboundAdviceId) =>
+  zcql(
+    `SELECT ROWID, grn_number, generated_date, verified_by, status FROM GRN WHERE inbound_advice_id = ${inboundAdviceId} ORDER BY CREATEDTIME DESC`
+  ).then((rows) => rows[0]?.GRN || null);
+
+export async function createGRN(inboundAdviceId, inboundReference, generatedBy) {
+  assertId(inboundAdviceId);
+  const existing = await getGrnForAdvice(inboundAdviceId);
+  if (existing) return existing;
+  const row = await addRow('GRN', {
+    inbound_advice_id: inboundAdviceId,
+    grn_number: `GRN-${inboundReference || inboundAdviceId}`,
+    generated_date: formatDatetime(),
+    verified_by: '',
+    status: 'Generated',
+  });
+  logAudit({ userId: generatedBy, actionType: 'CREATE_GRN', module: 'Inbound Operations', recordId: inboundAdviceId, details: { grn: row.grn_number } });
+  return row;
+}
+
+export const verifyGRN = (grnId, inboundAdviceId, verifiedBy) =>
+  updateRow('GRN', { ROWID: grnId, status: 'Verified', verified_by: verifiedBy || '' }).then((row) => {
+    logAudit({ userId: verifiedBy, actionType: 'VERIFY_GRN', module: 'Inbound Operations', recordId: inboundAdviceId });
+    return row;
+  });
 
 export const sendInboundConfirmationEmail = (inboundAdviceId, recipientEmail, message) =>
   notifyEvent('INBOUND_COMPLETED', recipientEmail, String(inboundAdviceId), message, 'Inbound Operations');

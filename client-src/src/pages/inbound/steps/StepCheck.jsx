@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { generateQRCode } from '../../../lib/api';
+import { generateQRCode, createGRN } from '../../../lib/api';
+import { useAuth } from '../../../context/AuthContext';
 import { computeInboundSummary } from '../../../lib/inboundSummary';
 import RecordTasks from '../../../components/RecordTasks';
 import AuditTrail from '../../../components/AuditTrail';
 
 export default function StepCheck({ advice, cargoRows, customers, transporters, suppliers, patchAdvice, goToStep, goBack, goNext, saving }) {
   const [completing, setCompleting] = useState(false);
+  const { user } = useAuth();
 
   const supplier = suppliers.find((s) => String(s.ROWID) === String(advice.supplier_id));
   const transporter = transporters.find((t) => String(t.ROWID) === String(advice.transporter_id));
@@ -15,6 +17,7 @@ export default function StepCheck({ advice, cargoRows, customers, transporters, 
     setCompleting(true);
     const unlabeled = cargoRows.filter((c) => !c.qr_code);
     Promise.all(unlabeled.map((c) => generateQRCode(c.ROWID).catch(() => null)))
+      .then(() => createGRN(advice.ROWID, advice.inbound_reference, user?.email_id || ''))
       .then(() => patchAdvice({ status: 'Ready' }))
       .then(goNext)
       .finally(() => setCompleting(false));

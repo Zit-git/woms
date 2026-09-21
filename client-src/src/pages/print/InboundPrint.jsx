@@ -1,20 +1,25 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { getInboundAdviceById, listCargoByAdvice } from '../../lib/api';
+import { useParams, useLocation } from 'react-router-dom';
+import { getInboundAdviceById, listCargoByAdvice, getGrnForAdvice } from '../../lib/api';
 import QrCodeImage from '../../components/QrCodeImage';
 
 export default function InboundPrint() {
   const { adviceId } = useParams();
+  const isGrn = useLocation().pathname.startsWith('/print/grn/');
+  const [grn, setGrn] = useState(null);
   const [advice, setAdvice] = useState(null);
   const [cargoRows, setCargoRows] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getInboundAdviceById(adviceId), listCargoByAdvice(adviceId)]).then(([a, c]) => {
-      setAdvice(a);
-      setCargoRows(c);
-      setLoading(false);
-    });
+    Promise.all([getInboundAdviceById(adviceId), listCargoByAdvice(adviceId), isGrn ? getGrnForAdvice(adviceId) : null]).then(
+      ([a, c, g]) => {
+        setAdvice(a);
+        setCargoRows(c);
+        setGrn(g);
+        setLoading(false);
+      }
+    );
   }, [adviceId]);
 
   if (loading) return <p className="muted">Loading...</p>;
@@ -28,7 +33,19 @@ export default function InboundPrint() {
         </button>
       </div>
 
-      <h1>Inbound Receiving Advice</h1>
+      <h1>{isGrn ? 'Goods Receipt Note' : 'Inbound Receiving Advice'}</h1>
+      {isGrn && (
+        <p>
+          <strong>{grn?.grn_number || 'GRN not generated yet'}</strong>
+          {grn && (
+            <span className="muted">
+              {' '}
+              · {grn.status}
+              {grn.verified_by ? ` by ${grn.verified_by}` : ''}
+            </span>
+          )}
+        </p>
+      )}
       <table className="print-meta">
         <tbody>
           <tr>

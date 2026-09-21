@@ -1,9 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { sendInboundConfirmationEmail, startNewInboundAdvice } from '../../../lib/api';
+import { sendInboundConfirmationEmail, startNewInboundAdvice, getGrnForAdvice, createGRN, verifyGRN } from '../../../lib/api';
+import { useAuth } from '../../../context/AuthContext';
+
+const GRN_APPROVER_ROLES = ['System Administrator', 'Warehouse Manager', 'Warehouse Supervisor'];
 
 export default function StepFinish({ advice, patchAdvice, goBack, saving }) {
   const navigate = useNavigate();
+  const { user, businessRole } = useAuth();
+  const [grn, setGrn] = useState(undefined); // undefined = loading, null = none yet
+  const [grnBusy, setGrnBusy] = useState(false);
   const [to, setTo] = useState(advice.customer_email || '');
   const [cc, setCc] = useState('');
   const [completing, setCompleting] = useState(null); // 'new' | 'dashboard' | null
@@ -13,6 +19,29 @@ export default function StepFinish({ advice, patchAdvice, goBack, saving }) {
   const [resumeTarget, setResumeTarget] = useState(null);
 
   const alreadyCompleted = advice.status === 'Completed';
+  const canVerify = GRN_APPROVER_ROLES.includes(businessRole);
+  const grnVerified = grn?.status === 'Verified';
+
+  useEffect(() => {
+    getGrnForAdvice(advice.ROWID)
+      .then(setGrn)
+      .catch((err) => {
+        setGrn(null);
+        setError(err.message || String(err));
+      });
+  }, [advice.ROWID]);
+
+  const runGrn = (action) => {
+    setGrnBusy(true);
+    setError('');
+    action()
+      .then(() => getGrnForAdvice(advice.ROWID))
+      .then(setGrn)
+      .catch((err) => setError(err.error || err.message || String(err)))
+      .finally(() => setGrnBusy(false));
+  };
+  const generateGrn = () => runGrn(() => createGRN(advice.ROWID, advice.inbound_reference, user?.email_id || ''));
+  const verifyGrn = () => runGrn(() => verifyGRN(grn.ROWID, advice.ROWID, user?.email_id || ''));
 
   const proceed = (target) =>
     target === 'new'
@@ -84,6 +113,38 @@ export default function StepFinish({ advice, patchAdvice, goBack, saving }) {
       )}
 
       {error && <div className="error-text">{error}</div>}
+
+      <div className="check-block" style={{ margin: '16px 0' }}>
+        <div className="check-block-title">Goods Receipt Note (GRN)</div>
+        {grn === undefined ? (
+          <span className="muted">Loading...</span>
+        ) : grn ? (
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <strong>{grn.grn_number}</strong>
+            <span className={`status-badge ${grnVerified ? 'status-stored' : 'status-partial'}`}>{grn.status}</span>
+            {grnVerified && grn.verified_by && <span className="muted small">verified by {grn.verified_by}</span>}
+            <a href={`${import.meta.env.BASE_URL}print/grn/${advice.ROWID}`} target="_blank" rel="noreferrer">
+              View / print GRN
+            </a>
+            {!grnVerified && canVerify && (
+              <button className="btn small-btn" onClick={verifyGrn} disabled={grnBusy}>
+                {grnBusy ? 'Verifying...' : 'Verify GRN'}
+              </button>
+            )}
+            {!grnVerified && !canVerify && <span className="muted small">Waiting for a manager to verify.</span>}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <span className="muted">No GRN has been generated for this inbound yet.</span>
+            <button className="btn small-btn" onClick={generateGrn} disabled={grnBusy}>
+              {grnBusy ? 'Generating...' : 'Generate GRN'}
+            </button>
+          </div>
+        )}
+      </div>
+      {!alreadyCompleted && !grnVerified && grn !== undefined && (
+        <p className="muted small">The GRN must be verified before the inbound can be completed and the customer notified.</p>
+      )}
       {emailWarning && (
         <div className="card" style={{ borderColor: 'var(--amber)', background: 'var(--amber-soft)' }}>
           <p style={{ marginTop: 0 }}>{emailWarning}</p>
@@ -134,10 +195,10 @@ export default function StepFinish({ advice, patchAdvice, goBack, saving }) {
         </button>
         {!alreadyCompleted && (
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn secondary" onClick={() => complete('new')} disabled={!!completing || saving || !to}>
+            <button className="btn secondary" onClick={() => complete('new')} disabled={!!completing || saving || !to || !grnVerified}>
               {completing === 'new' ? 'Completing...' : 'Complete Inbound + New'}
             </button>
-            <button className="btn" onClick={() => complete('dashboard')} disabled={!!completing || saving || !to}>
+            <button className="btn" onClick={() => complete('dashboard')} disabled={!!completing || saving || !to || !grnVerified}>
               {completing === 'dashboard' ? 'Completing...' : 'Complete Inbound + Return to Dashboard'}
             </button>
           </div>

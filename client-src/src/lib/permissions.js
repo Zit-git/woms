@@ -7,6 +7,7 @@ const ROUTE_MODULES = [
   ['/transporters', 'Warehouse Management'],
   ['/inbound', 'Inbound Operations'],
   ['/print/inbound', 'Inbound Operations'],
+  ['/print/grn', 'Inbound Operations'],
   ['/print/putaway', 'Inbound Operations'],
   ['/storage', 'Cargo & Storage Management'],
   ['/cargo', 'Cargo & Storage Management'],

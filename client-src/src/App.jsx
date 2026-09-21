@@ -80,6 +80,16 @@ function Gate() {
         }
       />
       <Route
+        path="/print/grn/:adviceId"
+        element={
+          <Guarded module="Inbound Operations">
+            <Suspense fallback={<PageLoading />}>
+              <InboundPrint />
+            </Suspense>
+          </Guarded>
+        }
+      />
+      <Route
         path="/print/outbound/:requestId"
         element={
           <Guarded module="Outbound Operations">
