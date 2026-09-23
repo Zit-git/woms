@@ -76,15 +76,14 @@ export function signOut(redirectUrl) {
     // the app treats this browser as signed out
   }
 
+  // Immediate, not delayed: a short delay let auth.signOut()'s own request
+  // actually commit to navigating to Zoho's accounts-domain logout page
+  // instead of being cancelled, turning sign-out into a real multi-second
+  // cross-domain redirect chain. This app's own session check only cares
+  // about the local wipe above, so there is nothing to wait for here --
+  // and the previous "wait for it" attempt broke sign-out outright anyway.
   const separator = redirectUrl.includes('?') ? '&' : '?';
-  // A short delay (not the same tick) gives auth.signOut()'s own request to
-  // Zoho's accounts-domain logout endpoint a chance to actually leave the
-  // browser before this navigation cancels it (net::ERR_ABORTED otherwise) --
-  // small enough not to feel slow, and it does not depend on that request
-  // ever resolving, so it can't hang sign-out the way awaiting it did.
-  setTimeout(() => {
-    window.location.href = `${redirectUrl}${separator}loggedout=${Date.now()}`;
-  }, 250);
+  window.location.href = `${redirectUrl}${separator}loggedout=${Date.now()}`;
 }
 
 export function table(tableName) {
