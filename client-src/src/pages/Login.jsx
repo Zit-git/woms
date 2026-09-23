@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
-import { embedSignIn } from '../lib/catalystClient';
+import { embedSignIn, authRedirectUrl } from '../lib/catalystClient';
 
 export default function Login() {
   useEffect(() => {
-    embedSignIn('catalyst-signin', window.location.origin + import.meta.env.BASE_URL + 'index.html');
+    embedSignIn('catalyst-signin', authRedirectUrl());
   }, []);
 
   return (

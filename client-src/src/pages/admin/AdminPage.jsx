@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { listAppUsers, listRolePermissions, inviteUser, listWarehouses } from '../../lib/api';
+import { authRedirectUrl } from '../../lib/catalystClient';
 import AuditTrail from '../../components/AuditTrail';
 
 const MODULE_ORDER = [
@@ -57,7 +58,7 @@ export default function AdminPage() {
     e.preventDefault();
     setInviting(true);
     setInviteResult(null);
-    const redirectUrl = window.location.origin + import.meta.env.BASE_URL + 'index.html';
+    const redirectUrl = authRedirectUrl();
     const warehouseId = form.businessRole === 'System Administrator' ? undefined : form.warehouseId;
     inviteUser(form.firstName, form.lastName, form.email, form.businessRole, redirectUrl, warehouseId)
       .then((res) => {

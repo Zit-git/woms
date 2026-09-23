@@ -2,7 +2,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { moduleForPath } from '../lib/permissions';
 import { useAuth } from '../context/AuthContext';
-import { signOut } from '../lib/catalystClient';
+import { signOut, authRedirectUrl } from '../lib/catalystClient';
 import {
   IconGrid,
   IconUsers,
@@ -81,7 +81,7 @@ export default function AppShell() {
 
   const handleSignOut = () => {
     clearSession(); // instant UI feedback, regardless of SDK behavior below
-    signOut(window.location.origin + import.meta.env.BASE_URL + 'index.html');
+    signOut(authRedirectUrl());
   };
 
   const nav = (

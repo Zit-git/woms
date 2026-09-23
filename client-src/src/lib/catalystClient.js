@@ -15,6 +15,18 @@ export function getCurrentUser() {
     .catch(() => null);
 }
 
+// Catalyst's own docs are explicit that Slate (root-served) auth redirects
+// must be the bare origin with no filename -- "https://app.onslate.com/",
+// not ".../index.html". The legacy Web Client build is served under /app/
+// and the same docs want the explicit "/app/index.html" there. Getting this
+// wrong (e.g. appending index.html on Slate) is enough to make Zoho's
+// accounts service fall back to broken internal defaults instead of
+// honoring the URL passed in.
+const IS_LEGACY_WEBCLIENT = import.meta.env.BASE_URL === '/app/';
+export function authRedirectUrl() {
+  return window.location.origin + (IS_LEGACY_WEBCLIENT ? `${import.meta.env.BASE_URL}index.html` : '/');
+}
+
 export function embedSignIn(elementId, serviceUrl) {
   sdk().auth.signIn(elementId, { service_url: serviceUrl });
 }
