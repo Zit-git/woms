@@ -62,14 +62,16 @@ function wipeAllCookies() {
 }
 
 export function signOut(redirectUrl) {
-  // The wipe runs first and synchronously -- this is what actually makes
-  // the app treat the browser as signed out (Catalyst's own session check
-  // fails once this local state is gone), regardless of what Zoho's
-  // accounts-domain SSO session is doing server-side. An earlier version
-  // delayed this until after awaiting auth.signOut()'s own logout request,
-  // which broke sign-out outright (the delayed wipe apparently never got to
-  // run before the page navigated away) -- so this order is deliberate, not
-  // an oversight.
+  // The local wipe still runs first and synchronously -- cheap, harmless,
+  // and immediately clears anything client-readable regardless of auth
+  // type. What comes after differs from earlier versions of this function:
+  // those were tuned for Embedded Authentication, where the wipe above was
+  // *enough* on its own to make this app treat the browser as signed out,
+  // so redirecting immediately (never waiting on auth.signOut() itself) was
+  // correct there. Under Hosted Authentication the session lives entirely
+  // server-side -- there is no equivalent local fallback -- so the actual
+  // sdk().auth.signOut(redirectUrl) call completing is what matters, and it
+  // is documented to handle its own navigation to redirectUrl once done.
   try {
     wipeAllCookies();
   } catch {
@@ -81,21 +83,25 @@ export function signOut(redirectUrl) {
   } catch {
     // ignore
   }
+
+  const separator = redirectUrl.includes('?') ? '&' : '?';
+  const fallbackRedirect = () => {
+    window.location.href = `${redirectUrl}${separator}loggedout=${Date.now()}`;
+  };
+
   try {
     sdk().auth.signOut(redirectUrl);
   } catch {
-    // ignore -- the wipe above + redirect below is what actually guarantees
-    // the app treats this browser as signed out
+    // The SDK call itself failed to even start (e.g. not loaded yet) --
+    // nothing to wait for, redirect now.
+    fallbackRedirect();
+    return;
   }
 
-  // Immediate, not delayed: a short delay let auth.signOut()'s own request
-  // actually commit to navigating to Zoho's accounts-domain logout page
-  // instead of being cancelled, turning sign-out into a real multi-second
-  // cross-domain redirect chain. This app's own session check only cares
-  // about the local wipe above, so there is nothing to wait for here --
-  // and the previous "wait for it" attempt broke sign-out outright anyway.
-  const separator = redirectUrl.includes('?') ? '&' : '?';
-  window.location.href = `${redirectUrl}${separator}loggedout=${Date.now()}`;
+  // Give the SDK's own redirect a few seconds to happen; if the page is
+  // still here after that, something went wrong server-side and the user
+  // must not be stranded on the current page -- force it manually.
+  setTimeout(fallbackRedirect, 3000);
 }
 
 export function table(tableName) {
