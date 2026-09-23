@@ -50,32 +50,43 @@ function wipeAllCookies() {
 }
 
 export function signOut(redirectUrl) {
-  // Every previous approach here (forcing auth.signOut()'s own redirect,
-  // then switching to auth.signOutUrl()'s computed accounts-domain logout
-  // URL) still left the SSO session alive, for reasons that stayed
-  // unresolved after real investigation into the SDK's source. Rather than
-  // keep guessing at Zoho's session internals, this wipes everything
-  // client-side can reach and forces a hard navigation -- deterministic
-  // regardless of what's actually causing the SDK-level behavior.
-  try {
-    wipeAllCookies();
-  } catch {
-    // best-effort; still proceed to storage clear + redirect below
-  }
-  try {
-    localStorage.clear();
-    sessionStorage.clear();
-  } catch {
-    // ignore
-  }
-  try {
-    sdk().auth.signOut(redirectUrl);
-  } catch {
-    // ignore -- the wipe + redirect below is what actually guarantees sign-out
-  }
+  const hardRedirect = () => {
+    const separator = redirectUrl.includes('?') ? '&' : '?';
+    window.location.href = `${redirectUrl}${separator}loggedout=${Date.now()}`;
+  };
 
-  const separator = redirectUrl.includes('?') ? '&' : '?';
-  window.location.href = `${redirectUrl}${separator}loggedout=${Date.now()}`;
+  // auth.signOut() makes its own network call to Zoho's accounts-domain
+  // logout endpoint to clear the server-side SSO session. The previous
+  // version fired it and immediately navigated away in the same tick,
+  // which *aborts that request mid-flight* (visible in the network panel
+  // as net::ERR_ABORTED) -- the SSO session was never actually cleared, not
+  // because of some unresolved SDK quirk. Waiting for it (with a timeout,
+  // since these SDK auth calls have hung in other places in this app)
+  // lets it actually finish before the redirect cancels anything.
+  let signedOut;
+  try {
+    signedOut = Promise.resolve(sdk().auth.signOut(redirectUrl));
+  } catch {
+    signedOut = Promise.resolve();
+  }
+  const deadline = new Promise((resolve) => setTimeout(resolve, 4000));
+
+  Promise.race([signedOut.catch(() => null), deadline]).finally(() => {
+    // Client-side wipe still runs regardless -- best-effort belt-and-braces
+    // for anything auth.signOut() doesn't reach (matches prior behavior).
+    try {
+      wipeAllCookies();
+    } catch {
+      // ignore
+    }
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
+    hardRedirect();
+  });
 }
 
 export function table(tableName) {

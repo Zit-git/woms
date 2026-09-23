@@ -32,7 +32,15 @@ export function AuthProvider({ children }) {
             setAllowedModules(new Set(perms.filter((p) => p.role === row.business_role).map((p) => p.module)));
           }
         })
-        .catch(() => null)
+        .catch(() => {
+          // A *failed* lookup (network error, a half-cleared session right
+          // after sign-out, ...) is not the same thing as "this account
+          // genuinely has no role" -- treating them the same showed a
+          // confusing "no role" screen to people whose session had simply
+          // gone stale. Fall back to signed-out instead: safe (still fails
+          // closed) and correct (Login is the honest state here).
+          if (!cancelled) setUser(null);
+        })
         .finally(() => {
           if (!cancelled) setLoading(false);
         });
