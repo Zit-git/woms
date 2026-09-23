@@ -50,43 +50,41 @@ function wipeAllCookies() {
 }
 
 export function signOut(redirectUrl) {
-  const hardRedirect = () => {
-    const separator = redirectUrl.includes('?') ? '&' : '?';
-    window.location.href = `${redirectUrl}${separator}loggedout=${Date.now()}`;
-  };
-
-  // auth.signOut() makes its own network call to Zoho's accounts-domain
-  // logout endpoint to clear the server-side SSO session. The previous
-  // version fired it and immediately navigated away in the same tick,
-  // which *aborts that request mid-flight* (visible in the network panel
-  // as net::ERR_ABORTED) -- the SSO session was never actually cleared, not
-  // because of some unresolved SDK quirk. Waiting for it (with a timeout,
-  // since these SDK auth calls have hung in other places in this app)
-  // lets it actually finish before the redirect cancels anything.
-  let signedOut;
+  // The wipe runs first and synchronously -- this is what actually makes
+  // the app treat the browser as signed out (Catalyst's own session check
+  // fails once this local state is gone), regardless of what Zoho's
+  // accounts-domain SSO session is doing server-side. An earlier version
+  // delayed this until after awaiting auth.signOut()'s own logout request,
+  // which broke sign-out outright (the delayed wipe apparently never got to
+  // run before the page navigated away) -- so this order is deliberate, not
+  // an oversight.
   try {
-    signedOut = Promise.resolve(sdk().auth.signOut(redirectUrl));
+    wipeAllCookies();
   } catch {
-    signedOut = Promise.resolve();
+    // best-effort; still proceed to storage clear + redirect below
   }
-  const deadline = new Promise((resolve) => setTimeout(resolve, 4000));
+  try {
+    localStorage.clear();
+    sessionStorage.clear();
+  } catch {
+    // ignore
+  }
+  try {
+    sdk().auth.signOut(redirectUrl);
+  } catch {
+    // ignore -- the wipe above + redirect below is what actually guarantees
+    // the app treats this browser as signed out
+  }
 
-  Promise.race([signedOut.catch(() => null), deadline]).finally(() => {
-    // Client-side wipe still runs regardless -- best-effort belt-and-braces
-    // for anything auth.signOut() doesn't reach (matches prior behavior).
-    try {
-      wipeAllCookies();
-    } catch {
-      // ignore
-    }
-    try {
-      localStorage.clear();
-      sessionStorage.clear();
-    } catch {
-      // ignore
-    }
-    hardRedirect();
-  });
+  const separator = redirectUrl.includes('?') ? '&' : '?';
+  // A short delay (not the same tick) gives auth.signOut()'s own request to
+  // Zoho's accounts-domain logout endpoint a chance to actually leave the
+  // browser before this navigation cancels it (net::ERR_ABORTED otherwise) --
+  // small enough not to feel slow, and it does not depend on that request
+  // ever resolving, so it can't hang sign-out the way awaiting it did.
+  setTimeout(() => {
+    window.location.href = `${redirectUrl}${separator}loggedout=${Date.now()}`;
+  }, 250);
 }
 
 export function table(tableName) {
