@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AppShell from './layout/AppShell';
 import Login from './pages/Login';
+import ChunkErrorBoundary from './components/ChunkErrorBoundary';
 
 const DashboardHome = lazy(() => import('./pages/DashboardHome'));
 const CustomerList = lazy(() => import('./pages/customers/CustomerList'));
@@ -68,6 +69,7 @@ function Gate() {
   }
 
   return (
+    <ChunkErrorBoundary>
     <Routes>
       <Route
         path="/print/inbound/:adviceId"
@@ -131,6 +133,7 @@ function Gate() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
+    </ChunkErrorBoundary>
   );
 }
 

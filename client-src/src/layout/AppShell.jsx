@@ -1,6 +1,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { moduleForPath } from '../lib/permissions';
+import ChunkErrorBoundary from '../components/ChunkErrorBoundary';
 import { useAuth } from '../context/AuthContext';
 import { signOut, authRedirectUrl } from '../lib/catalystClient';
 import {
@@ -151,9 +152,11 @@ export default function AppShell() {
 
       <main className="main-content">
         {pageAllowed ? (
-          <Suspense fallback={null}>
-            <Outlet />
-          </Suspense>
+          <ChunkErrorBoundary>
+            <Suspense fallback={null}>
+              <Outlet />
+            </Suspense>
+          </ChunkErrorBoundary>
         ) : (
           <div className="card" style={{ maxWidth: 520 }}>
             <h2>No access</h2>
