@@ -21,13 +21,15 @@ export function AuthProvider({ children }) {
         setLoading(false);
         return;
       }
-      getAppUserByEmail(currentUser.email_id)
-        .then(async (row) => {
+      // Fetched together rather than one after the other: listRolePermissions
+      // doesn't depend on the AppUsers lookup, and chaining them cost an extra
+      // full network round trip on every page load.
+      Promise.all([getAppUserByEmail(currentUser.email_id), listRolePermissions()])
+        .then(([row, perms]) => {
           if (cancelled) return;
           setAppUser(row);
           if (row?.business_role) {
-            const perms = await listRolePermissions();
-            if (!cancelled) setAllowedModules(new Set(perms.filter((p) => p.role === row.business_role).map((p) => p.module)));
+            setAllowedModules(new Set(perms.filter((p) => p.role === row.business_role).map((p) => p.module)));
           }
         })
         .catch(() => null)
