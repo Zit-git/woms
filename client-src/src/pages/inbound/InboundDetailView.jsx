@@ -111,6 +111,13 @@ export default function InboundDetailView({ advice, cargoRows, customers, transp
         {advice.adr_status && <div className="muted small">ADR (Dangerous Goods): {advice.adr_status}</div>}
       </div>
 
+      {advice.status === 'Rejected' && advice.rejection_reason && (
+        <div className="check-block" style={{ marginTop: 16, borderColor: 'var(--danger)' }}>
+          <div className="check-block-title">Rejection Reason</div>
+          <div>{advice.rejection_reason}</div>
+        </div>
+      )}
+
       <DocumentsSummary linkedModules={['Inbound Operations', 'Inbound Operations Photos']} recordId={advice.ROWID} />
       <RecordTasks moduleRef="Inbound Operations" recordRefId={advice.ROWID} />
       <AuditTrail modules={['Inbound Operations', 'Inbound Operations Photos']} recordId={advice.ROWID} />

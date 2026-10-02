@@ -6,8 +6,9 @@ import { computeInboundSummary } from '../../../lib/inboundSummary';
 import RecordTasks from '../../../components/RecordTasks';
 import AuditTrail from '../../../components/AuditTrail';
 
-// Stage 4 (Ready): final review before generating the GRN and QR labels --
-// unchanged logic from the old wizard's Check step, just inside a popup.
+// Stage: final review before generating the GRN -- QR labels are already
+// stamped one stage earlier (CreateHUPopup); the fallback call here only
+// catches a row that somehow still lacks one.
 export default function CheckPopup({ advice, cargoRows, transporters, suppliers, patchAdvice, onClose }) {
   const [completing, setCompleting] = useState(false);
   const { user } = useAuth();

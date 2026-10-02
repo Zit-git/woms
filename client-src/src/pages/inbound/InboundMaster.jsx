@@ -6,6 +6,7 @@ import InboundSidebar from './InboundSidebar';
 import RequestPopup from './popups/RequestPopup';
 import ConfirmPopup from './popups/ConfirmPopup';
 import ReceivePopup from './popups/ReceivePopup';
+import CreateHUPopup from './popups/CreateHUPopup';
 import CheckPopup from './popups/CheckPopup';
 import FinishPopup from './popups/FinishPopup';
 import { computeInboundSummary } from '../../lib/inboundSummary';
@@ -80,16 +81,29 @@ export default function InboundMaster() {
   if (advice.status === 'Requested' && isApprover) {
     action = isRequestIncomplete(advice, cargoRows)
       ? { label: 'Continue Request →', popup: 'request' }
-      : { label: 'Confirm Request →', popup: 'confirm' };
+      : { label: 'Availability Check →', popup: 'confirm' };
   } else if (advice.status === 'Confirmed' && isApprover) {
     action = { label: 'Mark as Received →', popup: 'receive' };
   } else if (advice.status === 'Received') {
+    action = { label: 'Create Handling Units →', popup: 'createhu' };
+  } else if (advice.status === 'HU Created') {
     action = { label: 'Complete Inbound →', popup: 'check' };
   } else if (advice.status === 'Ready') {
     action = { label: 'Finish →', popup: 'finish' };
   } else if (advice.status === 'Completed' && isAdmin) {
     action = { label: 'Edit', popup: 'request' };
+  } else if (advice.status === 'Rejected' && isAdmin) {
+    action = { label: 'Reopen Request', popup: 'request', resetStatus: 'Requested' };
   }
+
+  const openAction = () => {
+    if (!action) return;
+    if (action.resetStatus) {
+      patchAdvice({ status: action.resetStatus }).then(() => setActivePopup(action.popup));
+    } else {
+      setActivePopup(action.popup);
+    }
+  };
 
   const popupProps = {
     advice,
@@ -130,7 +144,7 @@ export default function InboundMaster() {
             transporters={transporters}
             suppliers={suppliers}
             editLabel={action?.label || 'View'}
-            onEdit={action ? () => setActivePopup(action.popup) : undefined}
+            onEdit={action ? openAction : undefined}
           />
         </div>
 
@@ -140,6 +154,7 @@ export default function InboundMaster() {
       {activePopup === 'request' && <RequestPopup {...popupProps} />}
       {activePopup === 'confirm' && <ConfirmPopup {...popupProps} />}
       {activePopup === 'receive' && <ReceivePopup {...popupProps} />}
+      {activePopup === 'createhu' && <CreateHUPopup {...popupProps} />}
       {activePopup === 'check' && <CheckPopup {...popupProps} />}
       {activePopup === 'finish' && <FinishPopup {...popupProps} />}
     </div>

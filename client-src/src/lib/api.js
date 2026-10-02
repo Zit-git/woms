@@ -300,6 +300,7 @@ const INBOUND_ADVICE_FIELDS = [
   'driver_name',
   'adr_status',
   'remarks',
+  'rejection_reason',
 ].map((f) => `InboundAdvice.${f}`);
 
 // Supplier reuses the Customers directory, but ZCQL doesn't support

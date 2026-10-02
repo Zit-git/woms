@@ -26,6 +26,19 @@ const isCommitted = (c) => c.inbound_status === 'Confirmed';
 const isPendingPutaway = (c) =>
   !c.current_location_id && (!c.inbound_status || !['Requested', 'Confirmed'].includes(c.inbound_status));
 
+// How much capacity one inbound's own cargo lines would require, grouped by
+// capacity_unit -- used by the Availability Check (ConfirmPopup) to compare
+// against the warehouse's current Available figures before accepting.
+export function requiredCapacityByUnit(cargoRows, packageTypes) {
+  const packageTypesByName = new Map((packageTypes || []).map((p) => [p.name.trim().toLowerCase(), p]));
+  const byUnit = new Map();
+  (cargoRows || []).forEach((c) => {
+    const unit = unitFor(c.unit, packageTypesByName);
+    byUnit.set(unit, (byUnit.get(unit) || 0) + 1);
+  });
+  return byUnit;
+}
+
 export function computeCapacity({ locations, cargoRows, outboundCommitments, packageTypes, warehouseId }) {
   const packageTypesByName = new Map((packageTypes || []).map((p) => [p.name.trim().toLowerCase(), p]));
   const locs = (locations || []).filter((l) => !warehouseId || String(l.warehouse_id) === String(warehouseId));

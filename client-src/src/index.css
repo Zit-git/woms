@@ -626,6 +626,7 @@ tr.clickable-row:hover td { background: var(--surface-soft); }
 .status-badge.status-received { background: var(--primary-soft); color: var(--primary); }
 .status-badge.status-stored { background: var(--success-soft); color: var(--success); }
 .status-badge.status-sent { background: #f1e9fb; color: #7c3aed; }
+.status-badge.status-rejected { background: #fde2e1; color: var(--danger); }
 
 .filter-bar {
   display: flex;

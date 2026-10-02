@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 const STATUS_CLASS = {
   Requested: 'status-requested',
   Confirmed: 'status-confirmed',
+  Rejected: 'status-rejected',
   Received: 'status-received',
+  'HU Created': 'status-confirmed',
   Ready: 'status-ready',
   Completed: 'status-completed',
 };
@@ -69,7 +71,7 @@ export default function InboundSidebar({ advice, summary, adviceId, saving }) {
       <div className="card">
         <h3>Quick Actions</h3>
         <div className="form-actions" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-          {(advice.status === 'Received' || advice.status === 'Ready' || advice.status === 'Completed') && (
+          {(advice.status === 'HU Created' || advice.status === 'Ready' || advice.status === 'Completed') && (
             <a
               className="btn secondary"
               href={`${import.meta.env.BASE_URL}print/putaway/${adviceId}`}
