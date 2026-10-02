@@ -28,6 +28,18 @@ export function unitsPerItemFor(cargoUnit, packageTypesByName) {
   return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
+// Real volume in m3, derived straight from L x W x H (cm) -- 0 if any
+// dimension is missing, so callers can skip undimensioned rows rather than
+// guessing. This is independent of the capacity_unit/units_per_item system:
+// it reflects actual recorded dimensions, not a manually-picked count.
+export function volumeM3(row) {
+  const l = Number(row?.length_cm);
+  const w = Number(row?.width_cm);
+  const h = Number(row?.height_cm);
+  if (!l || !w || !h) return 0;
+  return (l * w * h) / 1_000_000;
+}
+
 // Cargo whose parent inbound has been accepted but not yet physically
 // received -- capacity reserved against an arrival that hasn't happened yet.
 const isCommitted = (c) => c.inbound_status === 'Confirmed';
@@ -90,6 +102,32 @@ export function computeCapacity({ locations, cargoRows, outboundCommitments, pac
     entry.available = entry.total - entry.occupied - entry.committed;
   });
 
+  // Weight and Space are tracked independently of the capacity_unit/
+  // units_per_item system -- real numbers (kg, m3) derived straight from
+  // max_weight_kg and L x W x H, not a manually-picked count. Only
+  // locations that actually have the relevant figure set contribute (a
+  // location with no max_weight_kg recorded isn't part of the weight
+  // budget; one is in the m3 scope only once all three dims are set).
+  const weightLocationIds = new Set(locs.filter((l) => l.max_weight_kg !== null && l.max_weight_kg !== undefined && l.max_weight_kg !== '').map((l) => String(l.ROWID)));
+  const spaceLocationIds = new Set(locs.filter((l) => volumeM3(l) > 0).map((l) => String(l.ROWID)));
+
+  const weightTotal = locs.reduce((sum, l) => sum + (weightLocationIds.has(String(l.ROWID)) ? Number(l.max_weight_kg) || 0 : 0), 0);
+  const spaceTotal = locs.reduce((sum, l) => sum + volumeM3(l), 0);
+
+  const occupiedCargo = cargo.filter((c) => c.current_location_id);
+  const weightOccupied = occupiedCargo
+    .filter((c) => weightLocationIds.has(String(c.current_location_id)))
+    .reduce((sum, c) => sum + (Number(c.weight) || 0), 0);
+  const spaceOccupied = occupiedCargo
+    .filter((c) => spaceLocationIds.has(String(c.current_location_id)))
+    .reduce((sum, c) => sum + volumeM3(c), 0);
+
+  const weightCommitted = committedCargo.reduce((sum, c) => sum + (Number(c.weight) || 0), 0);
+  const spaceCommitted = committedCargo.reduce((sum, c) => sum + volumeM3(c), 0);
+
+  const weight = { total: weightTotal, occupied: weightOccupied, committed: weightCommitted, available: weightTotal - weightOccupied - weightCommitted };
+  const space = { total: spaceTotal, occupied: spaceOccupied, committed: spaceCommitted, available: spaceTotal - spaceOccupied - spaceCommitted };
+
   const pendingPutaway = cargo.filter(isPendingPutaway).length;
 
   const expectedReleaseByUnit = new Map();
@@ -102,6 +140,8 @@ export function computeCapacity({ locations, cargoRows, outboundCommitments, pac
     byCapacityUnit: [...byUnit.values()].sort((a, b) => a.capacityUnit.localeCompare(b.capacityUnit)),
     pendingPutaway,
     expectedReleaseByUnit,
+    weight,
+    space,
     totals: [...byUnit.values()].reduce(
       (acc, e) => ({
         total: acc.total + e.total,
@@ -112,6 +152,16 @@ export function computeCapacity({ locations, cargoRows, outboundCommitments, pac
       { total: 0, occupied: 0, committed: 0, available: 0 }
     ),
   };
+}
+
+// How much weight (kg) and space (m3) one inbound's own cargo lines would
+// require -- the size/dimensions/weight side of the Availability Check,
+// alongside the existing capacity_unit comparison.
+export function requiredWeightAndSpace(cargoRows) {
+  return (cargoRows || []).reduce(
+    (acc, c) => ({ weight: acc.weight + (Number(c.weight) || 0), spaceM3: acc.spaceM3 + volumeM3(c) }),
+    { weight: 0, spaceM3: 0 }
+  );
 }
 
 // Projected availability per capacity_unit for a list of dates (YYYY-MM-DD),

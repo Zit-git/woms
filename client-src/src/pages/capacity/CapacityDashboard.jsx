@@ -79,7 +79,8 @@ export default function CapacityDashboard() {
         <div>
           <h2>Capacity Dashboard</h2>
           <p className="muted small" style={{ marginTop: -8 }}>
-            Totals and row counts are exact; per-unit amounts depend on matching each item against Package Types (see note below).
+            Capacity-unit totals and row counts are exact; per-unit amounts depend on matching each item against Package Types. Weight
+            and Space are computed straight from real weights/dimensions instead, but only count locations that have that data set.
           </p>
         </div>
         <div className="form-row" style={{ maxWidth: 260, marginBottom: 0 }}>
@@ -127,6 +128,16 @@ export default function CapacityDashboard() {
               <div className="kpi-value">{overallSnapshot.totals.available}</div>
               <p className="muted small">total − occupied − committed</p>
             </div>
+            <div className="card kpi-card">
+              <h3>Weight Available</h3>
+              <div className="kpi-value">{overallSnapshot.weight.available.toFixed(0)} kg</div>
+              <p className="muted small">of {overallSnapshot.weight.total.toFixed(0)} kg budgeted</p>
+            </div>
+            <div className="card kpi-card">
+              <h3>Space Available</h3>
+              <div className="kpi-value">{overallSnapshot.space.available.toFixed(1)} m³</div>
+              <p className="muted small">of {overallSnapshot.space.total.toFixed(1)} m³ dimensioned</p>
+            </div>
           </div>
 
           <h3>By Warehouse</h3>
@@ -141,6 +152,8 @@ export default function CapacityDashboard() {
                   <th>Pending Put-away</th>
                   <th>Committed (est.)</th>
                   <th>Available</th>
+                  <th>Weight Avail. (kg)</th>
+                  <th>Space Avail. (m³)</th>
                   <th></th>
                 </tr>
               </thead>
@@ -154,6 +167,8 @@ export default function CapacityDashboard() {
                     <td>{s.pendingPutaway}</td>
                     <td>{s.totals.committed}</td>
                     <td>{s.totals.available}</td>
+                    <td>{s.weight.available.toFixed(0)}</td>
+                    <td>{s.space.available.toFixed(1)}</td>
                     <td>
                       <span className="link-btn">{String(w.ROWID) === String(warehouseId) ? 'Viewing ↓' : 'View detail'}</span>
                     </td>
@@ -161,7 +176,7 @@ export default function CapacityDashboard() {
                 ))}
                 {perWarehouse.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="muted">
+                    <td colSpan={10} className="muted">
                       No warehouses configured yet.
                     </td>
                   </tr>
@@ -196,6 +211,16 @@ export default function CapacityDashboard() {
               <h3>Available</h3>
               <div className="kpi-value">{snapshot.totals.available}</div>
               <p className="muted small">total − occupied − committed</p>
+            </div>
+            <div className="card kpi-card">
+              <h3>Weight Available</h3>
+              <div className="kpi-value">{snapshot.weight.available.toFixed(0)} kg</div>
+              <p className="muted small">of {snapshot.weight.total.toFixed(0)} kg budgeted</p>
+            </div>
+            <div className="card kpi-card">
+              <h3>Space Available</h3>
+              <div className="kpi-value">{snapshot.space.available.toFixed(1)} m³</div>
+              <p className="muted small">of {snapshot.space.total.toFixed(1)} m³ dimensioned</p>
             </div>
           </div>
 

@@ -221,7 +221,7 @@ export const listCapacityLocations = () =>
 // but not yet physically received) -- see computeCapacity in lib/capacity.js.
 export const listCapacityCargo = () =>
   zcql(
-    `SELECT Cargo.ROWID, Cargo.current_location_id, Cargo.reserved_location_id, Cargo.status, Cargo.unit, Cargo.weight, Cargo.length_cm, Cargo.width_cm, Cargo.height_cm, Cargo.warehouse_id, Cargo.inbound_advice_id, InboundAdvice.status, InboundAdvice.expected_date, InboundAdvice.storage_start_date, InboundAdvice.storage_end_date FROM Cargo LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID WHERE ${goneSql('Cargo')}`
+    `SELECT Cargo.ROWID, Cargo.current_location_id, Cargo.reserved_location_id, Cargo.status, Cargo.unit, Cargo.weight, Cargo.length_cm, Cargo.width_cm, Cargo.height_cm, Cargo.warehouse_id, Cargo.inbound_advice_id, Cargo.customer_id, InboundAdvice.status, InboundAdvice.expected_date, InboundAdvice.storage_start_date, InboundAdvice.storage_end_date FROM Cargo LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID WHERE ${goneSql('Cargo')}`
   ).then((rows) =>
     rows.map((r) => ({
       ROWID: r.Cargo.ROWID,
@@ -235,6 +235,7 @@ export const listCapacityCargo = () =>
       height_cm: r.Cargo.height_cm,
       warehouse_id: r.Cargo.warehouse_id,
       inbound_advice_id: r.Cargo.inbound_advice_id,
+      customer_id: r.Cargo.customer_id,
       inbound_status: r.InboundAdvice?.status,
       inbound_expected_date: r.InboundAdvice?.expected_date,
       storage_start_date: r.InboundAdvice?.storage_start_date,

@@ -3,7 +3,7 @@ import Modal from '../../../components/Modal';
 import { logAudit, listCapacityLocations, listCapacityCargo, listCapacityOutboundCommitments, listPackageTypes, editCargo } from '../../../lib/api';
 import { useAuth } from '../../../context/AuthContext';
 import { computeInboundSummary } from '../../../lib/inboundSummary';
-import { computeCapacity, requiredCapacityByUnit } from '../../../lib/capacity';
+import { computeCapacity, requiredCapacityByUnit, requiredWeightAndSpace } from '../../../lib/capacity';
 import { allocateLocations } from '../../../lib/allocation';
 
 // Stage 2 (Availability Check & Acceptance): a Warehouse Manager/Supervisor
@@ -55,6 +55,7 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
   );
   const availableByUnit = new Map((capacitySnapshot?.byCapacityUnit || []).map((e) => [e.capacityUnit, e.available]));
   const allUnits = new Set([...required.keys(), ...availableByUnit.keys()]);
+  const requiredWeightSpace = useMemo(() => requiredWeightAndSpace(cargoRows), [cargoRows]);
 
   const allocation = useMemo(() => {
     if (!capacityData || !hasStoragePeriod) return null;
@@ -68,8 +69,9 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
       storageStart: advice.storage_start_date,
       storageEnd: advice.storage_end_date,
       excludeAdviceId: advice.ROWID,
+      customerId: advice.customer_id,
     });
-  }, [capacityData, hasStoragePeriod, cargoRows, advice.warehouse_id, advice.storage_start_date, advice.storage_end_date, advice.ROWID]);
+  }, [capacityData, hasStoragePeriod, cargoRows, advice.warehouse_id, advice.storage_start_date, advice.storage_end_date, advice.ROWID, advice.customer_id]);
 
   const locationCodeById = new Map((capacityData?.locations || []).map((l) => [String(l.ROWID), l.location_code]));
   const cargoById = new Map(cargoRows.map((c) => [String(c.ROWID), c]));
@@ -178,7 +180,53 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
       )}
       <p className="muted small">A shortage is a warning, not a hard block — some capacity types may be approximate (see the Capacity Dashboard).</p>
 
+      {capacitySnapshot && (
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>Required</th>
+              <th>Available</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(() => {
+              const weightShort = requiredWeightSpace.weight > capacitySnapshot.weight.available;
+              const spaceShort = requiredWeightSpace.spaceM3 > capacitySnapshot.space.available;
+              return (
+                <>
+                  <tr>
+                    <td>Weight (kg)</td>
+                    <td>{requiredWeightSpace.weight.toFixed(1)}</td>
+                    <td style={weightShort ? { color: 'var(--danger)', fontWeight: 600 } : undefined}>
+                      {capacitySnapshot.weight.available.toFixed(1)}
+                      {weightShort && ' ⚠ short'}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Space (m³)</td>
+                    <td>{requiredWeightSpace.spaceM3.toFixed(2)}</td>
+                    <td style={spaceShort ? { color: 'var(--danger)', fontWeight: 600 } : undefined}>
+                      {capacitySnapshot.space.available.toFixed(2)}
+                      {spaceShort && ' ⚠ short'}
+                    </td>
+                  </tr>
+                </>
+              );
+            })()}
+          </tbody>
+        </table>
+      )}
+      <p className="muted small">
+        Weight only counts locations with a max weight set; Space only counts locations with full dimensions set — locations missing
+        that data aren't part of either total.
+      </p>
+
       <div className="form-section-title">Location Allocation</div>
+      <p className="muted small" style={{ marginTop: -8 }}>
+        Locations are customer-dedicated — once a location holds this customer's cargo, only this customer can fill the rest of it;
+        locations already committed to a different customer are skipped even if they have room.
+      </p>
       {!hasStoragePeriod ? (
         <p className="muted small">
           Set an expected storage period (From date) on the request to check specific location availability and reserve space.

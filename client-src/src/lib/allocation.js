@@ -7,11 +7,17 @@
 //
 // Deliberately not true 3D bin-packing: a location's declared dimensions are
 // a per-item fit check (does this one item's box fit inside this location's
-// box, in any axis order), and its `capacity` count is how many such items
-// it can simultaneously hold -- the same pragmatic "good enough" modeling
-// `units_per_item` already uses elsewhere in this engine. max_weight_kg is
-// treated as a per-item limit, not a summed total.
-import { unitFor, unitsPerItemFor, UNGROUPED } from './capacity';
+// box, in any axis order) separate from the cumulative weight/volume budgets
+// tracked below, and its `capacity` count is how many such items it can
+// simultaneously hold -- the same pragmatic "good enough" modeling
+// `units_per_item` already uses elsewhere in this engine.
+//
+// Locations are customer-dedicated: once a location holds (or is reserved
+// for) one customer's cargo, it's excluded from allocation for any other
+// customer until completely empty -- matches how contract 3PL warehouses
+// actually run (traceability, pick accuracy, contract terms), not a shared
+// bulk-storage model.
+import { unitFor, unitsPerItemFor, UNGROUPED, volumeM3 } from './capacity';
 
 function fitsDimensions(item, location) {
   const dims = [location.length_cm, location.width_cm, location.height_cm];
@@ -21,13 +27,6 @@ function fitsDimensions(item, location) {
   const locSorted = dims.map(Number).sort((a, b) => a - b);
   const itemSorted = itemDims.sort((a, b) => a - b);
   return itemSorted.every((d, i) => d <= locSorted[i]);
-}
-
-function fitsWeight(item, location) {
-  if (location.max_weight_kg === null || location.max_weight_kg === undefined || location.max_weight_kg === '') return true;
-  const w = Number(item.weight);
-  if (!w) return true;
-  return w <= Number(location.max_weight_kg);
 }
 
 function periodsOverlap(aStart, aEnd, bStart, bEnd) {
@@ -46,49 +45,75 @@ function stillBlocking(cargoRow, requestedDateByCargoId, storageStart) {
   return !(storageStart && scheduled <= storageStart);
 }
 
-export function allocateLocations({ cargoRows, locations, allCargo, outboundCommitments, storageStart, storageEnd, excludeAdviceId, packageTypes }) {
+// Whether a cargo row counts as currently consuming its location/reservation
+// for the purposes of this allocation run (same inclusion rule used for all
+// three tracked resources: units, weight, volume, and customer ownership).
+function occupiesForThisWindow(c, requestedDateByCargoId, storageStart, storageEnd, excludeAdviceId) {
+  if (c.current_location_id) return stillBlocking(c, requestedDateByCargoId, storageStart) ? c.current_location_id : null;
+  if (
+    c.reserved_location_id &&
+    String(c.inbound_advice_id) !== String(excludeAdviceId) &&
+    periodsOverlap(storageStart, storageEnd, c.storage_start_date, c.storage_end_date)
+  ) {
+    return c.reserved_location_id;
+  }
+  return null;
+}
+
+export function allocateLocations({ cargoRows, locations, allCargo, outboundCommitments, storageStart, storageEnd, excludeAdviceId, customerId, packageTypes }) {
   const packageTypesByName = new Map((packageTypes || []).map((p) => [p.name.trim().toLowerCase(), p]));
   const requestedDateByCargoId = new Map(
     (outboundCommitments || []).filter((r) => r.requested_date).map((r) => [String(r.cargo_id), r.requested_date])
   );
 
-  // Free capacity per location right now, for the requested period -- starts
-  // from each location's total capacity and subtracts whatever already
-  // consumes it during that window.
-  const freeByLocation = new Map((locations || []).map((l) => [String(l.ROWID), Number(l.capacity) || 0]));
+  // Free units/weight/volume per location for the requested period, plus
+  // which customer (if any) already occupies it -- starts from each
+  // location's totals and subtracts whatever already consumes them.
+  const freeUnitsByLocation = new Map((locations || []).map((l) => [String(l.ROWID), Number(l.capacity) || 0]));
+  const freeWeightByLocation = new Map((locations || []).map((l) => [String(l.ROWID), l.max_weight_kg == null || l.max_weight_kg === '' ? null : Number(l.max_weight_kg)]));
+  const freeVolumeByLocation = new Map((locations || []).map((l) => [String(l.ROWID), volumeM3(l) || null]));
+  const customerByLocation = new Map();
 
   (allCargo || []).forEach((c) => {
+    const locId = occupiesForThisWindow(c, requestedDateByCargoId, storageStart, storageEnd, excludeAdviceId);
+    if (!locId) return;
+    const key = String(locId);
     const units = unitsPerItemFor(c.unit, packageTypesByName);
-    if (c.current_location_id && stillBlocking(c, requestedDateByCargoId, storageStart)) {
-      const key = String(c.current_location_id);
-      if (freeByLocation.has(key)) freeByLocation.set(key, freeByLocation.get(key) - units);
-    } else if (
-      c.reserved_location_id &&
-      !c.current_location_id &&
-      String(c.inbound_advice_id) !== String(excludeAdviceId) &&
-      periodsOverlap(storageStart, storageEnd, c.storage_start_date, c.storage_end_date)
-    ) {
-      const key = String(c.reserved_location_id);
-      if (freeByLocation.has(key)) freeByLocation.set(key, freeByLocation.get(key) - units);
-    }
+    if (freeUnitsByLocation.has(key)) freeUnitsByLocation.set(key, freeUnitsByLocation.get(key) - units);
+    if (freeWeightByLocation.get(key) != null) freeWeightByLocation.set(key, freeWeightByLocation.get(key) - (Number(c.weight) || 0));
+    if (freeVolumeByLocation.get(key) != null) freeVolumeByLocation.set(key, freeVolumeByLocation.get(key) - volumeM3(c));
+    if (c.customer_id && !customerByLocation.has(key)) customerByLocation.set(key, String(c.customer_id));
   });
 
-  const locationsById = new Map((locations || []).map((l) => [String(l.ROWID), l]));
   const results = [];
 
   (cargoRows || []).forEach((item) => {
     const itemUnits = unitsPerItemFor(item.unit, packageTypesByName);
+    const itemVolume = volumeM3(item);
+    const itemWeight = Number(item.weight) || 0;
     const itemCapacityUnit = unitFor(item.unit, packageTypesByName);
+
     const candidate = (locations || []).find((l) => {
+      const key = String(l.ROWID);
       if (l.occupancy_status === 'Blocked') return false;
       if ((l.capacity_unit || UNGROUPED) !== itemCapacityUnit) return false;
       if (!fitsDimensions(item, l)) return false;
-      if (!fitsWeight(item, l)) return false;
-      return (freeByLocation.get(String(l.ROWID)) || 0) >= itemUnits;
+      const dedicatedTo = customerByLocation.get(key);
+      if (dedicatedTo && customerId && dedicatedTo !== String(customerId)) return false;
+      if ((freeUnitsByLocation.get(key) || 0) < itemUnits) return false;
+      const freeWeight = freeWeightByLocation.get(key);
+      if (freeWeight != null && freeWeight < itemWeight) return false;
+      const freeVolume = freeVolumeByLocation.get(key);
+      if (freeVolume != null && freeVolume < itemVolume) return false;
+      return true;
     });
 
     if (candidate) {
-      freeByLocation.set(String(candidate.ROWID), freeByLocation.get(String(candidate.ROWID)) - itemUnits);
+      const key = String(candidate.ROWID);
+      freeUnitsByLocation.set(key, freeUnitsByLocation.get(key) - itemUnits);
+      if (freeWeightByLocation.get(key) != null) freeWeightByLocation.set(key, freeWeightByLocation.get(key) - itemWeight);
+      if (freeVolumeByLocation.get(key) != null) freeVolumeByLocation.set(key, freeVolumeByLocation.get(key) - itemVolume);
+      if (customerId && !customerByLocation.has(key)) customerByLocation.set(key, String(customerId));
       results.push({ cargoId: item.ROWID, locationId: candidate.ROWID, locationCode: candidate.location_code });
     } else {
       results.push({ cargoId: item.ROWID, locationId: null, locationCode: null });
