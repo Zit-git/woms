@@ -80,17 +80,34 @@ export function computeCapacity({ locations, cargoRows, outboundCommitments, pac
       consumedUnitsByLocation.set(key, (consumedUnitsByLocation.get(key) || 0) + unitsPerItemFor(c.unit, packageTypesByName));
     });
 
+  // Which customer (if any) already dedicates a location -- lib/allocation.js
+  // enforces that once a location holds (or is reserved for) one customer's
+  // cargo, no other customer's request can use the rest of it, even with
+  // room left. "Unclaimed" below reflects that: a location with headroom but
+  // already dedicated to someone isn't really available to a new customer.
+  const customerByLocation = new Map();
+  cargo.forEach((c) => {
+    const locId = c.current_location_id || c.reserved_location_id;
+    if (locId && c.customer_id && !customerByLocation.has(String(locId))) customerByLocation.set(String(locId), String(c.customer_id));
+  });
+
   const byUnit = new Map();
   const unitEntry = (unit) => {
-    if (!byUnit.has(unit)) byUnit.set(unit, { capacityUnit: unit, total: 0, occupied: 0, committed: 0, available: 0 });
+    if (!byUnit.has(unit)) byUnit.set(unit, { capacityUnit: unit, total: 0, occupied: 0, committed: 0, available: 0, unclaimedTotal: 0, unclaimedAvailable: 0 });
     return byUnit.get(unit);
   };
 
   locs.forEach((l) => {
     const unit = l.capacity_unit || UNGROUPED;
     const entry = unitEntry(unit);
-    entry.total += Number(l.capacity) || 0;
-    entry.occupied += consumedUnitsByLocation.get(String(l.ROWID)) || 0;
+    const cap = Number(l.capacity) || 0;
+    const consumed = consumedUnitsByLocation.get(String(l.ROWID)) || 0;
+    entry.total += cap;
+    entry.occupied += consumed;
+    if (!customerByLocation.has(String(l.ROWID))) {
+      entry.unclaimedTotal += cap;
+      entry.unclaimedAvailable += cap - consumed;
+    }
   });
 
   const committedCargo = cargo.filter(isCommitted);
@@ -148,8 +165,10 @@ export function computeCapacity({ locations, cargoRows, outboundCommitments, pac
         occupied: acc.occupied + e.occupied,
         committed: acc.committed + e.committed,
         available: acc.available + e.available,
+        unclaimedTotal: acc.unclaimedTotal + e.unclaimedTotal,
+        unclaimedAvailable: acc.unclaimedAvailable + e.unclaimedAvailable,
       }),
-      { total: 0, occupied: 0, committed: 0, available: 0 }
+      { total: 0, occupied: 0, committed: 0, available: 0, unclaimedTotal: 0, unclaimedAvailable: 0 }
     ),
   };
 }

@@ -11,7 +11,6 @@ const ROUTE_MODULES = [
   ['/print/putaway', 'Inbound Operations'],
   ['/storage', 'Cargo & Storage Management'],
   ['/cargo', 'Cargo & Storage Management'],
-  ['/capacity', 'Cargo & Storage Management'],
   ['/outbound', 'Outbound Operations'],
   ['/print/outbound', 'Outbound Operations'],
   ['/delivery', 'Outbound Operations'],
