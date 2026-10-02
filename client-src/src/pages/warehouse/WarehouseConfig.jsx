@@ -186,13 +186,14 @@ function addDays(dateStr, n) {
 }
 
 // Capacity (the numbers configured on each Storage Location) is static
-// warehouse setup; Availability (Occupied/Committed/Available/Unclaimed) is
-// the live, constantly-changing picture computed from it -- shown here,
-// overall across every warehouse by default and filterable to one, rather
-// than as a separate top-level page disconnected from the setup it reads.
+// warehouse setup; Availability is the live, time-dependent state computed
+// from it -- "Today" is the real, exact current state; "Date range" projects
+// that same math forward (lib/capacity.js's computeCapacity(asOfDate)), one
+// control switching between the two rather than two disconnected sections.
 function AvailabilityTab() {
   const { items: warehouses } = useList(listWarehouses, []);
   const [warehouseId, setWarehouseId] = useState('');
+  const [viewMode, setViewMode] = useState('today'); // 'today' | 'range'
   const [locations, setLocations] = useState([]);
   const [cargoRows, setCargoRows] = useState([]);
   const [outboundCommitments, setOutboundCommitments] = useState([]);
@@ -215,15 +216,12 @@ function AvailabilityTab() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Today = the real, ground-truth state (no asOfDate -- exactly what's in
+  // the database right now, not a simulation).
   const snapshot = useMemo(
     () => computeCapacity({ locations, cargoRows, outboundCommitments, packageTypes, warehouseId }),
     [locations, cargoRows, outboundCommitments, packageTypes, warehouseId]
   );
-
-  // "Overall" = every warehouse combined (computeCapacity with no warehouseId
-  // filter); "By Warehouse" re-runs the same exact math once per warehouse so
-  // the two views can never drift out of sync with each other or the detail
-  // section below, which filters down to whichever one is selected.
   const overallSnapshot = useMemo(
     () => computeCapacity({ locations, cargoRows, outboundCommitments, packageTypes }),
     [locations, cargoRows, outboundCommitments, packageTypes]
@@ -238,6 +236,7 @@ function AvailabilityTab() {
     [warehouses, locations, cargoRows, outboundCommitments, packageTypes]
   );
 
+  // Date range = the same math, simulated forward one day at a time.
   const dates = useMemo(() => Array.from({ length: Math.max(1, rangeDays) }, (_, i) => addDays(rangeStart, i)), [rangeStart, rangeDays]);
   const projection = useMemo(
     () => projectAvailability({ locations, cargoRows, outboundCommitments, packageTypes, warehouseId, dates }),
@@ -256,23 +255,84 @@ function AvailabilityTab() {
           Capacity-unit totals and row counts are exact; per-unit amounts depend on matching each item against Package Types. Weight
           and Space are computed straight from real weights/dimensions instead, but only count locations that have that data set.
         </p>
-        <div className="form-row" style={{ maxWidth: 260, marginBottom: 0 }}>
-          <label>Filter to warehouse</label>
-          <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
-            <option value="">All warehouses (overall)</option>
-            {warehouses.map((w) => (
-              <option key={w.ROWID} value={w.ROWID}>
-                {w.name}
-              </option>
-            ))}
-          </select>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div className="form-row" style={{ marginBottom: 0 }}>
+            <label>View</label>
+            <select value={viewMode} onChange={(e) => setViewMode(e.target.value)}>
+              <option value="today">Today</option>
+              <option value="range">Date range</option>
+            </select>
+          </div>
+          <div className="form-row" style={{ maxWidth: 260, marginBottom: 0 }}>
+            <label>Filter to warehouse</label>
+            <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
+              <option value="">All warehouses (overall)</option>
+              {warehouses.map((w) => (
+                <option key={w.ROWID} value={w.ROWID}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
+
+      {viewMode === 'range' && (
+        <div className="toolbar" style={{ marginBottom: 12 }}>
+          <div className="form-row" style={{ maxWidth: 180, marginBottom: 0 }}>
+            <label>From date</label>
+            <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} />
+          </div>
+          <div className="form-row" style={{ maxWidth: 140, marginBottom: 0 }}>
+            <label>Days</label>
+            <input type="number" min="1" max="60" value={rangeDays} onChange={(e) => setRangeDays(Number(e.target.value) || 1)} />
+          </div>
+        </div>
+      )}
 
       {error && <div className="error-text">{error}</div>}
 
       {loading ? (
         <p className="muted">Loading...</p>
+      ) : viewMode === 'range' ? (
+        <>
+          <h3 style={{ marginTop: 0 }}>
+            Projected Availability{warehouseId ? `: ${warehouses.find((w) => String(w.ROWID) === String(warehouseId))?.name || ''}` : ' — All Warehouses'}
+          </h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  {projectionUnits.map((u) => (
+                    <th key={u}>{u} Avail.</th>
+                  ))}
+                  <th>Weight Avail. (kg)</th>
+                  <th>Space Avail. (m³)</th>
+                  <th>Unclaimed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {projection.map((row) => (
+                  <tr key={row.date}>
+                    <td>{row.date}</td>
+                    {projectionUnits.map((u) => {
+                      const entry = row.byCapacityUnit.find((e) => e.capacityUnit === u);
+                      return <td key={u}>{entry ? entry.available : '—'}</td>;
+                    })}
+                    <td>{row.weight.available.toFixed(0)}</td>
+                    <td>{row.space.available.toFixed(1)}</td>
+                    <td>{row.totals.unclaimedAvailable}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="muted small">
+            A committed inbound starts consuming capacity on its expected arrival date; a scheduled dispatch frees its capacity back up
+            on its planned date. Pending Put-away isn't projected -- it depends on staff action, not a scheduled event.
+          </p>
+        </>
       ) : !warehouseId ? (
         <>
           <h3 style={{ marginTop: 0 }}>Overall — All Warehouses</h3>
@@ -375,124 +435,89 @@ function AvailabilityTab() {
             </button>
           </div>
           <div className="card-grid">
-                <div className="card kpi-card">
-                  <h3>Total Capacity</h3>
-                  <div className="kpi-value">{snapshot.totals.total}</div>
-                  <p className="muted small">all capacity units</p>
-                </div>
-                <div className="card kpi-card">
-                  <h3>Physical Occupancy</h3>
-                  <div className="kpi-value">{snapshot.totals.occupied}</div>
-                  <p className="muted small">capacity units currently consumed</p>
-                </div>
-                <div className="card kpi-card">
-                  <h3>Pending Put-away</h3>
-                  <div className="kpi-value">{snapshot.pendingPutaway}</div>
-                  <p className="muted small">received, not yet shelved</p>
-                </div>
-                <div className="card kpi-card">
-                  <h3>Committed (est.)</h3>
-                  <div className="kpi-value">{snapshot.totals.committed}</div>
-                  <p className="muted small">accepted, not yet arrived</p>
-                </div>
-                <div className="card kpi-card">
-                  <h3>Available</h3>
-                  <div className="kpi-value">{snapshot.totals.available}</div>
-                  <p className="muted small">total − occupied − committed</p>
-                </div>
-                <div className="card kpi-card">
-                  <h3>Unclaimed</h3>
-                  <div className="kpi-value">{snapshot.totals.unclaimedAvailable}</div>
-                  <p className="muted small">free and not dedicated to any customer</p>
-                </div>
-                <div className="card kpi-card">
-                  <h3>Weight Available</h3>
-                  <div className="kpi-value">{snapshot.weight.available.toFixed(0)} kg</div>
-                  <p className="muted small">of {snapshot.weight.total.toFixed(0)} kg budgeted</p>
-                </div>
-                <div className="card kpi-card">
-                  <h3>Space Available</h3>
-                  <div className="kpi-value">{snapshot.space.available.toFixed(1)} m³</div>
-                  <p className="muted small">of {snapshot.space.total.toFixed(1)} m³ dimensioned</p>
-                </div>
-              </div>
+            <div className="card kpi-card">
+              <h3>Total Capacity</h3>
+              <div className="kpi-value">{snapshot.totals.total}</div>
+              <p className="muted small">all capacity units</p>
+            </div>
+            <div className="card kpi-card">
+              <h3>Physical Occupancy</h3>
+              <div className="kpi-value">{snapshot.totals.occupied}</div>
+              <p className="muted small">capacity units currently consumed</p>
+            </div>
+            <div className="card kpi-card">
+              <h3>Pending Put-away</h3>
+              <div className="kpi-value">{snapshot.pendingPutaway}</div>
+              <p className="muted small">received, not yet shelved</p>
+            </div>
+            <div className="card kpi-card">
+              <h3>Committed (est.)</h3>
+              <div className="kpi-value">{snapshot.totals.committed}</div>
+              <p className="muted small">accepted, not yet arrived</p>
+            </div>
+            <div className="card kpi-card">
+              <h3>Available</h3>
+              <div className="kpi-value">{snapshot.totals.available}</div>
+              <p className="muted small">total − occupied − committed</p>
+            </div>
+            <div className="card kpi-card">
+              <h3>Unclaimed</h3>
+              <div className="kpi-value">{snapshot.totals.unclaimedAvailable}</div>
+              <p className="muted small">free and not dedicated to any customer</p>
+            </div>
+            <div className="card kpi-card">
+              <h3>Weight Available</h3>
+              <div className="kpi-value">{snapshot.weight.available.toFixed(0)} kg</div>
+              <p className="muted small">of {snapshot.weight.total.toFixed(0)} kg budgeted</p>
+            </div>
+            <div className="card kpi-card">
+              <h3>Space Available</h3>
+              <div className="kpi-value">{snapshot.space.available.toFixed(1)} m³</div>
+              <p className="muted small">of {snapshot.space.total.toFixed(1)} m³ dimensioned</p>
+            </div>
+          </div>
 
-              <h3>By Capacity Unit</h3>
-              <div style={{ overflowX: 'auto' }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Capacity Unit</th>
-                      <th>Total</th>
-                      <th>Occupied</th>
-                      <th>Committed (est.)</th>
-                      <th>Available</th>
-                      <th>Unclaimed</th>
-                      <th>Expected Release (est.)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {snapshot.byCapacityUnit.map((u) => (
-                      <tr key={u.capacityUnit}>
-                        <td>{u.capacityUnit}</td>
-                        <td>{u.total}</td>
-                        <td>{u.occupied}</td>
-                        <td>{u.committed}</td>
-                        <td>{u.available}</td>
-                        <td>{u.unclaimedAvailable}</td>
-                        <td>{snapshot.expectedReleaseByUnit.get(u.capacityUnit) || 0}</td>
-                      </tr>
-                    ))}
-                    {snapshot.byCapacityUnit.length === 0 && (
-                      <tr>
-                        <td colSpan={7} className="muted">
-                          No storage locations configured for this warehouse yet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <p className="muted small">
-                Committed/Expected Release are grouped by matching each cargo line's package type against the Package Types master
-                (Package Types tab); an unmatched type is grouped as "Ungrouped". Unclaimed excludes any location already dedicated to a
-                customer, even if it has room left.
-              </p>
-
-              <h3>Projected Availability</h3>
-              <div className="toolbar" style={{ marginBottom: 12 }}>
-                <div className="form-row" style={{ maxWidth: 180, marginBottom: 0 }}>
-                  <label>From date</label>
-                  <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} />
-                </div>
-                <div className="form-row" style={{ maxWidth: 140, marginBottom: 0 }}>
-                  <label>Days</label>
-                  <input type="number" min="1" max="60" value={rangeDays} onChange={(e) => setRangeDays(Number(e.target.value) || 1)} />
-                </div>
-              </div>
-              <div style={{ overflowX: 'auto' }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      {projectionUnits.map((u) => (
-                        <th key={u}>{u}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {projection.map((row) => (
-                      <tr key={row.date}>
-                        <td>{row.date}</td>
-                        {projectionUnits.map((u) => {
-                          const entry = row.byCapacityUnit.find((e) => e.capacityUnit === u);
-                          return <td key={u}>{entry ? entry.available : '—'}</td>;
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          <h3>By Capacity Unit</h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Capacity Unit</th>
+                  <th>Total</th>
+                  <th>Occupied</th>
+                  <th>Committed (est.)</th>
+                  <th>Available</th>
+                  <th>Unclaimed</th>
+                  <th>Expected Release (est.)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {snapshot.byCapacityUnit.map((u) => (
+                  <tr key={u.capacityUnit}>
+                    <td>{u.capacityUnit}</td>
+                    <td>{u.total}</td>
+                    <td>{u.occupied}</td>
+                    <td>{u.committed}</td>
+                    <td>{u.available}</td>
+                    <td>{u.unclaimedAvailable}</td>
+                    <td>{snapshot.expectedReleaseByUnit.get(u.capacityUnit) || 0}</td>
+                  </tr>
+                ))}
+                {snapshot.byCapacityUnit.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="muted">
+                      No storage locations configured for this warehouse yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="muted small">
+            Committed/Expected Release are grouped by matching each cargo line's package type against the Package Types master
+            (Package Types tab); an unmatched type is grouped as "Ungrouped". Unclaimed excludes any location already dedicated to a
+            customer, even if it has room left. Switch the View dropdown above to "Date range" to project these same figures forward.
+          </p>
         </>
       )}
     </div>

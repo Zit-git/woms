@@ -1,8 +1,18 @@
-// Capacity math for the Capacity Dashboard. Takes already-fetched flat data
-// (see listCapacityLocations/listCapacityCargo/listCapacityOutboundCommitments
-// in lib/api.js) and computes Physical Occupancy / Pending Put-away /
-// Committed / Available per warehouse x capacity_unit, plus a date-range
-// availability projection.
+// Capacity math for the Availability tab (Warehouse Management). Takes
+// already-fetched flat data (see listCapacityLocations/listCapacityCargo/
+// listCapacityOutboundCommitments in lib/api.js) and computes Physical
+// Occupancy / Pending Put-away / Committed / Available / Unclaimed, plus
+// Weight and Space, per warehouse x capacity_unit.
+//
+// Capacity (a location's configured capacity/dimensions/weight) is static
+// setup; Availability is the live, time-dependent state computed from it.
+// computeCapacity takes an optional `asOfDate` so "Today" and "a future
+// date" run through the exact same math instead of two separate code paths
+// that could drift apart -- omit it for the real, ground-truth current state;
+// pass a date to simulate that same snapshot at a future point: a committed
+// (Confirmed) item "arrives" (starts occupying its reserved location) on its
+// expected_date, and a physically-occupied item "departs" (stops occupying)
+// on its scheduled dispatch date, if either falls on or before asOfDate.
 //
 // What's exact vs. estimated:
 // - Total capacity, pending put-away, and committed/released *row counts*
@@ -40,14 +50,33 @@ export function volumeM3(row) {
   return (l * w * h) / 1_000_000;
 }
 
-// Cargo whose parent inbound has been accepted but not yet physically
-// received -- capacity reserved against an arrival that hasn't happened yet.
-const isCommitted = (c) => c.inbound_status === 'Confirmed';
+const isCommittedStatus = (c) => c.inbound_status === 'Confirmed';
 
 // Cargo that has physically arrived (or has no inbound link at all, e.g.
-// older data) but hasn't been shelved in a location yet.
+// older data) but hasn't been shelved in a location yet. Always "today's"
+// real backlog -- not projected forward, since whether it's still pending at
+// a future date depends on warehouse staff actually doing the put-away, not
+// a scheduled event like an arrival or dispatch.
 const isPendingPutaway = (c) =>
   !c.current_location_id && (!c.inbound_status || !['Requested', 'Confirmed'].includes(c.inbound_status));
+
+// Classifies one cargo row as of `asOfDate` (or the real current DB state
+// when omitted): where does it effectively sit, is it occupying that spot,
+// and is it still just "committed" (reserved, not yet arrived)?
+function classifyCargo(c, requestedDateByCargoId, asOfDate) {
+  if (!asOfDate) {
+    return { effectiveLocationId: c.current_location_id || null, isOccupied: Boolean(c.current_location_id), isCommitted: isCommittedStatus(c) };
+  }
+  if (c.current_location_id) {
+    const scheduled = requestedDateByCargoId.get(String(c.ROWID));
+    const departed = Boolean(scheduled && scheduled <= asOfDate);
+    return { effectiveLocationId: departed ? null : c.current_location_id, isOccupied: !departed, isCommitted: false };
+  }
+  if (isCommittedStatus(c) && c.reserved_location_id && c.inbound_expected_date && c.inbound_expected_date <= asOfDate) {
+    return { effectiveLocationId: c.reserved_location_id, isOccupied: true, isCommitted: false };
+  }
+  return { effectiveLocationId: null, isOccupied: false, isCommitted: isCommittedStatus(c) };
+}
 
 // How much capacity one inbound's own cargo lines would require, grouped by
 // capacity_unit -- used by the Availability Check (ConfirmPopup) to compare
@@ -62,21 +91,24 @@ export function requiredCapacityByUnit(cargoRows, packageTypes) {
   return byUnit;
 }
 
-export function computeCapacity({ locations, cargoRows, outboundCommitments, packageTypes, warehouseId }) {
+export function computeCapacity({ locations, cargoRows, outboundCommitments, packageTypes, warehouseId, asOfDate }) {
   const packageTypesByName = new Map((packageTypes || []).map((p) => [p.name.trim().toLowerCase(), p]));
   const locs = (locations || []).filter((l) => !warehouseId || String(l.warehouse_id) === String(warehouseId));
   const cargo = (cargoRows || []).filter((c) => !warehouseId || String(c.warehouse_id) === String(warehouseId));
   const releases = (outboundCommitments || []).filter((r) => !warehouseId || String(r.warehouse_id) === String(warehouseId));
+
+  const requestedDateByCargoId = new Map(releases.filter((r) => r.requested_date).map((r) => [String(r.cargo_id), r.requested_date]));
+  const classified = cargo.map((c) => ({ c, ...classifyCargo(c, requestedDateByCargoId, asOfDate) }));
 
   // Units of capacity actually consumed at each location, not just a
   // yes/no "has something in it" flag -- several Cargo rows can share one
   // location, and each row can consume more than one unit (e.g. a package
   // type with units_per_item > 1).
   const consumedUnitsByLocation = new Map();
-  cargo
-    .filter((c) => c.current_location_id)
-    .forEach((c) => {
-      const key = String(c.current_location_id);
+  classified
+    .filter((x) => x.isOccupied)
+    .forEach(({ c, effectiveLocationId }) => {
+      const key = String(effectiveLocationId);
       consumedUnitsByLocation.set(key, (consumedUnitsByLocation.get(key) || 0) + unitsPerItemFor(c.unit, packageTypesByName));
     });
 
@@ -86,9 +118,10 @@ export function computeCapacity({ locations, cargoRows, outboundCommitments, pac
   // room left. "Unclaimed" below reflects that: a location with headroom but
   // already dedicated to someone isn't really available to a new customer.
   const customerByLocation = new Map();
-  cargo.forEach((c) => {
-    const locId = c.current_location_id || c.reserved_location_id;
-    if (locId && c.customer_id && !customerByLocation.has(String(locId))) customerByLocation.set(String(locId), String(c.customer_id));
+  classified.forEach(({ c, effectiveLocationId }) => {
+    if (effectiveLocationId && c.customer_id && !customerByLocation.has(String(effectiveLocationId))) {
+      customerByLocation.set(String(effectiveLocationId), String(c.customer_id));
+    }
   });
 
   const byUnit = new Map();
@@ -110,8 +143,8 @@ export function computeCapacity({ locations, cargoRows, outboundCommitments, pac
     }
   });
 
-  const committedCargo = cargo.filter(isCommitted);
-  committedCargo.forEach((c) => {
+  const committedCargo = classified.filter((x) => x.isCommitted);
+  committedCargo.forEach(({ c }) => {
     unitEntry(unitFor(c.unit, packageTypesByName)).committed += unitsPerItemFor(c.unit, packageTypesByName);
   });
 
@@ -131,29 +164,35 @@ export function computeCapacity({ locations, cargoRows, outboundCommitments, pac
   const weightTotal = locs.reduce((sum, l) => sum + (weightLocationIds.has(String(l.ROWID)) ? Number(l.max_weight_kg) || 0 : 0), 0);
   const spaceTotal = locs.reduce((sum, l) => sum + volumeM3(l), 0);
 
-  const occupiedCargo = cargo.filter((c) => c.current_location_id);
-  const weightOccupied = occupiedCargo
-    .filter((c) => weightLocationIds.has(String(c.current_location_id)))
-    .reduce((sum, c) => sum + (Number(c.weight) || 0), 0);
-  const spaceOccupied = occupiedCargo
-    .filter((c) => spaceLocationIds.has(String(c.current_location_id)))
-    .reduce((sum, c) => sum + volumeM3(c), 0);
+  const occupiedEntries = classified.filter((x) => x.isOccupied);
+  const weightOccupied = occupiedEntries
+    .filter((x) => weightLocationIds.has(String(x.effectiveLocationId)))
+    .reduce((sum, x) => sum + (Number(x.c.weight) || 0), 0);
+  const spaceOccupied = occupiedEntries
+    .filter((x) => spaceLocationIds.has(String(x.effectiveLocationId)))
+    .reduce((sum, x) => sum + volumeM3(x.c), 0);
 
-  const weightCommitted = committedCargo.reduce((sum, c) => sum + (Number(c.weight) || 0), 0);
-  const spaceCommitted = committedCargo.reduce((sum, c) => sum + volumeM3(c), 0);
+  const weightCommitted = committedCargo.reduce((sum, x) => sum + (Number(x.c.weight) || 0), 0);
+  const spaceCommitted = committedCargo.reduce((sum, x) => sum + volumeM3(x.c), 0);
 
   const weight = { total: weightTotal, occupied: weightOccupied, committed: weightCommitted, available: weightTotal - weightOccupied - weightCommitted };
   const space = { total: spaceTotal, occupied: spaceOccupied, committed: spaceCommitted, available: spaceTotal - spaceOccupied - spaceCommitted };
 
   const pendingPutaway = cargo.filter(isPendingPutaway).length;
 
+  // Informational only (not part of the Available math above, which already
+  // reflects departures via classifyCargo): how much is still scheduled to
+  // leave after this snapshot date.
   const expectedReleaseByUnit = new Map();
-  releases.forEach((r) => {
-    const unit = unitFor(r.unit, packageTypesByName);
-    expectedReleaseByUnit.set(unit, (expectedReleaseByUnit.get(unit) || 0) + unitsPerItemFor(r.unit, packageTypesByName));
-  });
+  releases
+    .filter((r) => !asOfDate || !r.requested_date || r.requested_date > asOfDate)
+    .forEach((r) => {
+      const unit = unitFor(r.unit, packageTypesByName);
+      expectedReleaseByUnit.set(unit, (expectedReleaseByUnit.get(unit) || 0) + unitsPerItemFor(r.unit, packageTypesByName));
+    });
 
   return {
+    asOfDate: asOfDate || null,
     byCapacityUnit: [...byUnit.values()].sort((a, b) => a.capacityUnit.localeCompare(b.capacityUnit)),
     pendingPutaway,
     expectedReleaseByUnit,
@@ -183,49 +222,12 @@ export function requiredWeightAndSpace(cargoRows) {
   );
 }
 
-// Projected availability per capacity_unit for a list of dates (YYYY-MM-DD),
-// relative to today's actual occupancy. Committed inbounds "arrive" (start
-// consuming capacity) on their expected_date; outbound commitments "release"
-// capacity on their requested_date. Both are already-accepted/committed
-// records, not merely requested/submitted-for-review ones.
+// One full computeCapacity snapshot per date -- Today and every future date
+// in `dates` all run through the exact same function, just simulated
+// forward in time (see classifyCargo). This is the single source of truth
+// behind the Availability tab's time selector: pick "Today" or a date range
+// and every figure (capacity units, Weight, Space, Unclaimed) updates
+// together, instead of only a capacity-unit-only table doing so.
 export function projectAvailability({ locations, cargoRows, outboundCommitments, packageTypes, warehouseId, dates }) {
-  const base = computeCapacity({ locations, cargoRows, outboundCommitments: [], packageTypes, warehouseId });
-  const packageTypesByName = new Map((packageTypes || []).map((p) => [p.name.trim().toLowerCase(), p]));
-  const warehouseCargo = (cargoRows || []).filter((c) => !warehouseId || String(c.warehouse_id) === String(warehouseId));
-  const warehouseReleases = (outboundCommitments || []).filter((r) => !warehouseId || String(r.warehouse_id) === String(warehouseId));
-  const committedCargo = warehouseCargo.filter(isCommitted);
-
-  const totalByUnit = new Map(base.byCapacityUnit.map((e) => [e.capacityUnit, e.total]));
-  const occupiedByUnit = new Map(base.byCapacityUnit.map((e) => [e.capacityUnit, e.occupied]));
-
-  return dates.map((date) => {
-    const units = new Map();
-    const ensure = (unit) => {
-      if (!units.has(unit)) {
-        units.set(unit, {
-          capacityUnit: unit,
-          total: totalByUnit.get(unit) || 0,
-          occupied: occupiedByUnit.get(unit) || 0,
-          committedByThen: 0,
-          releasedByThen: 0,
-        });
-      }
-      return units.get(unit);
-    };
-    [...totalByUnit.keys()].forEach(ensure);
-
-    committedCargo
-      .filter((c) => c.inbound_expected_date && c.inbound_expected_date <= date)
-      .forEach((c) => (ensure(unitFor(c.unit, packageTypesByName)).committedByThen += unitsPerItemFor(c.unit, packageTypesByName)));
-
-    warehouseReleases
-      .filter((r) => r.requested_date && r.requested_date <= date)
-      .forEach((r) => (ensure(unitFor(r.unit, packageTypesByName)).releasedByThen += unitsPerItemFor(r.unit, packageTypesByName)));
-
-    const byCapacityUnit = [...units.values()]
-      .map((u) => ({ ...u, available: u.total - u.occupied - u.committedByThen + u.releasedByThen }))
-      .sort((a, b) => a.capacityUnit.localeCompare(b.capacityUnit));
-
-    return { date, byCapacityUnit };
-  });
+  return (dates || []).map((date) => ({ date, ...computeCapacity({ locations, cargoRows, outboundCommitments, packageTypes, warehouseId, asOfDate: date }) }));
 }
