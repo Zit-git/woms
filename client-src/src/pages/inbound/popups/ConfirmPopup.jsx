@@ -3,7 +3,7 @@ import Modal from '../../../components/Modal';
 import { logAudit, listWarehouses, listCapacityLocations, listCapacityCargo, listCapacityOutboundCommitments, listPackageTypes, editCargo } from '../../../lib/api';
 import { useAuth } from '../../../context/AuthContext';
 import { computeInboundSummary } from '../../../lib/inboundSummary';
-import { computeCapacity, requiredCapacityByUnit, requiredWeightAndSpace } from '../../../lib/capacity';
+import { computeCapacity, projectAvailability, requiredCapacityByUnit, requiredWeightAndSpace } from '../../../lib/capacity';
 import { recommendWarehouses } from '../../../lib/allocation';
 
 // Stage 2 (Availability Check & Acceptance): a Warehouse Manager/Supervisor
@@ -21,6 +21,14 @@ import { recommendWarehouses } from '../../../lib/allocation';
 // real item in hand, not a future plan. Accept only checks aggregate
 // capacity and recommends a warehouse -- both legitimate decisions this
 // early, unlike a specific rack.
+const todayStr = () => new Date().toISOString().slice(0, 10);
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+const MAX_DAYS = 60;
+
 export default function ConfirmPopup({ advice, cargoRows, suppliers, transporters, patchAdvice, reloadCargo, onClose }) {
   const { user } = useAuth();
   const [confirming, setConfirming] = useState(false);
@@ -45,28 +53,54 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [advice.warehouse_id]);
 
-  const capacitySnapshot = useMemo(
-    () =>
-      capacityData &&
-      computeCapacity({
-        locations: capacityData.locations,
-        cargoRows: capacityData.cargo,
-        outboundCommitments: capacityData.outboundCommitments,
-        packageTypes: capacityData.packageTypes,
-        warehouseId: advice.warehouse_id,
-      }),
-    [capacityData, advice.warehouse_id]
-  );
   const required = useMemo(
     () => (capacityData ? requiredCapacityByUnit(cargoRows, capacityData.packageTypes) : new Map()),
     [capacityData, cargoRows]
   );
-  const availableByUnit = new Map((capacitySnapshot?.byCapacityUnit || []).map((e) => [e.capacityUnit, e.available]));
-  const allUnits = new Set([...required.keys(), ...availableByUnit.keys()]);
   const requiredWeightSpace = useMemo(() => requiredWeightAndSpace(cargoRows), [cargoRows]);
 
-  // Which warehouse should this go to -- an aggregate, fit-count comparison
-  // across warehouses (how many lines *could* fit, not which exact rack).
+  // The customer's storage interval -- every day From..To (open-ended To is
+  // checked for 14 days). With no From date, falls back to today's state.
+  const dates = useMemo(() => {
+    if (!hasStoragePeriod) return null;
+    const start = advice.storage_start_date;
+    let end = advice.storage_end_date || addDays(start, 13);
+    if (end < start) end = start;
+    const out = [];
+    for (let d = start, i = 0; d <= end && i < MAX_DAYS; d = addDays(d, 1), i += 1) out.push(d);
+    return out;
+  }, [hasStoragePeriod, advice.storage_start_date, advice.storage_end_date]);
+
+  // Day-by-day availability for one warehouse, plus the *lowest* figure over
+  // the whole interval -- that minimum, not today's number, is what decides
+  // whether the request fits.
+  const evaluateWarehouse = (warehouseId) => {
+    if (!capacityData) return null;
+    const base = { locations: capacityData.locations, cargoRows: capacityData.cargo, outboundCommitments: capacityData.outboundCommitments, packageTypes: capacityData.packageTypes, warehouseId };
+    const rows = dates ? projectAvailability({ ...base, dates }) : [{ date: 'Today', ...computeCapacity(base) }];
+    const minByUnit = new Map();
+    rows.forEach((r) => r.byCapacityUnit.forEach((u) => minByUnit.set(u.capacityUnit, Math.min(minByUnit.get(u.capacityUnit) ?? Infinity, u.available))));
+    const minWeight = Math.min(...rows.map((r) => r.weight.available));
+    const minSpace = Math.min(...rows.map((r) => r.space.available));
+    const shortUnits = [...required.entries()].filter(([unit, req]) => req > (minByUnit.get(unit) ?? 0)).map(([unit]) => unit);
+    const weightShort = requiredWeightSpace.weight > minWeight;
+    const spaceShort = requiredWeightSpace.spaceM3 > minSpace;
+    return { rows, minByUnit, minWeight, minSpace, shortUnits, weightShort, spaceShort, fits: !shortUnits.length && !weightShort && !spaceShort };
+  };
+
+  const evaluation = useMemo(
+    () => evaluateWarehouse(advice.warehouse_id),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [capacityData, dates, required, requiredWeightSpace, advice.warehouse_id]
+  );
+  const warehouseEvals = useMemo(
+    () => (capacityData ? new Map(capacityData.warehouses.map((w) => [String(w.ROWID), evaluateWarehouse(w.ROWID)])) : new Map()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [capacityData, dates, required, requiredWeightSpace]
+  );
+  const unitColumns = useMemo(() => [...new Set([...required.keys(), ...(evaluation?.minByUnit.keys() || [])])].sort(), [required, evaluation]);
+
+  // Per-line physical fit (dimensions/weight/customer dedication) per warehouse.
   const recommendation = useMemo(() => {
     if (!capacityData || !hasStoragePeriod || !capacityData.warehouses.length) return null;
     return recommendWarehouses({
@@ -82,8 +116,6 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
       customerId: advice.customer_id,
     });
   }, [capacityData, hasStoragePeriod, cargoRows, advice.storage_start_date, advice.storage_end_date, advice.ROWID, advice.customer_id]);
-  const currentWarehouseRank = recommendation?.find((r) => String(r.warehouse.ROWID) === String(advice.warehouse_id));
-  const betterWarehouse = recommendation?.find((r) => r.fitCount > (currentWarehouseRank?.fitCount ?? -1));
 
   const switchWarehouse = (newWarehouseId) => {
     setSwitching(true);
@@ -157,135 +189,146 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
         </div>
       </div>
 
-      <div className="form-section-title">Availability Check</div>
-      {!capacitySnapshot ? (
-        <p className="muted small">Checking warehouse capacity...</p>
-      ) : allUnits.size === 0 ? (
-        <p className="muted small">No line items yet to check.</p>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Capacity Unit</th>
-              <th>Required</th>
-              <th>Available</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[...allUnits].sort().map((unit) => {
-              const req = required.get(unit) || 0;
-              const avail = availableByUnit.get(unit) ?? 0;
-              const short = req > avail;
-              return (
-                <tr key={unit}>
-                  <td>{unit}</td>
-                  <td>{req}</td>
-                  <td style={short ? { color: 'var(--danger)', fontWeight: 600 } : undefined}>
-                    {avail}
-                    {short && ' ⚠ short'}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-      <p className="muted small">A shortage is a warning, not a hard block — some capacity types may be approximate (see Warehouse Management → Availability).</p>
-
-      {capacitySnapshot && (
-        <table>
-          <thead>
-            <tr>
-              <th></th>
-              <th>Required</th>
-              <th>Available</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(() => {
-              const weightShort = requiredWeightSpace.weight > capacitySnapshot.weight.available;
-              const spaceShort = requiredWeightSpace.spaceM3 > capacitySnapshot.space.available;
-              return (
-                <>
-                  <tr>
-                    <td>Weight (kg)</td>
-                    <td>{requiredWeightSpace.weight.toFixed(1)}</td>
-                    <td style={weightShort ? { color: 'var(--danger)', fontWeight: 600 } : undefined}>
-                      {capacitySnapshot.weight.available.toFixed(1)}
-                      {weightShort && ' ⚠ short'}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>Space (m³)</td>
-                    <td>{requiredWeightSpace.spaceM3.toFixed(2)}</td>
-                    <td style={spaceShort ? { color: 'var(--danger)', fontWeight: 600 } : undefined}>
-                      {capacitySnapshot.space.available.toFixed(2)}
-                      {spaceShort && ' ⚠ short'}
-                    </td>
-                  </tr>
-                </>
-              );
-            })()}
-          </tbody>
-        </table>
-      )}
+      <div className="form-section-title">Warehouse</div>
+      <div className="form-row" style={{ maxWidth: 320 }}>
+        <label>Store this request in</label>
+        <select
+          value={advice.warehouse_id ?? ''}
+          onChange={(e) => e.target.value && String(e.target.value) !== String(advice.warehouse_id) && switchWarehouse(e.target.value)}
+          disabled={switching || !capacityData}
+        >
+          {!advice.warehouse_id && <option value="">Select warehouse...</option>}
+          {(capacityData?.warehouses || []).map((w) => (
+            <option key={w.ROWID} value={w.ROWID}>
+              {w.name}
+            </option>
+          ))}
+        </select>
+      </div>
       <p className="muted small">
-        Weight only counts locations with a max weight set; Space only counts locations with full dimensions set — locations missing
-        that data aren't part of either total.
+        Your decision — the comparison below is guidance. Changing it re-assigns every line item on this request to that warehouse.
       </p>
 
-      <div className="form-section-title">Warehouse Recommendation</div>
-      {!hasStoragePeriod ? (
-        <p className="muted small">Set an expected storage period to compare warehouses.</p>
-      ) : !recommendation ? (
-        <p className="muted small">Checking warehouses...</p>
+      <div className="form-section-title">
+        Availability Check{hasStoragePeriod ? `: ${dates[0]} → ${dates[dates.length - 1]}` : ' (today only — no storage period set)'}
+      </div>
+      {!evaluation ? (
+        <p className="muted small">Checking warehouse capacity...</p>
+      ) : cargoRows.length === 0 ? (
+        <p className="muted small">No line items yet to check.</p>
       ) : (
         <>
           <div style={{ overflowX: 'auto' }}>
             <table>
               <thead>
                 <tr>
-                  <th>Warehouse</th>
-                  <th>Lines That Fit</th>
-                  <th></th>
+                  <th>Day</th>
+                  {unitColumns.map((u) => (
+                    <th key={u}>{u}</th>
+                  ))}
+                  <th>Weight (kg)</th>
+                  <th>Space (m³)</th>
                 </tr>
               </thead>
               <tbody>
-                {recommendation.map(({ warehouse, fitCount, total }) => {
-                  const isCurrent = String(warehouse.ROWID) === String(advice.warehouse_id);
+                <tr style={{ fontWeight: 600, background: 'var(--bg)' }}>
+                  <td>Required</td>
+                  {unitColumns.map((u) => (
+                    <td key={u}>{(required.get(u) || 0).toFixed(1)}</td>
+                  ))}
+                  <td>{requiredWeightSpace.weight.toFixed(1)}</td>
+                  <td>{requiredWeightSpace.spaceM3.toFixed(2)}</td>
+                </tr>
+                {evaluation.rows.map((row) => {
+                  const bad = { color: 'var(--danger)', fontWeight: 600 };
                   return (
-                    <tr key={warehouse.ROWID} style={isCurrent ? { fontWeight: 600 } : undefined}>
-                      <td>
-                        {warehouse.name} {isCurrent && <span className="muted small">(currently assigned)</span>}
-                      </td>
-                      <td>
-                        {fitCount} / {total}
-                      </td>
-                      <td>
-                        {!isCurrent && (
-                          <button className="link-btn" onClick={() => switchWarehouse(warehouse.ROWID)} disabled={switching}>
-                            {switching ? 'Switching...' : 'Switch to this warehouse'}
-                          </button>
-                        )}
-                      </td>
+                    <tr key={row.date}>
+                      <td>{row.date}</td>
+                      {unitColumns.map((u) => {
+                        const avail = row.byCapacityUnit.find((e) => e.capacityUnit === u)?.available ?? 0;
+                        return (
+                          <td key={u} style={(required.get(u) || 0) > avail ? bad : undefined}>
+                            {avail.toFixed(1)}
+                          </td>
+                        );
+                      })}
+                      <td style={requiredWeightSpace.weight > row.weight.available ? bad : undefined}>{row.weight.available.toFixed(1)}</td>
+                      <td style={requiredWeightSpace.spaceM3 > row.space.available ? bad : undefined}>{row.space.available.toFixed(2)}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-          {betterWarehouse && (
-            <p className="muted small" style={{ color: 'var(--danger)' }}>
-              ⚠ {betterWarehouse.warehouse.name} can fit more of this request ({betterWarehouse.fitCount}/{betterWarehouse.total}) than
-              the currently assigned warehouse ({currentWarehouseRank?.fitCount ?? 0}/{currentWarehouseRank?.total ?? cargoRows.length}).
-            </p>
-          )}
           <p className="muted small">
-            This is a capacity estimate, not a reservation — switching just re-assigns every line item on this request to the new
-            warehouse. The exact storage location for each item is chosen later, at Put-away, once it has actually arrived.
+            Each row is what this warehouse has free that day (capacity left after stock, accepted inbounds and scheduled dispatches).
+            Red = less than this request needs.{' '}
+            {evaluation.fits ? (
+              <strong>It fits on every day of the interval.</strong>
+            ) : (
+              <strong style={{ color: 'var(--danger)' }}>
+                ⚠ Short on at least one day:{' '}
+                {[...evaluation.shortUnits, evaluation.weightShort && 'weight', evaluation.spaceShort && 'space'].filter(Boolean).join(', ')}.
+              </strong>
+            )}{' '}
+            A shortage is a warning, not a block. Weight only counts locations with a max weight set; Space only counts locations with
+            full dimensions.
           </p>
         </>
       )}
+
+      <div className="form-section-title">Warehouse Comparison</div>
+      {!capacityData ? (
+        <p className="muted small">Checking warehouses...</p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Warehouse</th>
+                <th>Fits whole interval?</th>
+                <th>Lines that physically fit</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {capacityData.warehouses.map((warehouse) => {
+                const ev = warehouseEvals.get(String(warehouse.ROWID));
+                const lines = recommendation?.find((r) => String(r.warehouse.ROWID) === String(warehouse.ROWID));
+                const isCurrent = String(warehouse.ROWID) === String(advice.warehouse_id);
+                return (
+                  <tr key={warehouse.ROWID} style={isCurrent ? { fontWeight: 600 } : undefined}>
+                    <td>
+                      {warehouse.name} {isCurrent && <span className="muted small">(selected)</span>}
+                    </td>
+                    <td>
+                      {ev?.fits ? (
+                        '✔ Yes'
+                      ) : (
+                        <span style={{ color: 'var(--danger)' }}>
+                          ⚠ Short: {[...(ev?.shortUnits || []), ev?.weightShort && 'weight', ev?.spaceShort && 'space'].filter(Boolean).join(', ') || '—'}
+                        </span>
+                      )}
+                    </td>
+                    <td>{lines ? `${lines.fitCount} / ${lines.total}` : '—'}</td>
+                    <td>
+                      {!isCurrent && (
+                        <button className="link-btn" onClick={() => switchWarehouse(warehouse.ROWID)} disabled={switching}>
+                          {switching ? 'Switching...' : 'Use this warehouse'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="muted small">
+        This is a capacity estimate, not a reservation. The exact storage location for each item is chosen later, at Put-away, once it
+        has arrived.
+      </p>
 
       {showReject ? (
         <>
