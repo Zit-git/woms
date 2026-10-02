@@ -44,6 +44,24 @@ export default function CapacityDashboard() {
     [locations, cargoRows, outboundCommitments, packageTypes, warehouseId]
   );
 
+  // "Overall" = every warehouse combined (computeCapacity with no warehouseId
+  // filter); "By Warehouse" re-runs the same exact math once per warehouse so
+  // the two views can never drift out of sync with each other or the detail
+  // section below.
+  const overallSnapshot = useMemo(
+    () => computeCapacity({ locations, cargoRows, outboundCommitments, packageTypes }),
+    [locations, cargoRows, outboundCommitments, packageTypes]
+  );
+  const perWarehouse = useMemo(
+    () =>
+      warehouses.map((w) => ({
+        warehouse: w,
+        locationCount: locations.filter((l) => String(l.warehouse_id) === String(w.ROWID)).length,
+        snapshot: computeCapacity({ locations, cargoRows, outboundCommitments, packageTypes, warehouseId: w.ROWID }),
+      })),
+    [warehouses, locations, cargoRows, outboundCommitments, packageTypes]
+  );
+
   const dates = useMemo(() => Array.from({ length: Math.max(1, rangeDays) }, (_, i) => addDays(rangeStart, i)), [rangeStart, rangeDays]);
   const projection = useMemo(
     () => projectAvailability({ locations, cargoRows, outboundCommitments, packageTypes, warehouseId, dates }),
@@ -82,6 +100,77 @@ export default function CapacityDashboard() {
         <p className="muted">Loading...</p>
       ) : (
         <>
+          <h3 style={{ marginTop: 0 }}>Overall — All Warehouses</h3>
+          <div className="card-grid">
+            <div className="card kpi-card">
+              <h3>Warehouses</h3>
+              <div className="kpi-value">{warehouses.length}</div>
+              <p className="muted small">{locations.length} storage locations</p>
+            </div>
+            <div className="card kpi-card">
+              <h3>Total Capacity</h3>
+              <div className="kpi-value">{overallSnapshot.totals.total}</div>
+              <p className="muted small">all capacity units</p>
+            </div>
+            <div className="card kpi-card">
+              <h3>Physical Occupancy</h3>
+              <div className="kpi-value">{overallSnapshot.totals.occupied}</div>
+              <p className="muted small">capacity units currently consumed</p>
+            </div>
+            <div className="card kpi-card">
+              <h3>Pending Put-away</h3>
+              <div className="kpi-value">{overallSnapshot.pendingPutaway}</div>
+              <p className="muted small">received, not yet shelved</p>
+            </div>
+            <div className="card kpi-card">
+              <h3>Available</h3>
+              <div className="kpi-value">{overallSnapshot.totals.available}</div>
+              <p className="muted small">total − occupied − committed</p>
+            </div>
+          </div>
+
+          <h3>By Warehouse</h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Warehouse</th>
+                  <th>Locations</th>
+                  <th>Total</th>
+                  <th>Occupied</th>
+                  <th>Pending Put-away</th>
+                  <th>Committed (est.)</th>
+                  <th>Available</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {perWarehouse.map(({ warehouse: w, locationCount, snapshot: s }) => (
+                  <tr key={w.ROWID} className="clickable-row" onClick={() => setWarehouseId(w.ROWID)}>
+                    <td>{w.name}</td>
+                    <td>{locationCount}</td>
+                    <td>{s.totals.total}</td>
+                    <td>{s.totals.occupied}</td>
+                    <td>{s.pendingPutaway}</td>
+                    <td>{s.totals.committed}</td>
+                    <td>{s.totals.available}</td>
+                    <td>
+                      <span className="link-btn">{String(w.ROWID) === String(warehouseId) ? 'Viewing ↓' : 'View detail'}</span>
+                    </td>
+                  </tr>
+                ))}
+                {perWarehouse.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="muted">
+                      No warehouses configured yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Warehouse Detail: {warehouses.find((w) => String(w.ROWID) === String(warehouseId))?.name || '—'}</h3>
           <div className="card-grid">
             <div className="card kpi-card">
               <h3>Total Capacity</h3>
