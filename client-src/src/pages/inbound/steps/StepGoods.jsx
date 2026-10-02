@@ -20,8 +20,15 @@ function blankLine(inboundAdviceId, customerId, warehouseId, index) {
 
 // embedded: used inline inside RequestPopup (no wizard chrome, no Back/Next
 // footer -- every field already autosaves on blur/add/remove).
-export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice, goNext, goBack, saving, setError, embedded = false }) {
+export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice, goNext, goBack, saving, setError: setParentError, embedded = false }) {
   const [rows, setRows] = useState(cargoRows);
+  // Shown inline: when embedded in a popup, the parent page's error banner
+  // sits behind the modal overlay, so a failed save would otherwise be invisible.
+  const [lineError, setLineError] = useState('');
+  const setError = (msg) => {
+    setLineError(msg);
+    setParentError?.(msg);
+  };
   const [savingRow, setSavingRow] = useState(null);
   const [remarks, setRemarks] = useState(advice.remarks ?? '');
   const [adrStatus, setAdrStatus] = useState(advice.adr_status ?? '');
@@ -31,6 +38,11 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
   const pendingSaves = useRef([]);
 
   const addLine = () => {
+    setLineError('');
+    if (!advice.customer_id) {
+      setError('Select a customer on this request before adding line items.');
+      return;
+    }
     const line = blankLine(advice.ROWID, advice.customer_id, advice.warehouse_id, rows.length);
     createCargo(line)
       .then((saved) => {
@@ -101,6 +113,8 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
           + Add Line
         </button>
       </div>
+
+      {lineError && <div className="error-text">{lineError}</div>}
 
       <div className="line-items-panel">
         <table className="line-items-table">
