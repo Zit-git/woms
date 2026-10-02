@@ -151,7 +151,7 @@ export const removeRack = (rowId) => deleteRow(TABLES.RACKS, rowId);
 
 export const listLocationsByRack = (rackId) =>
   zcql(
-    `SELECT ROWID, location_code, capacity, capacity_unit, location_type, max_weight_kg, occupancy_status, rack_id FROM StorageLocations WHERE rack_id = ${rackId}`
+    `SELECT ROWID, location_code, capacity, capacity_unit, location_type, max_weight_kg, length_cm, width_cm, height_cm, occupancy_status, rack_id FROM StorageLocations WHERE rack_id = ${rackId}`
   ).then((rows) => rows.map((r) => r.StorageLocations));
 export const createLocation = (row) => addRow(TABLES.STORAGE_LOCATIONS, row);
 export const editLocation = (row) => updateRow(TABLES.STORAGE_LOCATIONS, row);
@@ -199,14 +199,19 @@ export const getWarehouseMap = (warehouseId) =>
 // per-query join ceiling -- do not add a 5th join to this query).
 export const listCapacityLocations = () =>
   zcql(
-    `SELECT StorageLocations.ROWID, StorageLocations.capacity, StorageLocations.capacity_unit, StorageLocations.location_type, StorageLocations.occupancy_status, Warehouses.ROWID FROM StorageLocations LEFT JOIN Racks ON StorageLocations.rack_id = Racks.ROWID LEFT JOIN Aisles ON Racks.aisle_id = Aisles.ROWID LEFT JOIN Zones ON Aisles.zone_id = Zones.ROWID LEFT JOIN Warehouses ON Zones.warehouse_id = Warehouses.ROWID`
+    `SELECT StorageLocations.ROWID, StorageLocations.location_code, StorageLocations.capacity, StorageLocations.capacity_unit, StorageLocations.location_type, StorageLocations.occupancy_status, StorageLocations.length_cm, StorageLocations.width_cm, StorageLocations.height_cm, StorageLocations.max_weight_kg, Warehouses.ROWID FROM StorageLocations LEFT JOIN Racks ON StorageLocations.rack_id = Racks.ROWID LEFT JOIN Aisles ON Racks.aisle_id = Aisles.ROWID LEFT JOIN Zones ON Aisles.zone_id = Zones.ROWID LEFT JOIN Warehouses ON Zones.warehouse_id = Warehouses.ROWID`
   ).then((rows) =>
     rows.map((r) => ({
       ROWID: r.StorageLocations.ROWID,
+      location_code: r.StorageLocations.location_code,
       capacity: r.StorageLocations.capacity,
       capacity_unit: r.StorageLocations.capacity_unit,
       location_type: r.StorageLocations.location_type,
       occupancy_status: r.StorageLocations.occupancy_status,
+      length_cm: r.StorageLocations.length_cm,
+      width_cm: r.StorageLocations.width_cm,
+      height_cm: r.StorageLocations.height_cm,
+      max_weight_kg: r.StorageLocations.max_weight_kg,
       warehouse_id: r.Warehouses?.ROWID,
     }))
   );
@@ -216,16 +221,24 @@ export const listCapacityLocations = () =>
 // but not yet physically received) -- see computeCapacity in lib/capacity.js.
 export const listCapacityCargo = () =>
   zcql(
-    `SELECT Cargo.ROWID, Cargo.current_location_id, Cargo.status, Cargo.unit, Cargo.warehouse_id, InboundAdvice.status, InboundAdvice.expected_date FROM Cargo LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID WHERE ${goneSql('Cargo')}`
+    `SELECT Cargo.ROWID, Cargo.current_location_id, Cargo.reserved_location_id, Cargo.status, Cargo.unit, Cargo.weight, Cargo.length_cm, Cargo.width_cm, Cargo.height_cm, Cargo.warehouse_id, Cargo.inbound_advice_id, InboundAdvice.status, InboundAdvice.expected_date, InboundAdvice.storage_start_date, InboundAdvice.storage_end_date FROM Cargo LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID WHERE ${goneSql('Cargo')}`
   ).then((rows) =>
     rows.map((r) => ({
       ROWID: r.Cargo.ROWID,
       current_location_id: r.Cargo.current_location_id,
+      reserved_location_id: r.Cargo.reserved_location_id,
       status: r.Cargo.status,
       unit: r.Cargo.unit,
+      weight: r.Cargo.weight,
+      length_cm: r.Cargo.length_cm,
+      width_cm: r.Cargo.width_cm,
+      height_cm: r.Cargo.height_cm,
       warehouse_id: r.Cargo.warehouse_id,
+      inbound_advice_id: r.Cargo.inbound_advice_id,
       inbound_status: r.InboundAdvice?.status,
       inbound_expected_date: r.InboundAdvice?.expected_date,
+      storage_start_date: r.InboundAdvice?.storage_start_date,
+      storage_end_date: r.InboundAdvice?.storage_end_date,
     }))
   );
 
@@ -301,6 +314,8 @@ const INBOUND_ADVICE_FIELDS = [
   'adr_status',
   'remarks',
   'rejection_reason',
+  'storage_start_date',
+  'storage_end_date',
 ].map((f) => `InboundAdvice.${f}`);
 
 // Supplier reuses the Customers directory, but ZCQL doesn't support
@@ -381,7 +396,7 @@ export const listAllStorageLocations = () =>
   );
 
 const STOCK_COLUMNS =
-  'Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.weight, Cargo.qr_code, Cargo.status, Cargo.outer_package_no, Cargo.current_location_id, Cargo.inbound_advice_id, Customers.name, InboundAdvice.inbound_reference, InboundAdvice.destination';
+  'Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.weight, Cargo.qr_code, Cargo.status, Cargo.outer_package_no, Cargo.current_location_id, Cargo.reserved_location_id, Cargo.inbound_advice_id, Customers.name, InboundAdvice.inbound_reference, InboundAdvice.destination';
 const STOCK_JOINS =
   'FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID';
 const toStockRow = (r) => ({

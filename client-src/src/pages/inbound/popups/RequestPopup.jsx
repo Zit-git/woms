@@ -239,6 +239,18 @@ export default function RequestPopup({
         </div>
       </div>
 
+      <div className="form-grid-3">
+        <div className="form-row">
+          <label>Expected Storage Period: From</label>
+          <input type="date" value={form.storage_start_date ?? ''} onChange={set('storage_start_date')} onBlur={save('storage_start_date')} />
+        </div>
+        <div className="form-row">
+          <label>Expected Storage Period: To</label>
+          <input type="date" value={form.storage_end_date ?? ''} onChange={set('storage_end_date')} onBlur={save('storage_end_date')} />
+        </div>
+      </div>
+      <p className="muted small">Optional, but needed to check location availability for the full stay at the Availability Check step.</p>
+
       <hr className="divider" />
       <StepGoods
         advice={advice}

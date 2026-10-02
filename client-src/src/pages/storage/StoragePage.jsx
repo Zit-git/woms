@@ -131,9 +131,9 @@ export default function StoragePage() {
   const allSelected = filtered.length > 0 && filtered.every((c) => selected.has(String(c.ROWID)));
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(filtered.map((c) => String(c.ROWID))));
 
-  const openPicker = (mode, ids) => {
+  const openPicker = (mode, ids, defaultLocationId) => {
     setAction({ mode, ids: ids.map(String) });
-    setPickedLocation('');
+    setPickedLocation(defaultLocationId ? String(defaultLocationId) : '');
     setScanChoice(null);
     setError('');
     setNotice('');
@@ -167,7 +167,7 @@ export default function StoragePage() {
     (code) => {
       setShowScanner(false);
       const out = outOfRack.find((c) => c.qr_code === code);
-      if (out) return openPicker('putaway', [out.ROWID]);
+      if (out) return openPicker('putaway', [out.ROWID], out.reserved_location_id);
       const inRack = stored.find((c) => c.qr_code === code);
       if (inRack) {
         setScanChoice(inRack);
@@ -222,7 +222,7 @@ export default function StoragePage() {
             </button>
           </>
         ) : (
-          <button className="link-btn" onClick={() => openPicker('putaway', [c.ROWID])}>
+          <button className="link-btn" onClick={() => openPicker('putaway', [c.ROWID], c.reserved_location_id)}>
             {tab === 'retrieved' ? 'Put back' : 'Put away'}
           </button>
         )}

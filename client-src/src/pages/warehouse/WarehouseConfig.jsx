@@ -486,6 +486,9 @@ function LocationsTab() {
   const [capacityUnit, setCapacityUnit] = useState(CAPACITY_UNITS[0]);
   const [locationType, setLocationType] = useState('');
   const [maxWeightKg, setMaxWeightKg] = useState('');
+  const [lengthCm, setLengthCm] = useState('');
+  const [widthCm, setWidthCm] = useState('');
+  const [heightCm, setHeightCm] = useState('');
 
   useEffect(() => {
     if (!warehouseId && warehouses.length) setWarehouseId(warehouses[0].ROWID);
@@ -509,6 +512,9 @@ function LocationsTab() {
       capacity_unit: capacityUnit,
       location_type: locationType || undefined,
       max_weight_kg: maxWeightKg ? Number(maxWeightKg) : undefined,
+      length_cm: lengthCm ? Number(lengthCm) : undefined,
+      width_cm: widthCm ? Number(widthCm) : undefined,
+      height_cm: heightCm ? Number(heightCm) : undefined,
       occupancy_status: 'Available',
       rack_id: rackId,
     }).then(() => {
@@ -516,6 +522,9 @@ function LocationsTab() {
       setCapacity('');
       setLocationType('');
       setMaxWeightKg('');
+      setLengthCm('');
+      setWidthCm('');
+      setHeightCm('');
       reload();
     });
   };
@@ -596,6 +605,18 @@ function LocationsTab() {
             <label>Max weight (kg)</label>
             <input type="number" value={maxWeightKg} onChange={(e) => setMaxWeightKg(e.target.value)} placeholder="Optional" />
           </div>
+          <div className="form-row">
+            <label>Length (cm)</label>
+            <input type="number" value={lengthCm} onChange={(e) => setLengthCm(e.target.value)} placeholder="Optional" />
+          </div>
+          <div className="form-row">
+            <label>Width (cm)</label>
+            <input type="number" value={widthCm} onChange={(e) => setWidthCm(e.target.value)} placeholder="Optional" />
+          </div>
+          <div className="form-row">
+            <label>Height (cm)</label>
+            <input type="number" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} placeholder="Optional" />
+          </div>
         </div>
         <button className="btn" type="submit" disabled={!rackId}>
           + Add Location
@@ -612,6 +633,7 @@ function LocationsTab() {
               <th>Location Code</th>
               <th>Type</th>
               <th>Capacity</th>
+              <th>Dimensions (L×W×H cm)</th>
               <th>Max Weight</th>
               <th>Status</th>
               <th></th>
@@ -623,6 +645,7 @@ function LocationsTab() {
                 <td>{l.location_code}</td>
                 <td>{l.location_type || <span className="muted">—</span>}</td>
                 <td>{l.capacity} {l.capacity_unit && <span className="muted small">{l.capacity_unit}</span>}</td>
+                <td>{l.length_cm && l.width_cm && l.height_cm ? `${l.length_cm}×${l.width_cm}×${l.height_cm}` : <span className="muted">—</span>}</td>
                 <td>{l.max_weight_kg ? `${l.max_weight_kg} kg` : <span className="muted">—</span>}</td>
                 <td>
                   <select value={LOCATION_STATUSES.includes(l.occupancy_status) ? l.occupancy_status : 'Available'} onChange={(e) => setStatus(l.ROWID, e.target.value)}>
@@ -646,7 +669,7 @@ function LocationsTab() {
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={6} className="muted">
+                <td colSpan={7} className="muted">
                   No storage locations for this rack yet.
                 </td>
               </tr>

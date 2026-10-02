@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Modal from '../../../components/Modal';
-import { logAudit, listCapacityLocations, listCapacityCargo, listCapacityOutboundCommitments, listPackageTypes } from '../../../lib/api';
+import { logAudit, listCapacityLocations, listCapacityCargo, listCapacityOutboundCommitments, listPackageTypes, editCargo } from '../../../lib/api';
 import { useAuth } from '../../../context/AuthContext';
 import { computeInboundSummary } from '../../../lib/inboundSummary';
 import { computeCapacity, requiredCapacityByUnit } from '../../../lib/capacity';
+import { allocateLocations } from '../../../lib/allocation';
 
 // Stage 2 (Availability Check & Acceptance): a Warehouse Manager/Supervisor
 // checks this request's required capacity against what's actually available
@@ -11,6 +12,10 @@ import { computeCapacity, requiredCapacityByUnit } from '../../../lib/capacity';
 // Dashboard), then accepts or rejects. This request's own lines are still
 // 'Requested', not 'Confirmed', so computeCapacity's Available figure
 // naturally excludes them -- it's a clean before/after comparison.
+//
+// If a storage period is set, Accept also hard-allocates a specific location
+// to each cargo line (lib/allocation.js), matching size/weight/capacity and
+// checking against that period -- not just an aggregate count.
 export default function ConfirmPopup({ advice, cargoRows, suppliers, transporters, patchAdvice, onClose }) {
   const { user } = useAuth();
   const [confirming, setConfirming] = useState(false);
@@ -18,30 +23,68 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
   const [showReject, setShowReject] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [error, setError] = useState('');
-  const [capacitySnapshot, setCapacitySnapshot] = useState(null);
-  const [required, setRequired] = useState(new Map());
+  const [capacityData, setCapacityData] = useState(null); // { locations, cargo, outboundCommitments, packageTypes }
 
   const supplier = suppliers.find((s) => String(s.ROWID) === String(advice.supplier_id));
   const transporter = transporters.find((t) => String(t.ROWID) === String(advice.transporter_id));
   const summary = computeInboundSummary(advice, cargoRows);
+  const hasStoragePeriod = Boolean(advice.storage_start_date);
 
   useEffect(() => {
     Promise.all([listCapacityLocations(), listCapacityCargo(), listCapacityOutboundCommitments(), listPackageTypes()])
-      .then(([locations, cargo, outboundCommitments, packageTypes]) => {
-        setCapacitySnapshot(computeCapacity({ locations, cargoRows: cargo, outboundCommitments, packageTypes, warehouseId: advice.warehouse_id }));
-        setRequired(requiredCapacityByUnit(cargoRows, packageTypes));
-      })
+      .then(([locations, cargo, outboundCommitments, packageTypes]) => setCapacityData({ locations, cargo, outboundCommitments, packageTypes }))
       .catch((err) => setError(err.message || String(err)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [advice.warehouse_id]);
 
+  const capacitySnapshot = useMemo(
+    () =>
+      capacityData &&
+      computeCapacity({
+        locations: capacityData.locations,
+        cargoRows: capacityData.cargo,
+        outboundCommitments: capacityData.outboundCommitments,
+        packageTypes: capacityData.packageTypes,
+        warehouseId: advice.warehouse_id,
+      }),
+    [capacityData, advice.warehouse_id]
+  );
+  const required = useMemo(
+    () => (capacityData ? requiredCapacityByUnit(cargoRows, capacityData.packageTypes) : new Map()),
+    [capacityData, cargoRows]
+  );
   const availableByUnit = new Map((capacitySnapshot?.byCapacityUnit || []).map((e) => [e.capacityUnit, e.available]));
   const allUnits = new Set([...required.keys(), ...availableByUnit.keys()]);
+
+  const allocation = useMemo(() => {
+    if (!capacityData || !hasStoragePeriod) return null;
+    const locationsInWarehouse = capacityData.locations.filter((l) => !advice.warehouse_id || String(l.warehouse_id) === String(advice.warehouse_id));
+    return allocateLocations({
+      cargoRows,
+      locations: locationsInWarehouse,
+      allCargo: capacityData.cargo,
+      outboundCommitments: capacityData.outboundCommitments,
+      packageTypes: capacityData.packageTypes,
+      storageStart: advice.storage_start_date,
+      storageEnd: advice.storage_end_date,
+      excludeAdviceId: advice.ROWID,
+    });
+  }, [capacityData, hasStoragePeriod, cargoRows, advice.warehouse_id, advice.storage_start_date, advice.storage_end_date, advice.ROWID]);
+
+  const locationCodeById = new Map((capacityData?.locations || []).map((l) => [String(l.ROWID), l.location_code]));
+  const cargoById = new Map(cargoRows.map((c) => [String(c.ROWID), c]));
+  const unallocatedCount = allocation ? allocation.filter((a) => !a.locationId).length : 0;
 
   const confirm = () => {
     setConfirming(true);
     setError('');
-    patchAdvice({ status: 'Confirmed' })
+    const reserve = allocation
+      ? Promise.all(
+          allocation.filter((a) => a.locationId).map((a) => editCargo({ ROWID: a.cargoId, reserved_location_id: a.locationId }))
+        )
+      : Promise.resolve();
+    reserve
+      .then(() => patchAdvice({ status: 'Confirmed' }))
       .then(() => logAudit({ userId: user?.email_id, actionType: 'INBOUND_CONFIRMED', module: 'Inbound Operations', recordId: advice.ROWID }))
       .then(onClose)
       .catch((err) => setError(err.message || String(err)))
@@ -68,7 +111,7 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
   };
 
   return (
-    <Modal title={`Availability Check: ${advice.inbound_reference || ''}`} onClose={onClose}>
+    <Modal title={`Availability Check: ${advice.inbound_reference || ''}`} onClose={onClose} wide>
       {error && <div className="error-text">{error}</div>}
 
       <div className="check-block">
@@ -134,6 +177,53 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
         </table>
       )}
       <p className="muted small">A shortage is a warning, not a hard block — some capacity types may be approximate (see the Capacity Dashboard).</p>
+
+      <div className="form-section-title">Location Allocation</div>
+      {!hasStoragePeriod ? (
+        <p className="muted small">
+          Set an expected storage period (From date) on the request to check specific location availability and reserve space.
+        </p>
+      ) : !allocation ? (
+        <p className="muted small">Checking location availability for {advice.storage_start_date} → {advice.storage_end_date || 'open-ended'}...</p>
+      ) : (
+        <>
+          <div style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Description</th>
+                  <th>Suggested Location</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allocation.map((a) => {
+                  const c = cargoById.get(String(a.cargoId));
+                  return (
+                    <tr key={a.cargoId}>
+                      <td>{c?.outer_package_no}</td>
+                      <td>{c?.description}</td>
+                      <td>
+                        {a.locationId ? (
+                          locationCodeById.get(String(a.locationId)) || a.locationId
+                        ) : (
+                          <span style={{ color: 'var(--danger)', fontWeight: 600 }}>⚠ No location available</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {unallocatedCount > 0 && (
+            <p className="muted small">
+              {unallocatedCount} line{unallocatedCount === 1 ? '' : 's'} couldn't be matched to a location for this period — a warning, not a
+              block; they'll need manual placement at Put-away.
+            </p>
+          )}
+        </>
+      )}
 
       {showReject ? (
         <>

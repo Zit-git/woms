@@ -12,15 +12,17 @@
 //   many capacity units it actually consumes (units_per_item) -- an
 //   unmatched unit falls back to 1 unit of "Ungrouped" capacity. This is the
 //   one estimate in the engine; everything else is exact arithmetic on it.
-const UNGROUPED = 'Ungrouped';
+export const UNGROUPED = 'Ungrouped';
 
 function packageTypeFor(cargoUnit, packageTypesByName) {
   return packageTypesByName.get((cargoUnit || '').trim().toLowerCase());
 }
-function unitFor(cargoUnit, packageTypesByName) {
+// Exported for lib/allocation.js, which applies this same unit-matching
+// logic per-location instead of warehouse-aggregate.
+export function unitFor(cargoUnit, packageTypesByName) {
   return packageTypeFor(cargoUnit, packageTypesByName)?.capacity_unit || UNGROUPED;
 }
-function unitsPerItemFor(cargoUnit, packageTypesByName) {
+export function unitsPerItemFor(cargoUnit, packageTypesByName) {
   const match = packageTypeFor(cargoUnit, packageTypesByName);
   const n = Number(match?.units_per_item);
   return Number.isFinite(n) && n > 0 ? n : 1;
