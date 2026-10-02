@@ -122,3 +122,27 @@ export function allocateLocations({ cargoRows, locations, allCargo, outboundComm
 
   return results;
 }
+
+// Runs allocateLocations once per warehouse and ranks them by how much of
+// the request it could actually fit -- the "which warehouse should this go
+// to" recommendation, not just "does the one already picked have room."
+export function recommendWarehouses({ warehouses, cargoRows, allLocations, allCargo, outboundCommitments, storageStart, storageEnd, excludeAdviceId, customerId, packageTypes }) {
+  const total = (cargoRows || []).length;
+  const results = (warehouses || []).map((warehouse) => {
+    const locationsInWarehouse = (allLocations || []).filter((l) => String(l.warehouse_id) === String(warehouse.ROWID));
+    const allocation = allocateLocations({
+      cargoRows,
+      locations: locationsInWarehouse,
+      allCargo,
+      outboundCommitments,
+      storageStart,
+      storageEnd,
+      excludeAdviceId,
+      customerId,
+      packageTypes,
+    });
+    const fitCount = allocation.filter((a) => a.locationId).length;
+    return { warehouse, allocation, fitCount, total };
+  });
+  return results.sort((a, b) => b.fitCount - a.fitCount);
+}

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import Modal from '../../../components/Modal';
-import { logAudit, listCapacityLocations, listCapacityCargo, listCapacityOutboundCommitments, listPackageTypes, editCargo } from '../../../lib/api';
+import { logAudit, listWarehouses, listCapacityLocations, listCapacityCargo, listCapacityOutboundCommitments, listPackageTypes, editCargo } from '../../../lib/api';
 import { useAuth } from '../../../context/AuthContext';
 import { computeInboundSummary } from '../../../lib/inboundSummary';
 import { computeCapacity, requiredCapacityByUnit, requiredWeightAndSpace } from '../../../lib/capacity';
-import { allocateLocations } from '../../../lib/allocation';
+import { allocateLocations, recommendWarehouses } from '../../../lib/allocation';
 
 // Stage 2 (Availability Check & Acceptance): a Warehouse Manager/Supervisor
 // checks this request's required capacity against what's actually available
@@ -16,14 +16,15 @@ import { allocateLocations } from '../../../lib/allocation';
 // If a storage period is set, Accept also hard-allocates a specific location
 // to each cargo line (lib/allocation.js), matching size/weight/capacity and
 // checking against that period -- not just an aggregate count.
-export default function ConfirmPopup({ advice, cargoRows, suppliers, transporters, patchAdvice, onClose }) {
+export default function ConfirmPopup({ advice, cargoRows, suppliers, transporters, patchAdvice, reloadCargo, onClose }) {
   const { user } = useAuth();
   const [confirming, setConfirming] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [showReject, setShowReject] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [switching, setSwitching] = useState(false);
   const [error, setError] = useState('');
-  const [capacityData, setCapacityData] = useState(null); // { locations, cargo, outboundCommitments, packageTypes }
+  const [capacityData, setCapacityData] = useState(null); // { warehouses, locations, cargo, outboundCommitments, packageTypes }
 
   const supplier = suppliers.find((s) => String(s.ROWID) === String(advice.supplier_id));
   const transporter = transporters.find((t) => String(t.ROWID) === String(advice.transporter_id));
@@ -31,8 +32,10 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
   const hasStoragePeriod = Boolean(advice.storage_start_date);
 
   useEffect(() => {
-    Promise.all([listCapacityLocations(), listCapacityCargo(), listCapacityOutboundCommitments(), listPackageTypes()])
-      .then(([locations, cargo, outboundCommitments, packageTypes]) => setCapacityData({ locations, cargo, outboundCommitments, packageTypes }))
+    Promise.all([listWarehouses(), listCapacityLocations(), listCapacityCargo(), listCapacityOutboundCommitments(), listPackageTypes()])
+      .then(([warehouses, locations, cargo, outboundCommitments, packageTypes]) =>
+        setCapacityData({ warehouses, locations, cargo, outboundCommitments, packageTypes })
+      )
       .catch((err) => setError(err.message || String(err)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [advice.warehouse_id]);
@@ -72,6 +75,37 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
       customerId: advice.customer_id,
     });
   }, [capacityData, hasStoragePeriod, cargoRows, advice.warehouse_id, advice.storage_start_date, advice.storage_end_date, advice.ROWID, advice.customer_id]);
+
+  // Which warehouse should this go to, not just "does the one already
+  // assigned have room" -- runs the same allocateLocations once per
+  // warehouse and ranks them by how many lines actually fit.
+  const recommendation = useMemo(() => {
+    if (!capacityData || !hasStoragePeriod || !capacityData.warehouses.length) return null;
+    return recommendWarehouses({
+      warehouses: capacityData.warehouses,
+      cargoRows,
+      allLocations: capacityData.locations,
+      allCargo: capacityData.cargo,
+      outboundCommitments: capacityData.outboundCommitments,
+      packageTypes: capacityData.packageTypes,
+      storageStart: advice.storage_start_date,
+      storageEnd: advice.storage_end_date,
+      excludeAdviceId: advice.ROWID,
+      customerId: advice.customer_id,
+    });
+  }, [capacityData, hasStoragePeriod, cargoRows, advice.storage_start_date, advice.storage_end_date, advice.ROWID, advice.customer_id]);
+  const currentWarehouseRank = recommendation?.find((r) => String(r.warehouse.ROWID) === String(advice.warehouse_id));
+  const betterWarehouse = recommendation?.find((r) => r.fitCount > (currentWarehouseRank?.fitCount ?? -1));
+
+  const switchWarehouse = (newWarehouseId) => {
+    setSwitching(true);
+    setError('');
+    Promise.all(cargoRows.map((c) => editCargo({ ROWID: c.ROWID, warehouse_id: newWarehouseId })))
+      .then(() => reloadCargo())
+      .then(() => patchAdvice({ warehouse_id: newWarehouseId }))
+      .catch((err) => setError(err.message || String(err)))
+      .finally(() => setSwitching(false));
+  };
 
   const locationCodeById = new Map((capacityData?.locations || []).map((l) => [String(l.ROWID), l.location_code]));
   const cargoById = new Map(cargoRows.map((c) => [String(c.ROWID), c]));
@@ -221,6 +255,58 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
         Weight only counts locations with a max weight set; Space only counts locations with full dimensions set — locations missing
         that data aren't part of either total.
       </p>
+
+      <div className="form-section-title">Warehouse Recommendation</div>
+      {!hasStoragePeriod ? (
+        <p className="muted small">Set an expected storage period to compare warehouses.</p>
+      ) : !recommendation ? (
+        <p className="muted small">Checking warehouses...</p>
+      ) : (
+        <>
+          <div style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Warehouse</th>
+                  <th>Lines That Fit</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {recommendation.map(({ warehouse, fitCount, total }) => {
+                  const isCurrent = String(warehouse.ROWID) === String(advice.warehouse_id);
+                  return (
+                    <tr key={warehouse.ROWID} style={isCurrent ? { fontWeight: 600 } : undefined}>
+                      <td>
+                        {warehouse.name} {isCurrent && <span className="muted small">(currently assigned)</span>}
+                      </td>
+                      <td>
+                        {fitCount} / {total}
+                      </td>
+                      <td>
+                        {!isCurrent && (
+                          <button className="link-btn" onClick={() => switchWarehouse(warehouse.ROWID)} disabled={switching}>
+                            {switching ? 'Switching...' : 'Switch to this warehouse'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {betterWarehouse && (
+            <p className="muted small" style={{ color: 'var(--danger)' }}>
+              ⚠ {betterWarehouse.warehouse.name} can fit more of this request ({betterWarehouse.fitCount}/{betterWarehouse.total}) than
+              the currently assigned warehouse ({currentWarehouseRank?.fitCount ?? 0}/{currentWarehouseRank?.total ?? cargoRows.length}).
+            </p>
+          )}
+          <p className="muted small">
+            Switching re-assigns every line item on this request to the new warehouse and refreshes the Location Allocation below.
+          </p>
+        </>
+      )}
 
       <div className="form-section-title">Location Allocation</div>
       <p className="muted small" style={{ marginTop: -8 }}>
