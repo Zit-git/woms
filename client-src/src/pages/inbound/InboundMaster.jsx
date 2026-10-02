@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getInboundAdviceById, editInboundAdvice, listCargoByAdvice, listCustomers, listTransporters, listSuppliers } from '../../lib/api';
+import { getInboundAdviceById, editInboundAdvice, listCargoByAdvice, listCustomers, listTransporters, listSuppliers, listAllStorageLocations } from '../../lib/api';
 import InboundDetailView from './InboundDetailView';
 import InboundSidebar from './InboundSidebar';
 import RequestPopup from './popups/RequestPopup';
 import ConfirmPopup from './popups/ConfirmPopup';
 import ReceivePopup from './popups/ReceivePopup';
 import CreateHUPopup from './popups/CreateHUPopup';
+import PutawayPopup from './popups/PutawayPopup';
 import CheckPopup from './popups/CheckPopup';
 import FinishPopup from './popups/FinishPopup';
 import { computeInboundSummary } from '../../lib/inboundSummary';
@@ -35,6 +36,7 @@ export default function InboundMaster() {
   const [customers, setCustomers] = useState([]);
   const [transporters, setTransporters] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [locationLabels, setLocationLabels] = useState(() => new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -46,8 +48,9 @@ export default function InboundMaster() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([loadAdvice(), loadCargo(), listCustomers(), listTransporters(), listSuppliers()])
-      .then(([, , c, t, s]) => {
+    Promise.all([loadAdvice(), loadCargo(), listCustomers(), listTransporters(), listSuppliers(), listAllStorageLocations()])
+      .then(([, , c, t, s, l]) => {
+        setLocationLabels(new Map(l.map((x) => [String(x.ROWID), x.location_code])));
         setCustomers(c);
         setTransporters(t);
         setSuppliers(s);
@@ -87,6 +90,8 @@ export default function InboundMaster() {
   } else if (advice.status === 'Received') {
     action = { label: 'Create Handling Units →', popup: 'createhu' };
   } else if (advice.status === 'HU Created') {
+    action = { label: 'Put Away →', popup: 'putaway' };
+  } else if (advice.status === 'Put Away') {
     action = { label: 'Complete Inbound →', popup: 'check' };
   } else if (advice.status === 'Ready') {
     action = { label: 'Finish →', popup: 'finish' };
@@ -143,6 +148,7 @@ export default function InboundMaster() {
             customers={customers}
             transporters={transporters}
             suppliers={suppliers}
+            locationLabels={locationLabels}
             editLabel={action?.label || 'View'}
             onEdit={action ? openAction : undefined}
           />
@@ -155,6 +161,7 @@ export default function InboundMaster() {
       {activePopup === 'confirm' && <ConfirmPopup {...popupProps} />}
       {activePopup === 'receive' && <ReceivePopup {...popupProps} />}
       {activePopup === 'createhu' && <CreateHUPopup {...popupProps} />}
+      {activePopup === 'putaway' && <PutawayPopup {...popupProps} />}
       {activePopup === 'check' && <CheckPopup {...popupProps} />}
       {activePopup === 'finish' && <FinishPopup {...popupProps} />}
     </div>

@@ -339,7 +339,7 @@ export const getInboundAdviceById = (id) =>
 
 export const listCargoByAdvice = (inboundAdviceId) =>
   zcql(
-    `SELECT ROWID, description, qty, received_qty, unit, weight, dimensions, outer_package_no, length_cm, width_cm, height_cm, qr_code, status FROM Cargo WHERE inbound_advice_id = ${inboundAdviceId} ORDER BY CREATEDTIME`
+    `SELECT ROWID, description, qty, received_qty, unit, weight, dimensions, outer_package_no, length_cm, width_cm, height_cm, qr_code, status, current_location_id FROM Cargo WHERE inbound_advice_id = ${inboundAdviceId} ORDER BY CREATEDTIME`
   ).then((rows) => rows.map((r) => r.Cargo));
 export const createCargo = (row) => addRow(TABLES.CARGO, row);
 export const editCargo = (row) => updateRow(TABLES.CARGO, row);
