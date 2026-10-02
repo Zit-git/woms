@@ -1,7 +1,15 @@
 import { useNavigate } from 'react-router-dom';
 
-// Shared by the Master (read-only) and Wizard (workflow) pages for the same
-// inbound record -- identical regardless of which one you're looking at.
+const STATUS_CLASS = {
+  Requested: 'status-requested',
+  Confirmed: 'status-confirmed',
+  Received: 'status-received',
+  Ready: 'status-ready',
+  Completed: 'status-completed',
+};
+
+// Shared across the Inbound stage popups and the Master page for the same
+// record -- identical regardless of which stage is active.
 export default function InboundSidebar({ advice, summary, adviceId, saving }) {
   const navigate = useNavigate();
 
@@ -10,11 +18,7 @@ export default function InboundSidebar({ advice, summary, adviceId, saving }) {
       <div className="card">
         <h3>Status</h3>
         <div style={{ marginBottom: 10 }}>
-          <span
-            className={`status-badge ${advice.status === 'Ready' ? 'status-ready' : ''} ${advice.status === 'Completed' ? 'status-completed' : ''}`}
-          >
-            {advice.status === 'Ready' ? 'Inbound Ready' : advice.status === 'Completed' ? 'Completed' : 'Pending'}
-          </span>
+          <span className={`status-badge ${STATUS_CLASS[advice.status] || ''}`}>{advice.status || 'Requested'}</span>
         </div>
         <div className="sidebar-kv">
           <span className="muted small">Inbound Number</span>
@@ -65,7 +69,7 @@ export default function InboundSidebar({ advice, summary, adviceId, saving }) {
       <div className="card">
         <h3>Quick Actions</h3>
         <div className="form-actions" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-          {(advice.status === 'Ready' || advice.status === 'Completed') && (
+          {(advice.status === 'Received' || advice.status === 'Ready' || advice.status === 'Completed') && (
             <a
               className="btn secondary"
               href={`${import.meta.env.BASE_URL}print/putaway/${adviceId}`}

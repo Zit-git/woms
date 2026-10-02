@@ -1,32 +1,33 @@
-import { computeInboundSummary } from '../../lib/inboundSummary';
-import RecordTasks from '../../components/RecordTasks';
-import AuditTrail from '../../components/AuditTrail';
-import DocumentsSummary from '../../components/DocumentsSummary';
+import { useState } from 'react';
+import Modal from '../../../components/Modal';
+import { generateQRCode, createGRN } from '../../../lib/api';
+import { useAuth } from '../../../context/AuthContext';
+import { computeInboundSummary } from '../../../lib/inboundSummary';
+import RecordTasks from '../../../components/RecordTasks';
+import AuditTrail from '../../../components/AuditTrail';
 
-// Plain read-only record view, used by InboundMaster regardless of status --
-// the one action button opens whichever stage popup is contextually next
-// (labeled by the caller), not an accident of clicking some other control.
-export default function InboundDetailView({ advice, cargoRows, customers, transporters, suppliers, onEdit, editLabel = 'Edit' }) {
+// Stage 4 (Ready): final review before generating the GRN and QR labels --
+// unchanged logic from the old wizard's Check step, just inside a popup.
+export default function CheckPopup({ advice, cargoRows, transporters, suppliers, patchAdvice, onClose }) {
+  const [completing, setCompleting] = useState(false);
+  const { user } = useAuth();
+
   const supplier = suppliers.find((s) => String(s.ROWID) === String(advice.supplier_id));
   const transporter = transporters.find((t) => String(t.ROWID) === String(advice.transporter_id));
   const summary = computeInboundSummary(advice, cargoRows);
 
-  return (
-    <div className="card">
-      <div className="toolbar">
-        <div>
-          <div className="muted small" style={{ letterSpacing: 0.5 }}>
-            INBOUND REFERENCE
-          </div>
-          <div className="wizard-ref-value">{advice.inbound_reference || '—'}</div>
-        </div>
-        {onEdit && (
-          <button className="btn secondary" onClick={onEdit}>
-            {editLabel}
-          </button>
-        )}
-      </div>
+  const completeInbound = () => {
+    setCompleting(true);
+    const unlabeled = cargoRows.filter((c) => !c.qr_code);
+    Promise.all(unlabeled.map((c) => generateQRCode(c.ROWID).catch(() => null)))
+      .then(() => createGRN(advice.ROWID, advice.inbound_reference, user?.email_id || ''))
+      .then(() => patchAdvice({ status: 'Ready' }))
+      .then(onClose)
+      .finally(() => setCompleting(false));
+  };
 
+  return (
+    <Modal title={`Check: ${advice.inbound_reference || ''}`} onClose={onClose} wide>
       <div className="check-grid">
         <div className="check-block">
           <div className="check-block-title">Customer</div>
@@ -73,7 +74,7 @@ export default function InboundDetailView({ advice, cargoRows, customers, transp
         </div>
       </div>
 
-      <h3>Line Items</h3>
+      <h3>Line Items Overview</h3>
       <div style={{ overflowX: 'auto' }}>
         <table>
           <thead>
@@ -81,7 +82,7 @@ export default function InboundDetailView({ advice, cargoRows, customers, transp
               <th>#</th>
               <th>Unit Type</th>
               <th>Description</th>
-              <th>Qty</th>
+              <th>Requested Qty</th>
               <th>Received Qty</th>
               <th>Weight/pkg (kg)</th>
               <th>L×W×H (cm)</th>
@@ -111,9 +112,17 @@ export default function InboundDetailView({ advice, cargoRows, customers, transp
         {advice.adr_status && <div className="muted small">ADR (Dangerous Goods): {advice.adr_status}</div>}
       </div>
 
-      <DocumentsSummary linkedModules={['Inbound Operations', 'Inbound Operations Photos']} recordId={advice.ROWID} />
       <RecordTasks moduleRef="Inbound Operations" recordRefId={advice.ROWID} />
       <AuditTrail modules={['Inbound Operations', 'Inbound Operations Photos']} recordId={advice.ROWID} />
-    </div>
+
+      <div className="form-actions" style={{ justifyContent: 'flex-end' }}>
+        <button className="btn" onClick={completeInbound} disabled={completing}>
+          {completing ? 'Completing...' : 'Complete Inbound →'}
+        </button>
+      </div>
+      <p className="muted small" style={{ textAlign: 'right' }}>
+        All data will be confirmed. Labels will be generated per outer package.
+      </p>
+    </Modal>
   );
 }

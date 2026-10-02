@@ -5,8 +5,10 @@ const TABLES = {
   CUSTOMERS: 'Customers',
   WAREHOUSES: 'Warehouses',
   ZONES: 'Zones',
+  AISLES: 'Aisles',
   RACKS: 'Racks',
   STORAGE_LOCATIONS: 'StorageLocations',
+  PACKAGE_TYPES: 'PackageTypes',
   INBOUND_ADVICE: 'InboundAdvice',
   CARGO: 'Cargo',
   APP_USERS: 'AppUsers',
@@ -136,22 +138,32 @@ export const createZone = (row) => addRow(TABLES.ZONES, row);
 export const editZone = (row) => updateRow(TABLES.ZONES, row);
 export const removeZone = (rowId) => deleteRow(TABLES.ZONES, rowId);
 
-export const listRacksByZone = (zoneId) =>
-  zcql(`SELECT ROWID, code, zone_id FROM Racks WHERE zone_id = ${zoneId}`).then((rows) => rows.map((r) => r.Racks));
+export const listAislesByZone = (zoneId) =>
+  zcql(`SELECT ROWID, name, zone_id FROM Aisles WHERE zone_id = ${zoneId}`).then((rows) => rows.map((r) => r.Aisles));
+export const createAisle = (row) => addRow(TABLES.AISLES, row);
+export const removeAisle = (rowId) => deleteRow(TABLES.AISLES, rowId);
+
+export const listRacksByAisle = (aisleId) =>
+  zcql(`SELECT ROWID, code, aisle_id FROM Racks WHERE aisle_id = ${aisleId}`).then((rows) => rows.map((r) => r.Racks));
 export const createRack = (row) => addRow(TABLES.RACKS, row);
 export const editRack = (row) => updateRow(TABLES.RACKS, row);
 export const removeRack = (rowId) => deleteRow(TABLES.RACKS, rowId);
 
 export const listLocationsByRack = (rackId) =>
   zcql(
-    `SELECT ROWID, location_code, capacity, occupancy_status, rack_id FROM StorageLocations WHERE rack_id = ${rackId}`
+    `SELECT ROWID, location_code, capacity, capacity_unit, location_type, max_weight_kg, occupancy_status, rack_id FROM StorageLocations WHERE rack_id = ${rackId}`
   ).then((rows) => rows.map((r) => r.StorageLocations));
 export const createLocation = (row) => addRow(TABLES.STORAGE_LOCATIONS, row);
 export const editLocation = (row) => updateRow(TABLES.STORAGE_LOCATIONS, row);
 export const removeLocation = (rowId) => deleteRow(TABLES.STORAGE_LOCATIONS, rowId);
 
-// Full zone -> rack -> location hierarchy for one warehouse, with each
-// location flagged occupied/empty from current Cargo placements.
+export const listPackageTypes = () => getAllRows(TABLES.PACKAGE_TYPES);
+export const createPackageType = (row) => addRow(TABLES.PACKAGE_TYPES, row);
+export const editPackageType = (row) => updateRow(TABLES.PACKAGE_TYPES, row);
+export const removePackageType = (rowId) => deleteRow(TABLES.PACKAGE_TYPES, rowId);
+
+// Full zone -> aisle -> rack -> location hierarchy for one warehouse, with
+// each location flagged occupied/empty from current Cargo placements.
 export const getWarehouseMap = (warehouseId) =>
   Promise.all([
     listZonesByWarehouse(warehouseId),
@@ -161,18 +173,80 @@ export const getWarehouseMap = (warehouseId) =>
   ]).then(([zones, occupiedIds]) =>
     Promise.all(
       zones.map((zone) =>
-        listRacksByZone(zone.ROWID).then((racks) =>
+        listAislesByZone(zone.ROWID).then((aisles) =>
           Promise.all(
-            racks.map((rack) =>
-              listLocationsByRack(rack.ROWID).then((locations) => ({
-                rack,
-                locations: locations.map((loc) => ({ ...loc, occupied: occupiedIds.has(String(loc.ROWID)) })),
-              }))
+            aisles.map((aisle) =>
+              listRacksByAisle(aisle.ROWID).then((racks) =>
+                Promise.all(
+                  racks.map((rack) =>
+                    listLocationsByRack(rack.ROWID).then((locations) => ({
+                      rack,
+                      locations: locations.map((loc) => ({ ...loc, occupied: occupiedIds.has(String(loc.ROWID)) })),
+                    }))
+                  )
+                ).then((racksWithLocations) => ({ aisle, racks: racksWithLocations }))
+              )
             )
-          ).then((racksWithLocations) => ({ zone, racks: racksWithLocations }))
+          ).then((aislesWithRacks) => ({ zone, aisles: aislesWithRacks }))
         )
       )
     )
+  );
+
+// -- Capacity engine (see lib/capacity.js for the math) --
+// Flat, per-location rows with capacity typing + the resolved warehouse_id,
+// via the full Rack->Aisle->Zone->Warehouse chain (4 joins, right at ZCQL's
+// per-query join ceiling -- do not add a 5th join to this query).
+export const listCapacityLocations = () =>
+  zcql(
+    `SELECT StorageLocations.ROWID, StorageLocations.capacity, StorageLocations.capacity_unit, StorageLocations.location_type, StorageLocations.occupancy_status, Warehouses.ROWID FROM StorageLocations LEFT JOIN Racks ON StorageLocations.rack_id = Racks.ROWID LEFT JOIN Aisles ON Racks.aisle_id = Aisles.ROWID LEFT JOIN Zones ON Aisles.zone_id = Zones.ROWID LEFT JOIN Warehouses ON Zones.warehouse_id = Warehouses.ROWID`
+  ).then((rows) =>
+    rows.map((r) => ({
+      ROWID: r.StorageLocations.ROWID,
+      capacity: r.StorageLocations.capacity,
+      capacity_unit: r.StorageLocations.capacity_unit,
+      location_type: r.StorageLocations.location_type,
+      occupancy_status: r.StorageLocations.occupancy_status,
+      warehouse_id: r.Warehouses?.ROWID,
+    }))
+  );
+
+// Every still-in-the-building Cargo row with enough context to classify it as
+// physically occupying a location, pending put-away, or committed (accepted
+// but not yet physically received) -- see computeCapacity in lib/capacity.js.
+export const listCapacityCargo = () =>
+  zcql(
+    `SELECT Cargo.ROWID, Cargo.current_location_id, Cargo.status, Cargo.unit, Cargo.warehouse_id, InboundAdvice.status, InboundAdvice.expected_date FROM Cargo LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID WHERE ${goneSql('Cargo')}`
+  ).then((rows) =>
+    rows.map((r) => ({
+      ROWID: r.Cargo.ROWID,
+      current_location_id: r.Cargo.current_location_id,
+      status: r.Cargo.status,
+      unit: r.Cargo.unit,
+      warehouse_id: r.Cargo.warehouse_id,
+      inbound_status: r.InboundAdvice?.status,
+      inbound_expected_date: r.InboundAdvice?.expected_date,
+    }))
+  );
+
+// Cargo already committed to an accepted-but-not-dispatched OutboundRequest
+// (via PickTask), for the "expected outbound release" side of the capacity
+// projection. A Cargo row can rarely be linked to PickTasks on more than one
+// OutboundRequest (no DB constraint prevents it) -- a known pre-existing gap
+// that can make this a slight overcount, not fixed here.
+export const listCapacityOutboundCommitments = () =>
+  zcql(
+    `SELECT Cargo.ROWID, Cargo.unit, Cargo.status, OutboundRequest.warehouse_id, OutboundRequest.requested_date FROM PickTask LEFT JOIN OutboundRequest ON PickTask.outbound_request_id = OutboundRequest.ROWID LEFT JOIN Cargo ON PickTask.cargo_id = Cargo.ROWID WHERE OutboundRequest.status = 'Submitted'`
+  ).then((rows) =>
+    rows
+      .map((r) => ({
+        cargo_id: r.Cargo?.ROWID,
+        unit: r.Cargo?.unit,
+        status: r.Cargo?.status,
+        warehouse_id: r.OutboundRequest?.warehouse_id,
+        requested_date: r.OutboundRequest?.requested_date,
+      }))
+      .filter((r) => r.cargo_id && r.status !== 'Dispatched' && r.status !== 'Delivered')
   );
 
 // -- Inbound Operations --
@@ -196,7 +270,7 @@ export const editInboundAdvice = (row) => updateRow(TABLES.INBOUND_ADVICE, row);
 // from the new ROWID, so it's collision-free without a separate counter),
 // ready for the wizard to open straight into Step 1.
 export const startNewInboundAdvice = (warehouseId) =>
-  createInboundAdvice({ warehouse_id: warehouseId || undefined, status: 'Pending' }).then((created) => {
+  createInboundAdvice({ warehouse_id: warehouseId || undefined, status: 'Requested' }).then((created) => {
     if (!created?.ROWID) throw new Error('Could not create the inbound draft.');
     return editInboundAdvice({ ROWID: created.ROWID, inbound_reference: formatSequentialRef('IB', created.ROWID) });
   });
@@ -248,7 +322,7 @@ export const getInboundAdviceById = (id) =>
 
 export const listCargoByAdvice = (inboundAdviceId) =>
   zcql(
-    `SELECT ROWID, description, qty, unit, weight, dimensions, outer_package_no, length_cm, width_cm, height_cm, qr_code, status FROM Cargo WHERE inbound_advice_id = ${inboundAdviceId} ORDER BY CREATEDTIME`
+    `SELECT ROWID, description, qty, received_qty, unit, weight, dimensions, outer_package_no, length_cm, width_cm, height_cm, qr_code, status FROM Cargo WHERE inbound_advice_id = ${inboundAdviceId} ORDER BY CREATEDTIME`
   ).then((rows) => rows.map((r) => r.Cargo));
 export const createCargo = (row) => addRow(TABLES.CARGO, row);
 export const editCargo = (row) => updateRow(TABLES.CARGO, row);
@@ -295,13 +369,13 @@ export const sendInboundConfirmationEmail = (inboundAdviceId, recipientEmail, me
 // -- Storage (put-away / relocation) --
 export const listAllStorageLocations = () =>
   zcql(
-    `SELECT StorageLocations.ROWID, StorageLocations.location_code, StorageLocations.capacity, Racks.code, Zones.name, Warehouses.name FROM StorageLocations LEFT JOIN Racks ON StorageLocations.rack_id = Racks.ROWID LEFT JOIN Zones ON Racks.zone_id = Zones.ROWID LEFT JOIN Warehouses ON Zones.warehouse_id = Warehouses.ROWID`
+    `SELECT StorageLocations.ROWID, StorageLocations.location_code, StorageLocations.capacity, Racks.code, Aisles.name, Zones.name, Warehouses.name FROM StorageLocations LEFT JOIN Racks ON StorageLocations.rack_id = Racks.ROWID LEFT JOIN Aisles ON Racks.aisle_id = Aisles.ROWID LEFT JOIN Zones ON Aisles.zone_id = Zones.ROWID LEFT JOIN Warehouses ON Zones.warehouse_id = Warehouses.ROWID`
   ).then((rows) =>
     rows.map((r) => ({
       ROWID: r.StorageLocations.ROWID,
       location_code: r.StorageLocations.location_code,
       capacity: r.StorageLocations.capacity,
-      path: [r.Warehouses?.name, r.Zones?.name, r.Racks?.code].filter(Boolean).join(' / '),
+      path: [r.Warehouses?.name, r.Zones?.name, r.Aisles?.name, r.Racks?.code].filter(Boolean).join(' / '),
     }))
   );
 

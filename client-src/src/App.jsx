@@ -12,8 +12,8 @@ const TransportersPage = lazy(() => import('./pages/transporters/TransportersPag
 const WarehouseConfig = lazy(() => import('./pages/warehouse/WarehouseConfig'));
 const InboundAdviceList = lazy(() => import('./pages/inbound/InboundAdviceList'));
 const InboundMaster = lazy(() => import('./pages/inbound/InboundMaster'));
-const InboundWizard = lazy(() => import('./pages/inbound/InboundWizard'));
 const StoragePage = lazy(() => import('./pages/storage/StoragePage'));
+const CapacityDashboard = lazy(() => import('./pages/capacity/CapacityDashboard'));
 const DeliveryPage = lazy(() => import('./pages/delivery/DeliveryPage'));
 const OutboundRequestList = lazy(() => import('./pages/outbound/OutboundRequestList'));
 const OutboundRequestDetail = lazy(() => import('./pages/outbound/OutboundRequestDetail'));
@@ -119,8 +119,9 @@ function Gate() {
         <Route path="warehouse" element={<WarehouseConfig />} />
         <Route path="inbound" element={<InboundAdviceList />} />
         <Route path="inbound/:adviceId" element={<InboundMaster />} />
-        <Route path="inbound/:adviceId/wizard" element={<InboundWizard />} />
+        <Route path="inbound/:adviceId/wizard" element={<Navigate to=".." relative="path" replace />} />
         <Route path="storage" element={<StoragePage />} />
+        <Route path="capacity" element={<CapacityDashboard />} />
         <Route path="outbound" element={<OutboundRequestList />} />
         <Route path="outbound/:requestId" element={<OutboundRequestDetail />} />
         <Route path="delivery" element={<DeliveryPage />} />

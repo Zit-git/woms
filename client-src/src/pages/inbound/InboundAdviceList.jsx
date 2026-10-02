@@ -5,6 +5,7 @@ import SortableTh from '../../components/SortableTh';
 import { useSortableData } from '../../lib/useSortableData';
 import { useAuth } from '../../context/AuthContext';
 import { FULFILLMENT_STATUSES, computeFulfillmentStatus, fulfillmentStatusClass } from '../../lib/fulfillmentStatus';
+import { APPROVER_ROLES } from '../../lib/roles';
 
 export default function InboundAdviceList() {
   const navigate = useNavigate();
@@ -57,11 +58,13 @@ export default function InboundAdviceList() {
   );
   const { sorted, toggleSort, arrowFor } = useSortableData(filtered);
 
+  const canCreate = APPROVER_ROLES.includes(businessRole);
+
   const startNew = () => {
     setCreating(true);
     setError('');
     startNewInboundAdvice(warehouseId)
-      .then((created) => navigate(`/inbound/${created.ROWID}/wizard`))
+      .then((created) => navigate(`/inbound/${created.ROWID}`))
       .catch((err) => {
         setError(err.message || String(err));
         setCreating(false);
@@ -80,9 +83,11 @@ export default function InboundAdviceList() {
     <div>
       <div className="toolbar">
         <h2>Inbound Operations</h2>
-        <button className="btn" onClick={startNew} disabled={creating}>
-          {creating ? 'Creating...' : '+ New Inbound'}
-        </button>
+        {canCreate && (
+          <button className="btn" onClick={startNew} disabled={creating}>
+            {creating ? 'Creating...' : '+ New Inbound'}
+          </button>
+        )}
       </div>
 
       {error && <div className="error-text">{error}</div>}

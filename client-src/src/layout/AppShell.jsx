@@ -41,6 +41,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/inbound', label: 'Inbounds', icon: IconInbound },
       { to: '/storage', label: 'Storage', icon: IconBox },
+      { to: '/capacity', label: 'Capacity', icon: IconChart },
       { to: '/outbound', label: 'Outbounds', icon: IconOutbound },
       { to: '/delivery', label: 'Deliveries', icon: IconTruck },
       { to: '/val', label: 'VAL', icon: IconLayers },

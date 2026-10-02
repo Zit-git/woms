@@ -7,16 +7,25 @@ import {
   listZonesByWarehouse,
   createZone,
   removeZone,
-  listRacksByZone,
+  listAislesByZone,
+  createAisle,
+  removeAisle,
+  listRacksByAisle,
   createRack,
   removeRack,
   listLocationsByRack,
   createLocation,
+  editLocation,
   removeLocation,
+  listPackageTypes,
+  createPackageType,
+  removePackageType,
   getWarehouseMap,
 } from '../../lib/api';
 
-const TABS = ['Warehouses', 'Zones', 'Racks', 'Storage Locations', 'Map'];
+const TABS = ['Warehouses', 'Zones', 'Aisles', 'Racks', 'Storage Locations', 'Package Types', 'Map'];
+const CAPACITY_UNITS = ['Pallet Positions', 'Cartons', 'Crates', 'm²', 'm³', 'Other'];
+const LOCATION_STATUSES = ['Available', 'Reserved', 'Blocked'];
 
 function useList(loader, deps) {
   const [items, setItems] = useState([]);
@@ -255,13 +264,13 @@ function ZonesTab() {
   );
 }
 
-function RacksTab() {
+function AislesTab() {
   const { items: warehouses } = useList(listWarehouses, []);
   const [warehouseId, setWarehouseId] = useState('');
   const { items: zones } = useList(warehouseId ? () => listZonesByWarehouse(warehouseId) : null, [warehouseId]);
   const [zoneId, setZoneId] = useState('');
-  const { items, loading, error, reload } = useList(zoneId ? () => listRacksByZone(zoneId) : null, [zoneId]);
-  const [code, setCode] = useState('');
+  const { items, loading, error, reload } = useList(zoneId ? () => listAislesByZone(zoneId) : null, [zoneId]);
+  const [name, setName] = useState('');
 
   useEffect(() => {
     if (!warehouseId && warehouses.length) setWarehouseId(warehouses[0].ROWID);
@@ -272,9 +281,9 @@ function RacksTab() {
 
   const add = (e) => {
     e.preventDefault();
-    if (!code.trim() || !zoneId) return;
-    createRack({ code, zone_id: zoneId }).then(() => {
-      setCode('');
+    if (!name.trim() || !zoneId) return;
+    createAisle({ name, zone_id: zoneId }).then(() => {
+      setName('');
       reload();
     });
   };
@@ -305,12 +314,123 @@ function RacksTab() {
       </div>
 
       <form className="card" onSubmit={add}>
+        <h3>Add Aisle</h3>
+        <div className="form-row" style={{ maxWidth: 220 }}>
+          <label>Aisle name</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Aisle 1" />
+        </div>
+        <button className="btn" type="submit" disabled={!zoneId}>
+          + Add Aisle
+        </button>
+      </form>
+
+      {error && <div className="error-text">{error}</div>}
+      {loading ? (
+        <p className="muted">Loading...</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((a) => (
+              <tr key={a.ROWID}>
+                <td>{a.name}</td>
+                <td>
+                  <button className="link-btn" style={{ color: 'var(--danger)' }} onClick={() => removeAisle(a.ROWID).then(reload)}>
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {items.length === 0 && (
+              <tr>
+                <td colSpan={2} className="muted">
+                  No aisles for this zone yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function RacksTab() {
+  const { items: warehouses } = useList(listWarehouses, []);
+  const [warehouseId, setWarehouseId] = useState('');
+  const { items: zones } = useList(warehouseId ? () => listZonesByWarehouse(warehouseId) : null, [warehouseId]);
+  const [zoneId, setZoneId] = useState('');
+  const { items: aisles } = useList(zoneId ? () => listAislesByZone(zoneId) : null, [zoneId]);
+  const [aisleId, setAisleId] = useState('');
+  const { items, loading, error, reload } = useList(aisleId ? () => listRacksByAisle(aisleId) : null, [aisleId]);
+  const [code, setCode] = useState('');
+
+  useEffect(() => {
+    if (!warehouseId && warehouses.length) setWarehouseId(warehouses[0].ROWID);
+  }, [warehouses]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setZoneId(zones[0]?.ROWID || '');
+  }, [zones]);
+  useEffect(() => {
+    setAisleId(aisles[0]?.ROWID || '');
+  }, [aisles]);
+
+  const add = (e) => {
+    e.preventDefault();
+    if (!code.trim() || !aisleId) return;
+    createRack({ code, aisle_id: aisleId }).then(() => {
+      setCode('');
+      reload();
+    });
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 16 }}>
+        <div className="form-row" style={{ maxWidth: 220 }}>
+          <label>Warehouse</label>
+          <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
+            {warehouses.map((w) => (
+              <option key={w.ROWID} value={w.ROWID}>
+                {w.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="form-row" style={{ maxWidth: 220 }}>
+          <label>Zone</label>
+          <select value={zoneId} onChange={(e) => setZoneId(e.target.value)}>
+            {zones.map((z) => (
+              <option key={z.ROWID} value={z.ROWID}>
+                {z.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="form-row" style={{ maxWidth: 220 }}>
+          <label>Aisle</label>
+          <select value={aisleId} onChange={(e) => setAisleId(e.target.value)}>
+            {aisles.map((a) => (
+              <option key={a.ROWID} value={a.ROWID}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <form className="card" onSubmit={add}>
         <h3>Add Rack</h3>
         <div className="form-row" style={{ maxWidth: 220 }}>
           <label>Rack code</label>
           <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. A-01" />
         </div>
-        <button className="btn" type="submit" disabled={!zoneId}>
+        <button className="btn" type="submit" disabled={!aisleId}>
           + Add Rack
         </button>
       </form>
@@ -356,11 +476,16 @@ function LocationsTab() {
   const [warehouseId, setWarehouseId] = useState('');
   const { items: zones } = useList(warehouseId ? () => listZonesByWarehouse(warehouseId) : null, [warehouseId]);
   const [zoneId, setZoneId] = useState('');
-  const { items: racks } = useList(zoneId ? () => listRacksByZone(zoneId) : null, [zoneId]);
+  const { items: aisles } = useList(zoneId ? () => listAislesByZone(zoneId) : null, [zoneId]);
+  const [aisleId, setAisleId] = useState('');
+  const { items: racks } = useList(aisleId ? () => listRacksByAisle(aisleId) : null, [aisleId]);
   const [rackId, setRackId] = useState('');
   const { items, loading, error, reload } = useList(rackId ? () => listLocationsByRack(rackId) : null, [rackId]);
   const [locationCode, setLocationCode] = useState('');
   const [capacity, setCapacity] = useState('');
+  const [capacityUnit, setCapacityUnit] = useState(CAPACITY_UNITS[0]);
+  const [locationType, setLocationType] = useState('');
+  const [maxWeightKg, setMaxWeightKg] = useState('');
 
   useEffect(() => {
     if (!warehouseId && warehouses.length) setWarehouseId(warehouses[0].ROWID);
@@ -368,6 +493,9 @@ function LocationsTab() {
   useEffect(() => {
     setZoneId(zones[0]?.ROWID || '');
   }, [zones]);
+  useEffect(() => {
+    setAisleId(aisles[0]?.ROWID || '');
+  }, [aisles]);
   useEffect(() => {
     setRackId(racks[0]?.ROWID || '');
   }, [racks]);
@@ -378,19 +506,26 @@ function LocationsTab() {
     createLocation({
       location_code: locationCode,
       capacity: capacity ? Number(capacity) : undefined,
-      occupancy_status: 'Empty',
+      capacity_unit: capacityUnit,
+      location_type: locationType || undefined,
+      max_weight_kg: maxWeightKg ? Number(maxWeightKg) : undefined,
+      occupancy_status: 'Available',
       rack_id: rackId,
     }).then(() => {
       setLocationCode('');
       setCapacity('');
+      setLocationType('');
+      setMaxWeightKg('');
       reload();
     });
   };
 
+  const setStatus = (locationId, status) => editLocation({ ROWID: locationId, occupancy_status: status }).then(reload);
+
   return (
     <div>
-      <div style={{ display: 'flex', gap: 16 }}>
-        <div className="form-row" style={{ maxWidth: 220 }}>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <div className="form-row" style={{ maxWidth: 200 }}>
           <label>Warehouse</label>
           <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
             {warehouses.map((w) => (
@@ -400,7 +535,7 @@ function LocationsTab() {
             ))}
           </select>
         </div>
-        <div className="form-row" style={{ maxWidth: 220 }}>
+        <div className="form-row" style={{ maxWidth: 200 }}>
           <label>Zone</label>
           <select value={zoneId} onChange={(e) => setZoneId(e.target.value)}>
             {zones.map((z) => (
@@ -410,7 +545,17 @@ function LocationsTab() {
             ))}
           </select>
         </div>
-        <div className="form-row" style={{ maxWidth: 220 }}>
+        <div className="form-row" style={{ maxWidth: 200 }}>
+          <label>Aisle</label>
+          <select value={aisleId} onChange={(e) => setAisleId(e.target.value)}>
+            {aisles.map((a) => (
+              <option key={a.ROWID} value={a.ROWID}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="form-row" style={{ maxWidth: 200 }}>
           <label>Rack</label>
           <select value={rackId} onChange={(e) => setRackId(e.target.value)}>
             {racks.map((r) => (
@@ -424,14 +569,32 @@ function LocationsTab() {
 
       <form className="card" onSubmit={add}>
         <h3>Add Storage Location</h3>
-        <div style={{ display: 'flex', gap: 12 }}>
-          <div className="form-row" style={{ maxWidth: 220 }}>
+        <div className="form-grid-3">
+          <div className="form-row">
             <label>Location code</label>
             <input value={locationCode} onChange={(e) => setLocationCode(e.target.value)} placeholder="e.g. A-01-01" />
           </div>
-          <div className="form-row" style={{ maxWidth: 140 }}>
+          <div className="form-row">
+            <label>Location type</label>
+            <input value={locationType} onChange={(e) => setLocationType(e.target.value)} placeholder="e.g. Pallet Rack" />
+          </div>
+          <div className="form-row">
             <label>Capacity</label>
             <input type="number" value={capacity} onChange={(e) => setCapacity(e.target.value)} placeholder="e.g. 10" />
+          </div>
+          <div className="form-row">
+            <label>Capacity unit</label>
+            <select value={capacityUnit} onChange={(e) => setCapacityUnit(e.target.value)}>
+              {CAPACITY_UNITS.map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-row">
+            <label>Max weight (kg)</label>
+            <input type="number" value={maxWeightKg} onChange={(e) => setMaxWeightKg(e.target.value)} placeholder="Optional" />
           </div>
         </div>
         <button className="btn" type="submit" disabled={!rackId}>
@@ -447,8 +610,10 @@ function LocationsTab() {
           <thead>
             <tr>
               <th>Location Code</th>
+              <th>Type</th>
               <th>Capacity</th>
-              <th>Occupancy</th>
+              <th>Max Weight</th>
+              <th>Status</th>
               <th></th>
             </tr>
           </thead>
@@ -456,9 +621,17 @@ function LocationsTab() {
             {items.map((l) => (
               <tr key={l.ROWID}>
                 <td>{l.location_code}</td>
-                <td>{l.capacity}</td>
+                <td>{l.location_type || <span className="muted">—</span>}</td>
+                <td>{l.capacity} {l.capacity_unit && <span className="muted small">{l.capacity_unit}</span>}</td>
+                <td>{l.max_weight_kg ? `${l.max_weight_kg} kg` : <span className="muted">—</span>}</td>
                 <td>
-                  <span className="status-badge">{l.occupancy_status}</span>
+                  <select value={LOCATION_STATUSES.includes(l.occupancy_status) ? l.occupancy_status : 'Available'} onChange={(e) => setStatus(l.ROWID, e.target.value)}>
+                    {LOCATION_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
                 </td>
                 <td>
                   <button
@@ -473,7 +646,7 @@ function LocationsTab() {
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={4} className="muted">
+                <td colSpan={6} className="muted">
                   No storage locations for this rack yet.
                 </td>
               </tr>
@@ -497,9 +670,13 @@ function WarehouseMapTab() {
     if (!warehouseId && warehouses.length) setWarehouseId(warehouses[0].ROWID);
   }, [warehouses]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const totalLocations = zoneMap.reduce((n, z) => n + z.racks.reduce((rn, r) => rn + r.locations.length, 0), 0);
+  const totalLocations = zoneMap.reduce(
+    (n, z) => n + z.aisles.reduce((an, a) => an + a.racks.reduce((rn, r) => rn + r.locations.length, 0), 0),
+    0
+  );
   const totalOccupied = zoneMap.reduce(
-    (n, z) => n + z.racks.reduce((rn, r) => rn + r.locations.filter((l) => l.occupied).length, 0),
+    (n, z) =>
+      n + z.aisles.reduce((an, a) => an + a.racks.reduce((rn, r) => rn + r.locations.filter((l) => l.occupied).length, 0), 0),
     0
   );
 
@@ -537,31 +714,130 @@ function WarehouseMapTab() {
       ) : zoneMap.length === 0 ? (
         <p className="muted">No zones configured for this warehouse yet.</p>
       ) : (
-        zoneMap.map(({ zone, racks }) => (
+        zoneMap.map(({ zone, aisles }) => (
           <div className="warehouse-zone" key={zone.ROWID}>
             <h3>
               {zone.name} {zone.zone_type && <span className="muted small">({zone.zone_type})</span>}
             </h3>
-            {racks.length === 0 && <p className="muted small">No racks in this zone.</p>}
-            {racks.map(({ rack, locations }) => (
-              <div className="warehouse-rack" key={rack.ROWID}>
-                <div className="warehouse-rack-label">{rack.code}</div>
-                <div className="warehouse-rack-locations">
-                  {locations.map((loc) => (
-                    <div
-                      key={loc.ROWID}
-                      className={'location-box' + (loc.occupied ? ' occupied' : ' empty')}
-                      title={`${loc.location_code} - ${loc.occupied ? 'Occupied' : 'Empty'}`}
-                    >
-                      {loc.location_code}
+            {aisles.length === 0 && <p className="muted small">No aisles in this zone.</p>}
+            {aisles.map(({ aisle, racks }) => (
+              <div key={aisle.ROWID} style={{ marginBottom: 12 }}>
+                <div className="muted small" style={{ marginBottom: 4 }}>{aisle.name}</div>
+                {racks.length === 0 && <p className="muted small">No racks in this aisle.</p>}
+                {racks.map(({ rack, locations }) => (
+                  <div className="warehouse-rack" key={rack.ROWID}>
+                    <div className="warehouse-rack-label">{rack.code}</div>
+                    <div className="warehouse-rack-locations">
+                      {locations.map((loc) => (
+                        <div
+                          key={loc.ROWID}
+                          className={'location-box' + (loc.occupied ? ' occupied' : ' empty')}
+                          title={`${loc.location_code} - ${loc.occupied ? 'Occupied' : 'Empty'}`}
+                        >
+                          {loc.location_code}
+                        </div>
+                      ))}
+                      {locations.length === 0 && <span className="muted small">No storage locations in this rack.</span>}
                     </div>
-                  ))}
-                  {locations.length === 0 && <span className="muted small">No storage locations in this rack.</span>}
-                </div>
+                  </div>
+                ))}
               </div>
             ))}
           </div>
         ))
+      )}
+    </div>
+  );
+}
+
+function PackageTypesTab() {
+  const { items, loading, error, reload } = useList(listPackageTypes, []);
+  const [name, setName] = useState('');
+  const [capacityUnit, setCapacityUnit] = useState(CAPACITY_UNITS[0]);
+  const [unitsPerItem, setUnitsPerItem] = useState('1');
+
+  const add = (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    createPackageType({ name, capacity_unit: capacityUnit, units_per_item: Number(unitsPerItem) || 1, status: 'Active' }).then(() => {
+      setName('');
+      setUnitsPerItem('1');
+      reload();
+    });
+  };
+
+  return (
+    <div>
+      <form className="card" onSubmit={add}>
+        <h3>Add Package / Handling-Unit Type</h3>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div className="form-row" style={{ maxWidth: 220 }}>
+            <label>Name</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Pallet" />
+          </div>
+          <div className="form-row" style={{ maxWidth: 220 }}>
+            <label>Consumes capacity unit</label>
+            <select value={capacityUnit} onChange={(e) => setCapacityUnit(e.target.value)}>
+              {CAPACITY_UNITS.map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-row" style={{ maxWidth: 160 }}>
+            <label>Units per item</label>
+            <input type="number" min="0" step="0.01" value={unitsPerItem} onChange={(e) => setUnitsPerItem(e.target.value)} />
+          </div>
+        </div>
+        <button className="btn" type="submit">
+          + Add Type
+        </button>
+      </form>
+
+      {error && <div className="error-text">{error}</div>}
+      {loading ? (
+        <p className="muted">Loading...</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Capacity Unit</th>
+              <th>Units / Item</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((p) => (
+              <tr key={p.ROWID}>
+                <td>{p.name}</td>
+                <td>{p.capacity_unit || <span className="muted">—</span>}</td>
+                <td>{p.units_per_item ?? 1}</td>
+                <td>
+                  <span className="status-badge">{p.status}</span>
+                </td>
+                <td>
+                  <button
+                    className="link-btn"
+                    style={{ color: 'var(--danger)' }}
+                    onClick={() => removePackageType(p.ROWID).then(reload)}
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {items.length === 0 && (
+              <tr>
+                <td colSpan={5} className="muted">
+                  No package types configured yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       )}
     </div>
   );
@@ -582,8 +858,10 @@ export default function WarehouseConfig() {
       </div>
       {tab === 'Warehouses' && <WarehousesTab />}
       {tab === 'Zones' && <ZonesTab />}
+      {tab === 'Aisles' && <AislesTab />}
       {tab === 'Racks' && <RacksTab />}
       {tab === 'Storage Locations' && <LocationsTab />}
+      {tab === 'Package Types' && <PackageTypesTab />}
       {tab === 'Map' && <WarehouseMapTab />}
     </div>
   );

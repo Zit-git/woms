@@ -18,7 +18,9 @@ function blankLine(inboundAdviceId, customerId, warehouseId, index) {
   };
 }
 
-export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice, goNext, goBack, saving, setError }) {
+// embedded: used inline inside RequestPopup (no wizard chrome, no Back/Next
+// footer -- every field already autosaves on blur/add/remove).
+export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice, goNext, goBack, saving, setError, embedded = false }) {
   const [rows, setRows] = useState(cargoRows);
   const [savingRow, setSavingRow] = useState(null);
   const [remarks, setRemarks] = useState(advice.remarks ?? '');
@@ -80,13 +82,15 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
   const finishAndReload = () => Promise.allSettled(pendingSaves.current).then(() => reloadCargo()).then(goNext);
 
   return (
-    <div className="card">
-      <div className="wizard-ref-box">
-        <div className="muted small" style={{ letterSpacing: 0.5 }}>
-          INBOUND REFERENCE
+    <div className={embedded ? '' : 'card'}>
+      {!embedded && (
+        <div className="wizard-ref-box">
+          <div className="muted small" style={{ letterSpacing: 0.5 }}>
+            INBOUND REFERENCE
+          </div>
+          <div className="wizard-ref-value">{advice.inbound_reference || '—'}</div>
         </div>
-        <div className="wizard-ref-value">{advice.inbound_reference || '—'}</div>
-      </div>
+      )}
 
       <div className="toolbar">
         <div>
@@ -252,14 +256,16 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
         <p className="muted small">Add at least one cargo line and fill in all required (*) columns before completing the inbound.</p>
       )}
 
-      <div className="form-actions" style={{ justifyContent: 'space-between' }}>
-        <button className="btn secondary" onClick={goBack}>
-          &larr; Back
-        </button>
-        <button className="btn" onClick={finishAndReload} disabled={saving}>
-          Next: Documents &rarr;
-        </button>
-      </div>
+      {!embedded && (
+        <div className="form-actions" style={{ justifyContent: 'space-between' }}>
+          <button className="btn secondary" onClick={goBack}>
+            &larr; Back
+          </button>
+          <button className="btn" onClick={finishAndReload} disabled={saving}>
+            Next: Documents &rarr;
+          </button>
+        </div>
+      )}
     </div>
   );
 }
