@@ -5,16 +5,25 @@
 // availability projection.
 //
 // What's exact vs. estimated:
-// - Total capacity, physical occupancy, pending put-away, and committed
-//   counts are exact counts of real location/Cargo rows.
-// - Only the *capacity_unit grouping* of committed/release cargo is an
-//   estimate, since it depends on matching Cargo.unit (free text) against
-//   the PackageTypes master -- an unmatched unit is grouped as "Ungrouped".
+// - Total capacity, pending put-away, and committed/released *row counts*
+//   are exact counts of real location/Cargo rows.
+// - Occupied/Committed/Released capacity *amounts* depend on matching each
+//   Cargo row's unit (free text) against the PackageTypes master to find how
+//   many capacity units it actually consumes (units_per_item) -- an
+//   unmatched unit falls back to 1 unit of "Ungrouped" capacity. This is the
+//   one estimate in the engine; everything else is exact arithmetic on it.
 const UNGROUPED = 'Ungrouped';
 
+function packageTypeFor(cargoUnit, packageTypesByName) {
+  return packageTypesByName.get((cargoUnit || '').trim().toLowerCase());
+}
 function unitFor(cargoUnit, packageTypesByName) {
-  const match = packageTypesByName.get((cargoUnit || '').trim().toLowerCase());
-  return match?.capacity_unit || UNGROUPED;
+  return packageTypeFor(cargoUnit, packageTypesByName)?.capacity_unit || UNGROUPED;
+}
+function unitsPerItemFor(cargoUnit, packageTypesByName) {
+  const match = packageTypeFor(cargoUnit, packageTypesByName);
+  const n = Number(match?.units_per_item);
+  return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
 // Cargo whose parent inbound has been accepted but not yet physically
@@ -34,7 +43,7 @@ export function requiredCapacityByUnit(cargoRows, packageTypes) {
   const byUnit = new Map();
   (cargoRows || []).forEach((c) => {
     const unit = unitFor(c.unit, packageTypesByName);
-    byUnit.set(unit, (byUnit.get(unit) || 0) + 1);
+    byUnit.set(unit, (byUnit.get(unit) || 0) + unitsPerItemFor(c.unit, packageTypesByName));
   });
   return byUnit;
 }
@@ -45,7 +54,17 @@ export function computeCapacity({ locations, cargoRows, outboundCommitments, pac
   const cargo = (cargoRows || []).filter((c) => !warehouseId || String(c.warehouse_id) === String(warehouseId));
   const releases = (outboundCommitments || []).filter((r) => !warehouseId || String(r.warehouse_id) === String(warehouseId));
 
-  const occupiedLocationIds = new Set(cargo.filter((c) => c.current_location_id).map((c) => String(c.current_location_id)));
+  // Units of capacity actually consumed at each location, not just a
+  // yes/no "has something in it" flag -- several Cargo rows can share one
+  // location, and each row can consume more than one unit (e.g. a package
+  // type with units_per_item > 1).
+  const consumedUnitsByLocation = new Map();
+  cargo
+    .filter((c) => c.current_location_id)
+    .forEach((c) => {
+      const key = String(c.current_location_id);
+      consumedUnitsByLocation.set(key, (consumedUnitsByLocation.get(key) || 0) + unitsPerItemFor(c.unit, packageTypesByName));
+    });
 
   const byUnit = new Map();
   const unitEntry = (unit) => {
@@ -57,12 +76,12 @@ export function computeCapacity({ locations, cargoRows, outboundCommitments, pac
     const unit = l.capacity_unit || UNGROUPED;
     const entry = unitEntry(unit);
     entry.total += Number(l.capacity) || 0;
-    if (occupiedLocationIds.has(String(l.ROWID))) entry.occupied += 1;
+    entry.occupied += consumedUnitsByLocation.get(String(l.ROWID)) || 0;
   });
 
   const committedCargo = cargo.filter(isCommitted);
   committedCargo.forEach((c) => {
-    unitEntry(unitFor(c.unit, packageTypesByName)).committed += 1;
+    unitEntry(unitFor(c.unit, packageTypesByName)).committed += unitsPerItemFor(c.unit, packageTypesByName);
   });
 
   byUnit.forEach((entry) => {
@@ -74,7 +93,7 @@ export function computeCapacity({ locations, cargoRows, outboundCommitments, pac
   const expectedReleaseByUnit = new Map();
   releases.forEach((r) => {
     const unit = unitFor(r.unit, packageTypesByName);
-    expectedReleaseByUnit.set(unit, (expectedReleaseByUnit.get(unit) || 0) + 1);
+    expectedReleaseByUnit.set(unit, (expectedReleaseByUnit.get(unit) || 0) + unitsPerItemFor(r.unit, packageTypesByName));
   });
 
   return {
@@ -126,11 +145,11 @@ export function projectAvailability({ locations, cargoRows, outboundCommitments,
 
     committedCargo
       .filter((c) => c.inbound_expected_date && c.inbound_expected_date <= date)
-      .forEach((c) => (ensure(unitFor(c.unit, packageTypesByName)).committedByThen += 1));
+      .forEach((c) => (ensure(unitFor(c.unit, packageTypesByName)).committedByThen += unitsPerItemFor(c.unit, packageTypesByName)));
 
     warehouseReleases
       .filter((r) => r.requested_date && r.requested_date <= date)
-      .forEach((r) => (ensure(unitFor(r.unit, packageTypesByName)).releasedByThen += 1));
+      .forEach((r) => (ensure(unitFor(r.unit, packageTypesByName)).releasedByThen += unitsPerItemFor(r.unit, packageTypesByName)));
 
     const byCapacityUnit = [...units.values()]
       .map((u) => ({ ...u, available: u.total - u.occupied - u.committedByThen + u.releasedByThen }))

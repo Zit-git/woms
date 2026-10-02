@@ -61,7 +61,7 @@ export default function CapacityDashboard() {
         <div>
           <h2>Capacity Dashboard</h2>
           <p className="muted small" style={{ marginTop: -8 }}>
-            Physical occupancy is exact; Committed and Expected Release are estimates (see note below).
+            Totals and row counts are exact; per-unit amounts depend on matching each item against Package Types (see note below).
           </p>
         </div>
         <div className="form-row" style={{ maxWidth: 260, marginBottom: 0 }}>
@@ -91,7 +91,7 @@ export default function CapacityDashboard() {
             <div className="card kpi-card">
               <h3>Physical Occupancy</h3>
               <div className="kpi-value">{snapshot.totals.occupied}</div>
-              <p className="muted small">locations currently occupied</p>
+              <p className="muted small">capacity units currently consumed</p>
             </div>
             <div className="card kpi-card">
               <h3>Pending Put-away</h3>
