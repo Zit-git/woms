@@ -27,7 +27,7 @@ import {
 } from '../../lib/api';
 import { computeCapacity, projectAvailability } from '../../lib/capacity';
 
-const TABS = ['Warehouses', 'Availability', 'Zones', 'Aisles', 'Racks', 'Storage Locations', 'Package Types', 'Map'];
+const TABS = ['Warehouses', 'Zones', 'Aisles', 'Racks', 'Storage Locations', 'Package Types', 'Map', 'Availability'];
 const CAPACITY_UNITS = ['Pallet Positions', 'Cartons', 'Crates', 'm²', 'm³', 'Other'];
 const LOCATION_STATUSES = ['Available', 'Reserved', 'Blocked'];
 
@@ -273,7 +273,7 @@ function AvailabilityTab() {
 
       {loading ? (
         <p className="muted">Loading...</p>
-      ) : (
+      ) : !warehouseId ? (
         <>
           <h3 style={{ marginTop: 0 }}>Overall — All Warehouses</h3>
           <div className="card-grid">
@@ -351,7 +351,7 @@ function AvailabilityTab() {
                     <td>{s.weight.available.toFixed(0)}</td>
                     <td>{s.space.available.toFixed(1)}</td>
                     <td>
-                      <span className="link-btn">{String(w.ROWID) === String(warehouseId) ? 'Viewing ↓' : 'View detail'}</span>
+                      <span className="link-btn">View detail</span>
                     </td>
                   </tr>
                 ))}
@@ -365,11 +365,16 @@ function AvailabilityTab() {
               </tbody>
             </table>
           </div>
-
-          {warehouseId && (
-            <>
-              <h3>Warehouse Detail: {warehouses.find((w) => String(w.ROWID) === String(warehouseId))?.name || '—'}</h3>
-              <div className="card-grid">
+        </>
+      ) : (
+        <>
+          <div className="toolbar" style={{ marginBottom: 0 }}>
+            <h3 style={{ margin: 0 }}>Warehouse Detail: {warehouses.find((w) => String(w.ROWID) === String(warehouseId))?.name || '—'}</h3>
+            <button className="link-btn" onClick={() => setWarehouseId('')}>
+              &larr; All Warehouses
+            </button>
+          </div>
+          <div className="card-grid">
                 <div className="card kpi-card">
                   <h3>Total Capacity</h3>
                   <div className="kpi-value">{snapshot.totals.total}</div>
@@ -488,8 +493,6 @@ function AvailabilityTab() {
                   </tbody>
                 </table>
               </div>
-            </>
-          )}
         </>
       )}
     </div>
@@ -1204,13 +1207,13 @@ export default function WarehouseConfig() {
         ))}
       </div>
       {tab === 'Warehouses' && <WarehousesTab />}
-      {tab === 'Availability' && <AvailabilityTab />}
       {tab === 'Zones' && <ZonesTab />}
       {tab === 'Aisles' && <AislesTab />}
       {tab === 'Racks' && <RacksTab />}
       {tab === 'Storage Locations' && <LocationsTab />}
       {tab === 'Package Types' && <PackageTypesTab />}
       {tab === 'Map' && <WarehouseMapTab />}
+      {tab === 'Availability' && <AvailabilityTab />}
     </div>
   );
 }
