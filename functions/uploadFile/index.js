@@ -16,11 +16,15 @@ const BUCKET_KEYS = { DOCUMENTS: BUCKETS.DOCUMENTS, CARGO_PHOTOS: BUCKETS.CARGO_
 // Uploads a document/photo to the right Stratus bucket and records it in
 // the Documents table against whatever module/record it belongs to.
 app.post('/', async (req, res) => {
-  const catalystApp = catalystSDK.initialize(req);
+  // Admin scope: with the default (end-user) scope Stratus rejected the write
+  // with 403 "request denied by resource access policy" for app users, so no
+  // document or signature could ever be saved.
+  const catalystApp = catalystSDK.initialize(req, { scope: 'admin' });
 
   try {
     const { fileBase64, fileName, bucketKey, docType, linkedModule, linkedRecordId, uploadedBy } = req.body;
     if (!fileBase64 || !fileName || !bucketKey || !linkedModule || !linkedRecordId) {
+      console.error('uploadFile 400: missing field', { hasFile: Boolean(fileBase64), fileName, bucketKey, linkedModule, linkedRecordId });
       return res
         .status(400)
         .send({ error: 'fileBase64, fileName, bucketKey, linkedModule and linkedRecordId are required' });
