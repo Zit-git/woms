@@ -4,18 +4,23 @@ import { logAudit, listWarehouses, listCapacityLocations, listCapacityCargo, lis
 import { useAuth } from '../../../context/AuthContext';
 import { computeInboundSummary } from '../../../lib/inboundSummary';
 import { computeCapacity, requiredCapacityByUnit, requiredWeightAndSpace } from '../../../lib/capacity';
-import { allocateLocations, recommendWarehouses } from '../../../lib/allocation';
+import { recommendWarehouses } from '../../../lib/allocation';
 
 // Stage 2 (Availability Check & Acceptance): a Warehouse Manager/Supervisor
 // checks this request's required capacity against what's actually available
-// in the warehouse (via the capacity engine built for the Capacity
-// Dashboard), then accepts or rejects. This request's own lines are still
-// 'Requested', not 'Confirmed', so computeCapacity's Available figure
-// naturally excludes them -- it's a clean before/after comparison.
+// (via the capacity engine) and which warehouse best fits it, then accepts
+// or rejects. This request's own lines are still 'Requested', not
+// 'Confirmed', so computeCapacity's Available figure naturally excludes
+// them -- a clean before/after comparison.
 //
-// If a storage period is set, Accept also hard-allocates a specific location
-// to each cargo line (lib/allocation.js), matching size/weight/capacity and
-// checking against that period -- not just an aggregate count.
+// Deliberately does NOT pin a specific storage location per line here --
+// in reality nobody knows exactly which rack slot something goes into until
+// it has physically arrived, been checked, and turned into a Handling Unit.
+// That specific-location assignment happens at Put-away time instead (see
+// StoragePage.jsx), which runs the same lib/allocation.js logic but for one
+// real item in hand, not a future plan. Accept only checks aggregate
+// capacity and recommends a warehouse -- both legitimate decisions this
+// early, unlike a specific rack.
 export default function ConfirmPopup({ advice, cargoRows, suppliers, transporters, patchAdvice, reloadCargo, onClose }) {
   const { user } = useAuth();
   const [confirming, setConfirming] = useState(false);
@@ -60,25 +65,8 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
   const allUnits = new Set([...required.keys(), ...availableByUnit.keys()]);
   const requiredWeightSpace = useMemo(() => requiredWeightAndSpace(cargoRows), [cargoRows]);
 
-  const allocation = useMemo(() => {
-    if (!capacityData || !hasStoragePeriod) return null;
-    const locationsInWarehouse = capacityData.locations.filter((l) => !advice.warehouse_id || String(l.warehouse_id) === String(advice.warehouse_id));
-    return allocateLocations({
-      cargoRows,
-      locations: locationsInWarehouse,
-      allCargo: capacityData.cargo,
-      outboundCommitments: capacityData.outboundCommitments,
-      packageTypes: capacityData.packageTypes,
-      storageStart: advice.storage_start_date,
-      storageEnd: advice.storage_end_date,
-      excludeAdviceId: advice.ROWID,
-      customerId: advice.customer_id,
-    });
-  }, [capacityData, hasStoragePeriod, cargoRows, advice.warehouse_id, advice.storage_start_date, advice.storage_end_date, advice.ROWID, advice.customer_id]);
-
-  // Which warehouse should this go to, not just "does the one already
-  // assigned have room" -- runs the same allocateLocations once per
-  // warehouse and ranks them by how many lines actually fit.
+  // Which warehouse should this go to -- an aggregate, fit-count comparison
+  // across warehouses (how many lines *could* fit, not which exact rack).
   const recommendation = useMemo(() => {
     if (!capacityData || !hasStoragePeriod || !capacityData.warehouses.length) return null;
     return recommendWarehouses({
@@ -107,20 +95,10 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
       .finally(() => setSwitching(false));
   };
 
-  const locationCodeById = new Map((capacityData?.locations || []).map((l) => [String(l.ROWID), l.location_code]));
-  const cargoById = new Map(cargoRows.map((c) => [String(c.ROWID), c]));
-  const unallocatedCount = allocation ? allocation.filter((a) => !a.locationId).length : 0;
-
   const confirm = () => {
     setConfirming(true);
     setError('');
-    const reserve = allocation
-      ? Promise.all(
-          allocation.filter((a) => a.locationId).map((a) => editCargo({ ROWID: a.cargoId, reserved_location_id: a.locationId }))
-        )
-      : Promise.resolve();
-    reserve
-      .then(() => patchAdvice({ status: 'Confirmed' }))
+    patchAdvice({ status: 'Confirmed' })
       .then(() => logAudit({ userId: user?.email_id, actionType: 'INBOUND_CONFIRMED', module: 'Inbound Operations', recordId: advice.ROWID }))
       .then(onClose)
       .catch((err) => setError(err.message || String(err)))
@@ -212,7 +190,7 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
           </tbody>
         </table>
       )}
-      <p className="muted small">A shortage is a warning, not a hard block — some capacity types may be approximate (see the Capacity Dashboard).</p>
+      <p className="muted small">A shortage is a warning, not a hard block — some capacity types may be approximate (see Warehouse Management → Availability).</p>
 
       {capacitySnapshot && (
         <table>
@@ -303,59 +281,9 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
             </p>
           )}
           <p className="muted small">
-            Switching re-assigns every line item on this request to the new warehouse and refreshes the Location Allocation below.
+            This is a capacity estimate, not a reservation — switching just re-assigns every line item on this request to the new
+            warehouse. The exact storage location for each item is chosen later, at Put-away, once it has actually arrived.
           </p>
-        </>
-      )}
-
-      <div className="form-section-title">Location Allocation</div>
-      <p className="muted small" style={{ marginTop: -8 }}>
-        Locations are customer-dedicated — once a location holds this customer's cargo, only this customer can fill the rest of it;
-        locations already committed to a different customer are skipped even if they have room.
-      </p>
-      {!hasStoragePeriod ? (
-        <p className="muted small">
-          Set an expected storage period (From date) on the request to check specific location availability and reserve space.
-        </p>
-      ) : !allocation ? (
-        <p className="muted small">Checking location availability for {advice.storage_start_date} → {advice.storage_end_date || 'open-ended'}...</p>
-      ) : (
-        <>
-          <div style={{ overflowX: 'auto' }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Description</th>
-                  <th>Suggested Location</th>
-                </tr>
-              </thead>
-              <tbody>
-                {allocation.map((a) => {
-                  const c = cargoById.get(String(a.cargoId));
-                  return (
-                    <tr key={a.cargoId}>
-                      <td>{c?.outer_package_no}</td>
-                      <td>{c?.description}</td>
-                      <td>
-                        {a.locationId ? (
-                          locationCodeById.get(String(a.locationId)) || a.locationId
-                        ) : (
-                          <span style={{ color: 'var(--danger)', fontWeight: 600 }}>⚠ No location available</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {unallocatedCount > 0 && (
-            <p className="muted small">
-              {unallocatedCount} line{unallocatedCount === 1 ? '' : 's'} couldn't be matched to a location for this period — a warning, not a
-              block; they'll need manual placement at Put-away.
-            </p>
-          )}
         </>
       )}
 

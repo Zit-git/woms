@@ -1,6 +1,18 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { listCargoOutOfRack, listStoredCargo, listAllStorageLocations, recordScan } from '../../lib/api';
+import {
+  listCargoOutOfRack,
+  listStoredCargo,
+  listAllStorageLocations,
+  listCapacityLocations,
+  listCapacityCargo,
+  listCapacityOutboundCommitments,
+  listPackageTypes,
+  recordScan,
+} from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
+import { allocateLocations } from '../../lib/allocation';
+
+const todayStr = () => new Date().toISOString().slice(0, 10);
 
 const QrScannerModal = lazy(() => import('../../components/QrScannerModal'));
 
@@ -24,6 +36,7 @@ export default function StoragePage() {
   const [stored, setStored] = useState([]);
   const [outOfRack, setOutOfRack] = useState([]);
   const [locations, setLocations] = useState([]);
+  const [capacityData, setCapacityData] = useState(null); // { locations, cargo, outboundCommitments, packageTypes } -- for live put-away suggestions
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -57,6 +70,37 @@ export default function StoragePage() {
   useEffect(() => {
     reload().finally(() => setLoading(false));
   }, [reload]);
+
+  // For live put-away suggestions only -- a real-time "where should this go"
+  // computed the moment someone's standing there with the item, not a
+  // reservation made in advance (see ConfirmPopup.jsx for why).
+  useEffect(() => {
+    Promise.all([listCapacityLocations(), listCapacityCargo(), listCapacityOutboundCommitments(), listPackageTypes()])
+      .then(([l, c, o, p]) => setCapacityData({ locations: l, cargo: c, outboundCommitments: o, packageTypes: p }))
+      .catch(() => setCapacityData(null)); // a failed fetch just means no suggestion -- picker still works manually
+  }, []);
+
+  // Runs the same allocator the Availability Check uses, but for one real
+  // item right now (storageStart = today, no end date) instead of a future
+  // plan -- this is the point where a specific location actually gets
+  // chosen, not at Confirm time.
+  const suggestLocation = useCallback(
+    (cargoRow) => {
+      if (!capacityData || !cargoRow) return undefined;
+      const locationsInWarehouse = capacityData.locations.filter((l) => String(l.warehouse_id) === String(cargoRow.warehouse_id));
+      const [result] = allocateLocations({
+        cargoRows: [cargoRow],
+        locations: locationsInWarehouse,
+        allCargo: capacityData.cargo,
+        outboundCommitments: capacityData.outboundCommitments,
+        packageTypes: capacityData.packageTypes,
+        storageStart: todayStr(),
+        customerId: cargoRow.customer_id,
+      });
+      return result?.locationId;
+    },
+    [capacityData]
+  );
 
   const pending = useMemo(() => outOfRack.filter((c) => c.status !== 'Retrieved'), [outOfRack]);
   const retrieved = useMemo(() => outOfRack.filter((c) => c.status === 'Retrieved'), [outOfRack]);
@@ -167,7 +211,7 @@ export default function StoragePage() {
     (code) => {
       setShowScanner(false);
       const out = outOfRack.find((c) => c.qr_code === code);
-      if (out) return openPicker('putaway', [out.ROWID], out.reserved_location_id);
+      if (out) return openPicker('putaway', [out.ROWID], suggestLocation(out));
       const inRack = stored.find((c) => c.qr_code === code);
       if (inRack) {
         setScanChoice(inRack);
@@ -176,7 +220,7 @@ export default function StoragePage() {
       }
       setError(`No cargo matches scanned code "${code}"`);
     },
-    [outOfRack, stored] // eslint-disable-line react-hooks/exhaustive-deps
+    [outOfRack, stored, suggestLocation] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   if (loading) return <p className="muted">Loading...</p>;
@@ -222,7 +266,7 @@ export default function StoragePage() {
             </button>
           </>
         ) : (
-          <button className="link-btn" onClick={() => openPicker('putaway', [c.ROWID], c.reserved_location_id)}>
+          <button className="link-btn" onClick={() => openPicker('putaway', [c.ROWID], suggestLocation(c))}>
             {tab === 'retrieved' ? 'Put back' : 'Put away'}
           </button>
         )}
@@ -301,6 +345,11 @@ export default function StoragePage() {
           </h3>
           <div className="form-row">
             <label>Storage location</label>
+            {action.mode === 'putaway' && action.ids.length === 1 && pickedLocation && (
+              <p className="muted small" style={{ marginTop: -4 }}>
+                Suggested based on size, weight and customer — pick a different one if needed.
+              </p>
+            )}
             <select value={pickedLocation} onChange={(e) => setPickedLocation(e.target.value)}>
               <option value="">Select location...</option>
               {locations.map((l) => (

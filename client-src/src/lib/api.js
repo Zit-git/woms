@@ -397,7 +397,7 @@ export const listAllStorageLocations = () =>
   );
 
 const STOCK_COLUMNS =
-  'Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.weight, Cargo.qr_code, Cargo.status, Cargo.outer_package_no, Cargo.current_location_id, Cargo.reserved_location_id, Cargo.inbound_advice_id, Customers.name, InboundAdvice.inbound_reference, InboundAdvice.destination';
+  'Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.weight, Cargo.length_cm, Cargo.width_cm, Cargo.height_cm, Cargo.qr_code, Cargo.status, Cargo.outer_package_no, Cargo.current_location_id, Cargo.reserved_location_id, Cargo.customer_id, Cargo.warehouse_id, Cargo.inbound_advice_id, Customers.name, InboundAdvice.inbound_reference, InboundAdvice.destination';
 const STOCK_JOINS =
   'FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID';
 const toStockRow = (r) => ({
