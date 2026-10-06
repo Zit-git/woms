@@ -1,27 +1,24 @@
 import { useState } from 'react';
 import Modal from '../../../components/Modal';
-import { generateQRCode, createGRN } from '../../../lib/api';
+import { createGRN } from '../../../lib/api';
 import { useAuth } from '../../../context/AuthContext';
 import { computeInboundSummary } from '../../../lib/inboundSummary';
 import RecordTasks from '../../../components/RecordTasks';
 import AuditTrail from '../../../components/AuditTrail';
 
-// Stage: final review before generating the GRN -- QR labels are already
-// stamped one stage earlier (CreateHUPopup); the fallback call here only
-// catches a row that somehow still lacks one.
-export default function CheckPopup({ advice, cargoRows, transporters, suppliers, patchAdvice, onClose }) {
+// Stage: final review before generating the GRN -- HUs (and their QR labels)
+// were created one stage earlier (CreateHUPopup).
+export default function CheckPopup({ advice, lines, cargoRows, transporters, suppliers, patchAdvice, onClose }) {
   const [completing, setCompleting] = useState(false);
   const { user } = useAuth();
 
   const supplier = suppliers.find((s) => String(s.ROWID) === String(advice.supplier_id));
   const transporter = transporters.find((t) => String(t.ROWID) === String(advice.transporter_id));
-  const summary = computeInboundSummary(advice, cargoRows);
+  const summary = computeInboundSummary(advice, lines, cargoRows);
 
   const completeInbound = () => {
     setCompleting(true);
-    const unlabeled = cargoRows.filter((c) => !c.qr_code);
-    Promise.all(unlabeled.map((c) => generateQRCode(c.ROWID).catch(() => null)))
-      .then(() => createGRN(advice.ROWID, advice.inbound_reference, user?.email_id || ''))
+    createGRN(advice.ROWID, advice.inbound_reference, user?.email_id || '')
       .then(() => patchAdvice({ status: 'Ready' }))
       .then(onClose)
       .finally(() => setCompleting(false));
@@ -62,7 +59,7 @@ export default function CheckPopup({ advice, cargoRows, transporters, suppliers,
           <div className="summary-value">{summary.receivedPieces} pcs</div>
         </div>
         <div>
-          <div className="muted small">Total Outer Packages</div>
+          <div className="muted small">Total Packages</div>
           <div className="summary-value">{summary.totalOuterPackages}</div>
         </div>
         <div>
@@ -90,9 +87,9 @@ export default function CheckPopup({ advice, cargoRows, transporters, suppliers,
             </tr>
           </thead>
           <tbody>
-            {cargoRows.map((c) => (
+            {lines.map((c) => (
               <tr key={c.ROWID}>
-                <td>{c.outer_package_no}</td>
+                <td>{c.line_no}</td>
                 <td>{c.unit}</td>
                 <td>{c.description}</td>
                 <td>{c.qty || '—'}</td>
@@ -122,7 +119,7 @@ export default function CheckPopup({ advice, cargoRows, transporters, suppliers,
         </button>
       </div>
       <p className="muted small" style={{ textAlign: 'right' }}>
-        All data will be confirmed. Labels will be generated per outer package.
+        All data will be confirmed and the Goods Receipt Note generated for this receipt.
       </p>
     </Modal>
   );

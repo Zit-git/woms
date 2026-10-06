@@ -1,5 +1,6 @@
 import { addRow, updateRow, deleteRow, getAllRows, zcql, callFunction } from './catalystClient';
 import { formatSequentialRef } from './reference';
+import { expandLines } from './capacity';
 
 const TABLES = {
   CUSTOMERS: 'Customers',
@@ -11,6 +12,8 @@ const TABLES = {
   PACKAGE_TYPES: 'PackageTypes',
   INBOUND_ADVICE: 'InboundAdvice',
   CARGO: 'Cargo',
+  INBOUND_LINE: 'InboundLine',
+  HU_LINE: 'HuLine',
   APP_USERS: 'AppUsers',
   OUTBOUND_REQUEST: 'OutboundRequest',
   PICK_TASK: 'PickTask',
@@ -151,7 +154,7 @@ export const removeRack = (rowId) => deleteRow(TABLES.RACKS, rowId);
 
 export const listLocationsByRack = (rackId) =>
   zcql(
-    `SELECT ROWID, location_code, capacity, capacity_unit, location_type, max_weight_kg, length_cm, width_cm, height_cm, occupancy_status, rack_id FROM StorageLocations WHERE rack_id = ${rackId}`
+    `SELECT ROWID, location_code, capacity, capacity_unit, location_type, max_weight_kg, length_cm, width_cm, height_cm, occupancy_status, rack_id, bay, rack_level FROM StorageLocations WHERE rack_id = ${rackId}`
   ).then((rows) => rows.map((r) => r.StorageLocations));
 export const createLocation = (row) => addRow(TABLES.STORAGE_LOCATIONS, row);
 export const editLocation = (row) => updateRow(TABLES.STORAGE_LOCATIONS, row);
@@ -219,29 +222,64 @@ export const listCapacityLocations = () =>
 // Every still-in-the-building Cargo row with enough context to classify it as
 // physically occupying a location, pending put-away, or committed (accepted
 // but not yet physically received) -- see computeCapacity in lib/capacity.js.
-export const listCapacityCargo = () =>
-  zcql(
-    `SELECT Cargo.ROWID, Cargo.current_location_id, Cargo.reserved_location_id, Cargo.status, Cargo.unit, Cargo.weight, Cargo.length_cm, Cargo.width_cm, Cargo.height_cm, Cargo.warehouse_id, Cargo.inbound_advice_id, Cargo.customer_id, InboundAdvice.status, InboundAdvice.expected_date, InboundAdvice.storage_start_date, InboundAdvice.storage_end_date FROM Cargo LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID WHERE ${goneSql('Cargo')}`
-  ).then((rows) =>
-    rows.map((r) => ({
-      ROWID: r.Cargo.ROWID,
-      current_location_id: r.Cargo.current_location_id,
-      reserved_location_id: r.Cargo.reserved_location_id,
-      status: r.Cargo.status,
-      unit: r.Cargo.unit,
-      weight: r.Cargo.weight,
-      length_cm: r.Cargo.length_cm,
-      width_cm: r.Cargo.width_cm,
-      height_cm: r.Cargo.height_cm,
-      warehouse_id: r.Cargo.warehouse_id,
-      inbound_advice_id: r.Cargo.inbound_advice_id,
-      customer_id: r.Cargo.customer_id,
-      inbound_status: r.InboundAdvice?.status,
-      inbound_expected_date: r.InboundAdvice?.expected_date,
-      storage_start_date: r.InboundAdvice?.storage_start_date,
-      storage_end_date: r.InboundAdvice?.storage_end_date,
-    }))
-  );
+export const listCapacityCargo = async () => {
+  const [huRows, lineRows, packedRows] = await Promise.all([
+    zcql(
+      `SELECT Cargo.ROWID, Cargo.current_location_id, Cargo.reserved_location_id, Cargo.status, Cargo.unit, Cargo.weight, Cargo.length_cm, Cargo.width_cm, Cargo.height_cm, Cargo.warehouse_id, Cargo.inbound_advice_id, Cargo.customer_id, InboundAdvice.status, InboundAdvice.expected_date, InboundAdvice.storage_start_date, InboundAdvice.storage_end_date FROM Cargo LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID WHERE ${goneSql('Cargo')} AND Cargo.qr_code IS NOT NULL`
+    ),
+    zcql(
+      `SELECT InboundLine.ROWID, InboundLine.unit, InboundLine.qty, InboundLine.received_qty, InboundLine.weight, InboundLine.length_cm, InboundLine.width_cm, InboundLine.height_cm, InboundLine.customer_id, InboundLine.warehouse_id, InboundLine.inbound_advice_id, InboundAdvice.status, InboundAdvice.expected_date, InboundAdvice.storage_start_date, InboundAdvice.storage_end_date, InboundAdvice.warehouse_id FROM InboundLine LEFT JOIN InboundAdvice ON InboundLine.inbound_advice_id = InboundAdvice.ROWID WHERE InboundAdvice.status = 'Confirmed' OR InboundAdvice.status = 'Received'`
+    ),
+    zcql(`SELECT HuLine.inbound_line_id, HuLine.qty FROM HuLine`),
+  ]);
+
+  const hus = huRows.map((r) => ({
+    ROWID: r.Cargo.ROWID,
+    current_location_id: r.Cargo.current_location_id,
+    reserved_location_id: r.Cargo.reserved_location_id,
+    status: r.Cargo.status,
+    unit: r.Cargo.unit,
+    weight: r.Cargo.weight,
+    length_cm: r.Cargo.length_cm,
+    width_cm: r.Cargo.width_cm,
+    height_cm: r.Cargo.height_cm,
+    warehouse_id: r.Cargo.warehouse_id,
+    inbound_advice_id: r.Cargo.inbound_advice_id,
+    customer_id: r.Cargo.customer_id,
+    inbound_status: r.InboundAdvice?.status,
+    inbound_expected_date: r.InboundAdvice?.expected_date,
+    storage_start_date: r.InboundAdvice?.storage_start_date,
+    storage_end_date: r.InboundAdvice?.storage_end_date,
+  }));
+
+  // Planned goods that aren't a physical HU yet: an accepted inbound's whole
+  // plan is "committed"; a received one's not-yet-packed remainder is the
+  // dock backlog ("pending put-away"). Packed quantity is already counted via
+  // the HUs above, so it is subtracted here to avoid double counting.
+  const packedByLine = new Map();
+  packedRows.forEach((r) => {
+    const k = String(r.HuLine.inbound_line_id);
+    packedByLine.set(k, (packedByLine.get(k) || 0) + (Number(r.HuLine.qty) || 0));
+  });
+  const planned = lineRows.flatMap((r) => {
+    const line = { ...r.InboundLine, qty: Number(r.InboundLine.qty) || 0, received_qty: Number(r.InboundLine.received_qty) || 0 };
+    const advice = r.InboundAdvice;
+    const packed = packedByLine.get(String(line.ROWID)) || 0;
+    const remaining = advice.status === 'Confirmed' ? line.qty : Math.max(line.received_qty - packed, 0);
+    return expandLines([line], {
+      status: 'Received',
+      current_location_id: null,
+      reserved_location_id: null,
+      warehouse_id: line.warehouse_id || advice.warehouse_id,
+      inbound_status: advice.status,
+      inbound_expected_date: advice.expected_date,
+      storage_start_date: advice.storage_start_date,
+      storage_end_date: advice.storage_end_date,
+    }, () => remaining);
+  });
+
+  return [...hus, ...planned];
+};
 
 // Cargo already committed to an accepted-but-not-dispatched OutboundRequest
 // (via PickTask), for the "expected outbound release" side of the capacity
@@ -274,8 +312,13 @@ export const listInboundAdvice = (viewer) =>
 // Cargo status per inbound, for computing each row's Fulfillment Status in
 // the Inbounds list without a per-advice round trip (see fulfillmentStatus.js).
 export const listCargoStatusForAllAdvices = () =>
-  zcql(`SELECT Cargo.inbound_advice_id, Cargo.status FROM Cargo WHERE Cargo.inbound_advice_id IS NOT NULL`).then(
+  zcql(`SELECT Cargo.inbound_advice_id, Cargo.status FROM Cargo WHERE Cargo.inbound_advice_id IS NOT NULL AND Cargo.qr_code IS NOT NULL`).then(
     (rows) => rows.map((r) => r.Cargo)
+  );
+// Planned vs. received package totals per inbound, for the same list.
+export const listLineTotalsForAllAdvices = () =>
+  zcql(`SELECT InboundLine.inbound_advice_id, InboundLine.qty, InboundLine.received_qty FROM InboundLine`).then((rows) =>
+    rows.map((r) => r.InboundLine)
   );
 export const createInboundAdvice = (row) => addRow(TABLES.INBOUND_ADVICE, row);
 export const editInboundAdvice = (row) => updateRow(TABLES.INBOUND_ADVICE, row);
@@ -337,10 +380,78 @@ export const getInboundAdviceById = (id) =>
     };
   });
 
+// Handling Units of one inbound. A Cargo row is an HU once it carries a QR
+// (stamped the moment it is created -- see createHandlingUnit); the planned
+// goods live in InboundLine instead.
 export const listCargoByAdvice = (inboundAdviceId) =>
   zcql(
-    `SELECT ROWID, description, qty, received_qty, unit, weight, dimensions, outer_package_no, length_cm, width_cm, height_cm, qr_code, status, current_location_id FROM Cargo WHERE inbound_advice_id = ${inboundAdviceId} ORDER BY CREATEDTIME`
+    `SELECT ROWID, description, qty, received_qty, unit, weight, dimensions, outer_package_no, length_cm, width_cm, height_cm, qr_code, status, current_location_id FROM Cargo WHERE inbound_advice_id = ${inboundAdviceId} AND qr_code IS NOT NULL ORDER BY CREATEDTIME`
   ).then((rows) => rows.map((r) => r.Cargo));
+
+// -- Line items (the plan) and what each Handling Unit contains --
+const LINE_NUMERIC = ['qty', 'received_qty', 'weight', 'length_cm', 'width_cm', 'height_cm'];
+const normalizeLine = (row) => {
+  const out = { ...row };
+  LINE_NUMERIC.forEach((f) => {
+    out[f] = row[f] === null || row[f] === undefined || row[f] === '' || row[f] === 'null' ? null : Number(row[f]);
+  });
+  return out;
+};
+
+export const listLinesByAdvice = (inboundAdviceId) =>
+  zcql(
+    `SELECT ROWID, line_no, unit, description, qty, received_qty, weight, length_cm, width_cm, height_cm, customer_id, warehouse_id FROM InboundLine WHERE inbound_advice_id = ${inboundAdviceId} ORDER BY CREATEDTIME`
+  ).then((rows) => rows.map((r) => normalizeLine(r.InboundLine)));
+export const createLine = (row) => addRow(TABLES.INBOUND_LINE, row).then(normalizeLine);
+export const editLine = (row) => updateRow(TABLES.INBOUND_LINE, row);
+export const deleteLine = (rowId) => deleteRow(TABLES.INBOUND_LINE, rowId);
+
+// Which lines (and how many of each) sit in which HU, for one inbound.
+export const listHuContentsByAdvice = (inboundAdviceId) =>
+  zcql(
+    `SELECT HuLine.ROWID, HuLine.cargo_id, HuLine.inbound_line_id, HuLine.qty FROM HuLine LEFT JOIN Cargo ON HuLine.cargo_id = Cargo.ROWID WHERE Cargo.inbound_advice_id = ${inboundAdviceId}`
+  ).then((rows) => rows.map((r) => ({ ...r.HuLine, qty: Number(r.HuLine.qty) || 0 })));
+
+// Creates one physical Handling Unit holding any mix of lines:
+// contents = [{ line, qty }]. The HU is a Cargo row (what Storage, Outbound,
+// scans and reports already key off), its QR is stamped immediately, and the
+// HuLine rows record the contents. If recording the contents fails, the
+// half-built HU is removed so nothing is left behind.
+export async function createHandlingUnit({ advice, huNo, unit, weight, length_cm, width_cm, height_cm, contents }) {
+  assertId(advice.ROWID);
+  const totalQty = contents.reduce((sum, c) => sum + c.qty, 0);
+  const description = contents.map((c) => `${c.line.description || c.line.unit || 'Item'} x${c.qty}`).join(', ');
+  const row = {
+    inbound_advice_id: advice.ROWID,
+    customer_id: advice.customer_id,
+    warehouse_id: advice.warehouse_id || undefined,
+    outer_package_no: String(huNo),
+    unit,
+    description,
+    qty: totalQty,
+    received_qty: totalQty,
+    status: 'Received',
+  };
+  // Numeric columns must be omitted when empty (Data Store rejects '').
+  [['weight', weight], ['length_cm', length_cm], ['width_cm', width_cm], ['height_cm', height_cm]].forEach(([k, v]) => {
+    if (v !== '' && v !== null && v !== undefined) row[k] = Number(v);
+  });
+  const created = await addRow(TABLES.CARGO, row);
+  if (!created?.ROWID) throw new Error('Could not create the Handling Unit.');
+  try {
+    await generateQRCode(created.ROWID);
+    await Promise.all(
+      contents.map((c) => addRow(TABLES.HU_LINE, { cargo_id: created.ROWID, inbound_line_id: c.line.ROWID, qty: c.qty }))
+    );
+  } catch (err) {
+    await deleteRow(TABLES.CARGO, created.ROWID).catch(() => {});
+    throw err;
+  }
+  return created.ROWID;
+}
+
+// HuLine rows go with it (ON DELETE CASCADE).
+export const deleteHandlingUnit = (cargoId) => deleteRow(TABLES.CARGO, cargoId);
 export const createCargo = (row) => addRow(TABLES.CARGO, row);
 export const editCargo = (row) => updateRow(TABLES.CARGO, row);
 export const deleteCargo = (rowId) => deleteRow(TABLES.CARGO, rowId);
@@ -386,13 +497,24 @@ export const sendInboundConfirmationEmail = (inboundAdviceId, recipientEmail, me
 // -- Storage (put-away / relocation) --
 export const listAllStorageLocations = () =>
   zcql(
-    `SELECT StorageLocations.ROWID, StorageLocations.location_code, StorageLocations.capacity, Racks.code, Aisles.name, Zones.name, Warehouses.name FROM StorageLocations LEFT JOIN Racks ON StorageLocations.rack_id = Racks.ROWID LEFT JOIN Aisles ON Racks.aisle_id = Aisles.ROWID LEFT JOIN Zones ON Aisles.zone_id = Zones.ROWID LEFT JOIN Warehouses ON Zones.warehouse_id = Warehouses.ROWID`
+    `SELECT StorageLocations.ROWID, StorageLocations.location_code, StorageLocations.capacity, StorageLocations.bay, StorageLocations.rack_level, Racks.code, Aisles.name, Zones.name, Warehouses.name FROM StorageLocations LEFT JOIN Racks ON StorageLocations.rack_id = Racks.ROWID LEFT JOIN Aisles ON Racks.aisle_id = Aisles.ROWID LEFT JOIN Zones ON Aisles.zone_id = Zones.ROWID LEFT JOIN Warehouses ON Zones.warehouse_id = Warehouses.ROWID`
   ).then((rows) =>
     rows.map((r) => ({
       ROWID: r.StorageLocations.ROWID,
       location_code: r.StorageLocations.location_code,
       capacity: r.StorageLocations.capacity,
-      path: [r.Warehouses?.name, r.Zones?.name, r.Aisles?.name, r.Racks?.code].filter(Boolean).join(' / '),
+      bay: r.StorageLocations.bay,
+      rack_level: r.StorageLocations.rack_level,
+      path: [
+        r.Warehouses?.name,
+        r.Zones?.name,
+        r.Aisles?.name,
+        r.Racks?.code,
+        r.StorageLocations.bay ? `Bay ${r.StorageLocations.bay}` : null,
+        r.StorageLocations.rack_level ? `Level ${r.StorageLocations.rack_level}` : null,
+      ]
+        .filter(Boolean)
+        .join(' / '),
     }))
   );
 

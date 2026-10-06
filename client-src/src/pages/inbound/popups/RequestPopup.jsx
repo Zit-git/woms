@@ -13,12 +13,12 @@ const NEW_SUPPLIER = '__new__';
 // signature, and document uploads belong to the later Receive stage.
 export default function RequestPopup({
   advice,
-  cargoRows,
+  lines,
   customers,
   transporters,
   suppliers,
   reloadSuppliers,
-  reloadCargo,
+  reloadLines,
   patchAdvice,
   saving,
   setError,
@@ -254,8 +254,8 @@ export default function RequestPopup({
       <hr className="divider" />
       <StepGoods
         advice={advice}
-        cargoRows={cargoRows}
-        reloadCargo={reloadCargo}
+        lines={lines}
+        reloadLines={reloadLines}
         patchAdvice={patchAdvice}
         saving={saving}
         setError={setError}

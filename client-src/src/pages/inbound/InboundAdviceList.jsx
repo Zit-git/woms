@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listInboundAdvice, listCargoStatusForAllAdvices, listCustomers, startNewInboundAdvice } from '../../lib/api';
+import { listInboundAdvice, listCargoStatusForAllAdvices, listLineTotalsForAllAdvices, listCustomers, startNewInboundAdvice } from '../../lib/api';
 import SortableTh from '../../components/SortableTh';
 import { useSortableData } from '../../lib/useSortableData';
 import { useAuth } from '../../context/AuthContext';
@@ -23,8 +23,16 @@ export default function InboundAdviceList() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([listInboundAdvice(viewer), listCargoStatusForAllAdvices(), listCustomers()])
-      .then(([adviceRows, cargoStatusRows, customerRows]) => {
+    Promise.all([listInboundAdvice(viewer), listCargoStatusForAllAdvices(), listLineTotalsForAllAdvices(), listCustomers()])
+      .then(([adviceRows, cargoStatusRows, lineRows, customerRows]) => {
+        const totalsByAdvice = new Map();
+        lineRows.forEach((l) => {
+          const key = String(l.inbound_advice_id);
+          const t = totalsByAdvice.get(key) || { planned: 0, received: 0 };
+          t.planned += Number(l.qty) || 0;
+          t.received += Number(l.received_qty) || 0;
+          totalsByAdvice.set(key, t);
+        });
         const cargoByAdvice = new Map();
         cargoStatusRows.forEach((c) => {
           const key = String(c.inbound_advice_id);
@@ -34,7 +42,7 @@ export default function InboundAdviceList() {
         setAdvices(
           adviceRows.map((a) => ({
             ...a,
-            fulfillment_status: computeFulfillmentStatus(a.expected_colli, cargoByAdvice.get(String(a.ROWID))),
+            fulfillment_status: computeFulfillmentStatus(totalsByAdvice.get(String(a.ROWID)), cargoByAdvice.get(String(a.ROWID))),
           }))
         );
         setCustomers(customerRows);
@@ -64,7 +72,7 @@ export default function InboundAdviceList() {
     setCreating(true);
     setError('');
     startNewInboundAdvice(warehouseId)
-      .then((created) => navigate(`/inbound/${created.ROWID}`))
+      .then((created) => navigate(`/inbound/${created.ROWID}`, { state: { openRequest: true } }))
       .catch((err) => {
         setError(err.message || String(err));
         setCreating(false);

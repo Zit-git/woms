@@ -2,21 +2,21 @@ import { useEffect, useState } from 'react';
 import Modal from '../../../components/Modal';
 import DocumentSlot from '../../../components/DocumentSlot';
 import SignaturePad from '../../../components/SignaturePad';
-import { editCargo, listDocumentsForRecord } from '../../../lib/api';
+import { editLine, listDocumentsForRecord } from '../../../lib/api';
 
 const DRIVER_SIGNATURE_DOC_TYPE = 'Driver Signature (Receiving)';
 
 // Stage 3 (Received): physical arrival -- the warehouse checks the items,
 // records what was actually received (which may differ from what was
 // requested), captures the driver's signature, and uploads documents/photos.
-export default function ReceivePopup({ advice, cargoRows, patchAdvice, reloadCargo, onClose, setError }) {
+export default function ReceivePopup({ advice, lines, patchAdvice, reloadLines, onClose, setError }) {
   const [form, setForm] = useState(advice);
-  const [rows, setRows] = useState(cargoRows.map((r) => ({ ...r, received_qty: r.received_qty ?? r.qty ?? '' })));
+  const [rows, setRows] = useState(lines.map((r) => ({ ...r, received_qty: r.received_qty ?? r.qty ?? '' })));
   const [hasSignature, setHasSignature] = useState(false);
   const [marking, setMarking] = useState(false);
 
   useEffect(() => setForm(advice), [advice]);
-  useEffect(() => setRows(cargoRows.map((r) => ({ ...r, received_qty: r.received_qty ?? r.qty ?? '' }))), [cargoRows]);
+  useEffect(() => setRows(lines.map((r) => ({ ...r, received_qty: r.received_qty ?? r.qty ?? '' }))), [lines]);
 
   useEffect(() => {
     listDocumentsForRecord('Inbound Operations', advice.ROWID).then((docs) =>
@@ -31,7 +31,7 @@ export default function ReceivePopup({ advice, cargoRows, patchAdvice, reloadCar
 
   const updateReceivedQty = (rowId, value) => setRows((r) => r.map((row) => (row.ROWID === rowId ? { ...row, received_qty: value } : row)));
   const saveReceivedQty = (rowId, value) =>
-    editCargo({ ROWID: rowId, received_qty: value === '' ? null : value }).catch((err) => setError?.(err.message || String(err)));
+    editLine({ ROWID: rowId, received_qty: value === '' ? null : value }).catch((err) => setError?.(err.message || String(err)));
 
   const required = {
     warehouse_unloading_date: form.warehouse_unloading_date,
@@ -44,8 +44,8 @@ export default function ReceivePopup({ advice, cargoRows, patchAdvice, reloadCar
 
   const markReceived = () => {
     setMarking(true);
-    Promise.allSettled(rows.map((r) => editCargo({ ROWID: r.ROWID, received_qty: r.received_qty === '' ? null : r.received_qty })))
-      .then(() => reloadCargo())
+    Promise.allSettled(rows.map((r) => editLine({ ROWID: r.ROWID, received_qty: r.received_qty === '' ? 0 : Number(r.received_qty) })))
+      .then(() => reloadLines())
       .then(() => patchAdvice({ status: 'Received' }))
       .then(onClose)
       .catch((err) => setError?.(err.message || String(err)))
@@ -98,12 +98,14 @@ export default function ReceivePopup({ advice, cargoRows, patchAdvice, reloadCar
 
       <hr className="divider" />
       <div className="form-section-title" style={{ marginTop: 0 }}>Received Quantities</div>
+      <p className="muted small" style={{ marginTop: -8 }}>Enter how many packages of each line actually arrived. Handling Units are created from these in the next step.</p>
       <div style={{ overflowX: 'auto' }}>
         <table>
           <thead>
             <tr>
               <th>#</th>
               <th>Description</th>
+              <th>Unit</th>
               <th>Requested Qty</th>
               <th>Received Qty</th>
             </tr>
@@ -111,8 +113,9 @@ export default function ReceivePopup({ advice, cargoRows, patchAdvice, reloadCar
           <tbody>
             {rows.map((r) => (
               <tr key={r.ROWID}>
-                <td>{r.outer_package_no}</td>
+                <td>{r.line_no}</td>
                 <td>{r.description}</td>
+                <td>{r.unit}</td>
                 <td>{r.qty || '—'}</td>
                 <td>
                   <input
@@ -127,7 +130,7 @@ export default function ReceivePopup({ advice, cargoRows, patchAdvice, reloadCar
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={4} className="muted">No cargo lines on this inbound.</td>
+                <td colSpan={5} className="muted">No line items on this inbound.</td>
               </tr>
             )}
           </tbody>

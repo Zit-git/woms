@@ -50,6 +50,22 @@ export function volumeM3(row) {
   return (l * w * h) / 1_000_000;
 }
 
+// A line item is "N packages of one type" (40 cartons of A); the capacity and
+// allocation engines reason about one physical package per row, so lines are
+// expanded to N identical rows first. `overrides` is merged into every row
+// (used to tag synthetic rows with their inbound/status context), `count`
+// replaces the line qty (e.g. only the not-yet-packed remainder). Capped so
+// a typo like 1,000,000 can't freeze the page.
+const MAX_EXPANDED_PER_LINE = 2000;
+export function expandLines(lines, overrides = {}, countFor = (l) => l.qty) {
+  const out = [];
+  (lines || []).forEach((l) => {
+    const n = Math.min(Math.max(Math.round(Number(countFor(l)) || 0), 0), MAX_EXPANDED_PER_LINE);
+    for (let i = 0; i < n; i++) out.push({ ...l, ROWID: `line-${l.ROWID}-${i}`, ...overrides });
+  });
+  return out;
+}
+
 const isCommittedStatus = (c) => c.inbound_status === 'Confirmed';
 
 // Cargo that has physically arrived (or has no inbound link at all, e.g.

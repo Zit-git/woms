@@ -37,15 +37,16 @@ export default function PutawayPrint() {
         )}
       </div>
 
-      <h1>Put-Away Labels — Advice #{advice.ROWID}</h1>
+      <h1>Handling Unit Labels — {advice.inbound_reference || `Advice #${advice.ROWID}`}</h1>
       <div className="label-grid">
         {labeled.map((c) => (
           <div key={c.ROWID} className="label-card">
             <QrCodeImage value={c.qr_code} size={110} />
-            <div className="label-desc">{c.description}</div>
-            <div className="muted small">
-              {c.qty} {c.unit}
+            <div className="label-desc">
+              <strong>{advice.inbound_reference ? `${advice.inbound_reference}-${String(c.outer_package_no || '').padStart(3, '0')}` : c.outer_package_no}</strong>
             </div>
+            <div className="small">{c.description}</div>
+            <div className="muted small">{c.unit}</div>
             <div className="muted small">{c.qr_code}</div>
           </div>
         ))}

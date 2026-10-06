@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { getInboundAdviceById, editInboundAdvice, listCargoByAdvice, listCustomers, listTransporters, listSuppliers, listAllStorageLocations } from '../../lib/api';
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
+import { getInboundAdviceById, editInboundAdvice, listCargoByAdvice, listLinesByAdvice, listHuContentsByAdvice, listCustomers, listTransporters, listSuppliers, listAllStorageLocations } from '../../lib/api';
 import InboundDetailView from './InboundDetailView';
 import InboundSidebar from './InboundSidebar';
 import RequestPopup from './popups/RequestPopup';
@@ -16,12 +16,12 @@ import { APPROVER_ROLES } from '../../lib/roles';
 
 const REQUIRED_GENERAL_FIELDS = ['expected_colli', 'destination', 'customer_id', 'expected_date'];
 
-function isRequestIncomplete(advice, cargoRows) {
+function isRequestIncomplete(advice, lines) {
   const missingGeneral = REQUIRED_GENERAL_FIELDS.some((f) => advice[f] === null || advice[f] === undefined || advice[f] === '');
-  const missingCargo =
-    cargoRows.length === 0 ||
-    cargoRows.some((r) => !r.unit || !r.description || r.weight === null || r.weight === '' || r.weight === undefined || !r.length_cm || !r.width_cm || !r.height_cm);
-  return missingGeneral || missingCargo;
+  const missingLines =
+    lines.length === 0 ||
+    lines.some((r) => !r.unit || !r.description || !Number(r.qty) || r.weight === null || r.weight === '' || r.weight === undefined || !r.length_cm || !r.width_cm || !r.height_cm);
+  return missingGeneral || missingLines;
 }
 
 // The single stable page per inbound record, regardless of status. Each
@@ -30,9 +30,13 @@ function isRequestIncomplete(advice, cargoRows) {
 export default function InboundMaster() {
   const { adviceId } = useParams();
   const { businessRole } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const [advice, setAdvice] = useState(null);
-  const [cargoRows, setCargoRows] = useState([]);
+  const [lines, setLines] = useState([]); // the plan
+  const [cargoRows, setCargoRows] = useState([]); // Handling Units
+  const [huContents, setHuContents] = useState([]); // which lines sit in which HU
   const [customers, setCustomers] = useState([]);
   const [transporters, setTransporters] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -43,13 +47,20 @@ export default function InboundMaster() {
   const [activePopup, setActivePopup] = useState(null);
 
   const loadAdvice = useCallback(() => getInboundAdviceById(adviceId).then(setAdvice), [adviceId]);
-  const loadCargo = useCallback(() => listCargoByAdvice(adviceId).then(setCargoRows), [adviceId]);
+  const loadLines = useCallback(() => listLinesByAdvice(adviceId).then(setLines), [adviceId]);
+  const loadCargo = useCallback(
+    () => Promise.all([listCargoByAdvice(adviceId), listHuContentsByAdvice(adviceId)]).then(([hus, contents]) => {
+      setCargoRows(hus);
+      setHuContents(contents);
+    }),
+    [adviceId]
+  );
   const reloadSuppliers = useCallback(() => listSuppliers().then(setSuppliers), []);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([loadAdvice(), loadCargo(), listCustomers(), listTransporters(), listSuppliers(), listAllStorageLocations()])
-      .then(([, , c, t, s, l]) => {
+    Promise.all([loadAdvice(), loadLines(), loadCargo(), listCustomers(), listTransporters(), listSuppliers(), listAllStorageLocations()])
+      .then(([, , , c, t, s, l]) => {
         setLocationLabels(new Map(l.map((x) => [String(x.ROWID), x.location_code])));
         setCustomers(c);
         setTransporters(t);
@@ -57,7 +68,16 @@ export default function InboundMaster() {
       })
       .catch((err) => setError(err.message || String(err)))
       .finally(() => setLoading(false));
-  }, [loadAdvice, loadCargo]);
+  }, [loadAdvice, loadLines, loadCargo]);
+
+  // A freshly created inbound (from "+ New Inbound") goes straight into the
+  // Request popup instead of showing an empty page first. The flag is cleared
+  // so a refresh or later visit doesn't reopen it.
+  useEffect(() => {
+    if (loading || !advice || !location.state?.openRequest) return;
+    navigate(location.pathname, { replace: true, state: null });
+    if (advice.status === 'Requested' && APPROVER_ROLES.includes(businessRole)) setActivePopup('request');
+  }, [loading, advice, location, navigate, businessRole]);
 
   const patchAdvice = (fields) => {
     setSaving(true);
@@ -76,13 +96,13 @@ export default function InboundMaster() {
   if (loading) return <p className="muted">Loading...</p>;
   if (!advice) return <p className="error-text">Inbound advice not found.</p>;
 
-  const summary = computeInboundSummary(advice, cargoRows);
+  const summary = computeInboundSummary(advice, lines, cargoRows);
   const isApprover = APPROVER_ROLES.includes(businessRole);
   const isAdmin = businessRole === 'System Administrator';
 
   let action = null;
   if (advice.status === 'Requested' && isApprover) {
-    action = isRequestIncomplete(advice, cargoRows)
+    action = isRequestIncomplete(advice, lines)
       ? { label: 'Continue Request →', popup: 'request' }
       : { label: 'Availability Check →', popup: 'confirm' };
   } else if (advice.status === 'Confirmed' && isApprover) {
@@ -112,12 +132,16 @@ export default function InboundMaster() {
 
   const popupProps = {
     advice,
+    lines,
     cargoRows,
+    huContents,
     customers,
     transporters,
     suppliers,
     reloadSuppliers,
+    reloadLines: loadLines,
     reloadCargo: loadCargo,
+    reloadHus: loadCargo,
     patchAdvice,
     saving,
     setError,
@@ -144,7 +168,9 @@ export default function InboundMaster() {
         <div className="wizard-main">
           <InboundDetailView
             advice={advice}
+            lines={lines}
             cargoRows={cargoRows}
+            huContents={huContents}
             customers={customers}
             transporters={transporters}
             suppliers={suppliers}

@@ -48,7 +48,7 @@ export default function InboundSidebar({ advice, summary, adviceId, saving }) {
           <span>{summary.receivedPieces}</span>
         </div>
         <div className="sidebar-kv">
-          <span className="muted small">Total Outer Packages</span>
+          <span className="muted small">Total Packages</span>
           <span>{summary.totalOuterPackages}</span>
         </div>
         <div className="sidebar-kv">
@@ -58,6 +58,10 @@ export default function InboundSidebar({ advice, summary, adviceId, saving }) {
         <div className="sidebar-kv">
           <span className="muted small">Total Volume</span>
           <span>{summary.totalVolume.toFixed(3)} m³</span>
+        </div>
+        <div className="sidebar-kv">
+          <span className="muted small">Handling Units</span>
+          <span>{summary.handlingUnits}</span>
         </div>
         <div className="sidebar-kv">
           <span className="muted small">Pallets</span>

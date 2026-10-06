@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import Modal from '../../../components/Modal';
-import { logAudit, listWarehouses, listCapacityLocations, listCapacityCargo, listCapacityOutboundCommitments, listPackageTypes, editCargo } from '../../../lib/api';
+import { logAudit, listWarehouses, listCapacityLocations, listCapacityCargo, listCapacityOutboundCommitments, listPackageTypes, editLine } from '../../../lib/api';
 import { useAuth } from '../../../context/AuthContext';
 import { computeInboundSummary } from '../../../lib/inboundSummary';
-import { computeCapacity, projectAvailability, requiredCapacityByUnit, requiredWeightAndSpace } from '../../../lib/capacity';
+import { computeCapacity, expandLines, projectAvailability, requiredCapacityByUnit, requiredWeightAndSpace } from '../../../lib/capacity';
 import { recommendWarehouses } from '../../../lib/allocation';
 
 // Stage 2 (Availability Check & Acceptance): a Warehouse Manager/Supervisor
@@ -29,7 +29,7 @@ function addDays(dateStr, n) {
 }
 const MAX_DAYS = 60;
 
-export default function ConfirmPopup({ advice, cargoRows, suppliers, transporters, patchAdvice, reloadCargo, onClose }) {
+export default function ConfirmPopup({ advice, lines, suppliers, transporters, patchAdvice, reloadLines, onClose }) {
   const { user } = useAuth();
   const [confirming, setConfirming] = useState(false);
   const [rejecting, setRejecting] = useState(false);
@@ -41,7 +41,10 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
 
   const supplier = suppliers.find((s) => String(s.ROWID) === String(advice.supplier_id));
   const transporter = transporters.find((t) => String(t.ROWID) === String(advice.transporter_id));
-  const summary = computeInboundSummary(advice, cargoRows);
+  const summary = computeInboundSummary(advice, lines);
+  // The engines reason about one physical package per row; a line of 40
+  // cartons counts as 40 of them.
+  const cargoRows = useMemo(() => expandLines(lines), [lines]);
   const hasStoragePeriod = Boolean(advice.storage_start_date);
 
   useEffect(() => {
@@ -120,8 +123,8 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
   const switchWarehouse = (newWarehouseId) => {
     setSwitching(true);
     setError('');
-    Promise.all(cargoRows.map((c) => editCargo({ ROWID: c.ROWID, warehouse_id: newWarehouseId })))
-      .then(() => reloadCargo())
+    Promise.all(lines.map((l) => editLine({ ROWID: l.ROWID, warehouse_id: newWarehouseId })))
+      .then(() => reloadLines())
       .then(() => patchAdvice({ warehouse_id: newWarehouseId }))
       .catch((err) => setError(err.message || String(err)))
       .finally(() => setSwitching(false));
@@ -181,7 +184,7 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
         </div>
         <div>
           <div className="muted small">Line Items</div>
-          <div className="summary-value">{cargoRows.length}</div>
+          <div className="summary-value">{lines.length}</div>
         </div>
         <div>
           <div className="muted small">Total Weight</div>
@@ -214,7 +217,7 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
       </div>
       {!evaluation ? (
         <p className="muted small">Checking warehouse capacity...</p>
-      ) : cargoRows.length === 0 ? (
+      ) : lines.length === 0 ? (
         <p className="muted small">No line items yet to check.</p>
       ) : (
         <>
@@ -287,14 +290,14 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
               <tr>
                 <th>Warehouse</th>
                 <th>Fits whole interval?</th>
-                <th>Lines that physically fit</th>
+                <th>Packages that physically fit</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {capacityData.warehouses.map((warehouse) => {
                 const ev = warehouseEvals.get(String(warehouse.ROWID));
-                const lines = recommendation?.find((r) => String(r.warehouse.ROWID) === String(warehouse.ROWID));
+                const fit = recommendation?.find((r) => String(r.warehouse.ROWID) === String(warehouse.ROWID));
                 const isCurrent = String(warehouse.ROWID) === String(advice.warehouse_id);
                 return (
                   <tr key={warehouse.ROWID} style={isCurrent ? { fontWeight: 600 } : undefined}>
@@ -310,7 +313,7 @@ export default function ConfirmPopup({ advice, cargoRows, suppliers, transporter
                         </span>
                       )}
                     </td>
-                    <td>{lines ? `${lines.fitCount} / ${lines.total}` : '—'}</td>
+                    <td>{fit ? `${fit.fitCount} / ${fit.total}` : '—'}</td>
                     <td>
                       {!isCurrent && (
                         <button className="link-btn" onClick={() => switchWarehouse(warehouse.ROWID)} disabled={switching}>

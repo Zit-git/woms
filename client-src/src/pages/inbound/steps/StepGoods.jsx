@@ -1,27 +1,38 @@
-import { useRef, useState } from 'react';
-import { createCargo, editCargo, deleteCargo } from '../../../lib/api';
+import { useEffect, useRef, useState } from 'react';
+import { createLine, editLine, deleteLine, listPackageTypes } from '../../../lib/api';
 import { computeInboundSummary } from '../../../lib/inboundSummary';
 
-const UNIT_TYPES = ['Box', 'Crate', 'Pallet', 'Bag', 'Drum', 'Other'];
+const DEFAULT_UNIT_TYPES = ['Box', 'Carton', 'Crate', 'Pallet', 'Bag', 'Drum', 'Roll', 'Other'];
 
 function blankLine(inboundAdviceId, customerId, warehouseId, index) {
   return {
     inbound_advice_id: inboundAdviceId,
     customer_id: customerId,
     warehouse_id: warehouseId,
-    outer_package_no: String(index + 1),
+    line_no: String(index + 1),
     unit: 'Box',
     description: '',
     // Numeric columns must be omitted (not '') -- Catalyst's Data Store
     // rejects an empty string for int/double columns with a 400.
-    status: 'Received',
+    qty: 1,
   };
 }
 
 // embedded: used inline inside RequestPopup (no wizard chrome, no Back/Next
 // footer -- every field already autosaves on blur/add/remove).
-export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice, goNext, goBack, saving, setError: setParentError, embedded = false }) {
-  const [rows, setRows] = useState(cargoRows);
+export default function StepGoods({ advice, lines, reloadLines, patchAdvice, goNext, goBack, saving, setError: setParentError, embedded = false }) {
+  const [rows, setRows] = useState(lines);
+  // Unit types come from the Package Types master so a line's capacity
+  // weighting always matches a configured type.
+  const [unitTypes, setUnitTypes] = useState(DEFAULT_UNIT_TYPES);
+  useEffect(() => {
+    listPackageTypes()
+      .then((types) => {
+        const names = types.map((t) => t.name).filter(Boolean);
+        if (names.length) setUnitTypes(names);
+      })
+      .catch(() => {});
+  }, []);
   // Shown inline: when embedded in a popup, the parent page's error banner
   // sits behind the modal overlay, so a failed save would otherwise be invisible.
   const [lineError, setLineError] = useState('');
@@ -44,9 +55,9 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
       return;
     }
     const line = blankLine(advice.ROWID, advice.customer_id, advice.warehouse_id, rows.length);
-    createCargo(line)
+    createLine(line)
       .then((saved) => {
-        if (!saved?.ROWID) throw new Error('Could not add the cargo line.');
+        if (!saved?.ROWID) throw new Error('Could not add the line item.');
         setRows((r) => [...r, saved]);
       })
       .catch((err) => setError(err.message || String(err)));
@@ -58,7 +69,7 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
 
   const saveLine = (rowId, field, value) => {
     setSavingRow(rowId);
-    const promise = editCargo({ ROWID: rowId, [field]: value === '' ? null : value })
+    const promise = editLine({ ROWID: rowId, [field]: value === '' ? null : value })
       .catch((err) => setError(err.message || String(err)))
       .finally(() => {
         setSavingRow(null);
@@ -68,7 +79,7 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
   };
 
   const removeLine = (rowId) => {
-    deleteCargo(rowId)
+    deleteLine(rowId)
       .then(() => setRows((r) => r.filter((row) => row.ROWID !== rowId)))
       .catch((err) => setError(err.message || String(err)));
   };
@@ -87,11 +98,11 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
   // column is filled in, so users can add lines in any order and finish
   // details later.
   const requiredMissing = rows.some(
-    (r) => !r.unit || !r.description || r.weight === null || r.weight === '' || r.weight === undefined || !r.length_cm || !r.width_cm || !r.height_cm
+    (r) => !r.unit || !r.description || !Number(r.qty) || r.weight === null || r.weight === '' || r.weight === undefined || !r.length_cm || !r.width_cm || !r.height_cm
   );
   const showHint = rows.length === 0 || requiredMissing;
 
-  const finishAndReload = () => Promise.allSettled(pendingSaves.current).then(() => reloadCargo()).then(goNext);
+  const finishAndReload = () => Promise.allSettled(pendingSaves.current).then(() => reloadLines()).then(goNext);
 
   return (
     <div className={embedded ? '' : 'card'}>
@@ -107,7 +118,7 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
       <div className="toolbar">
         <div>
           <h3 style={{ marginBottom: 2 }}>Line Items</h3>
-          <p className="muted small">Add every cargo line (box/crate/pallet) received in this inbound.</p>
+          <p className="muted small">What the customer announced: how many packages of each type. Handling Units (pallets etc.) are created later, when the goods are received.</p>
         </div>
         <button className="btn secondary" onClick={addLine}>
           + Add Line
@@ -123,7 +134,7 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
               <th>#</th>
               <th>Unit Type *</th>
               <th>Description *</th>
-              <th>Qty (Inner, optional)</th>
+              <th>Qty (packages) *</th>
               <th>Weight/pkg (kg) *</th>
               <th>L (cm) *</th>
               <th>W (cm) *</th>
@@ -137,9 +148,9 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
                 <td>
                   <input
                     style={{ width: 50 }}
-                    value={r.outer_package_no ?? ''}
-                    onChange={(e) => updateLocal(r.ROWID, 'outer_package_no', e.target.value)}
-                    onBlur={(e) => saveLine(r.ROWID, 'outer_package_no', e.target.value)}
+                    value={r.line_no ?? ''}
+                    onChange={(e) => updateLocal(r.ROWID, 'line_no', e.target.value)}
+                    onBlur={(e) => saveLine(r.ROWID, 'line_no', e.target.value)}
                   />
                 </td>
                 <td>
@@ -150,7 +161,7 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
                       saveLine(r.ROWID, 'unit', e.target.value);
                     }}
                   >
-                    {UNIT_TYPES.map((u) => (
+                    {[...new Set([...unitTypes, ...rows.map((r) => r.unit).filter(Boolean)])].map((u) => (
                       <option key={u} value={u}>
                         {u}
                       </option>
@@ -219,7 +230,7 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
             {rows.length === 0 && (
               <tr>
                 <td colSpan={9} className="muted">
-                  No cargo lines yet — click "Add Line" to start.
+                  No line items yet — click "Add Line" to start.
                 </td>
               </tr>
             )}
@@ -253,7 +264,7 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
           <div className="summary-value">{summary.receivedPieces} pcs</div>
         </div>
         <div>
-          <div className="muted small">Total Outer Packages</div>
+          <div className="muted small">Total Packages</div>
           <div className="summary-value">{summary.totalOuterPackages}</div>
         </div>
         <div>
@@ -267,7 +278,7 @@ export default function StepGoods({ advice, cargoRows, reloadCargo, patchAdvice,
       </div>
 
       {showHint && (
-        <p className="muted small">Add at least one cargo line and fill in all required (*) columns before completing the inbound.</p>
+        <p className="muted small">Add at least one line item and fill in all required (*) columns before completing the inbound.</p>
       )}
 
       {!embedded && (

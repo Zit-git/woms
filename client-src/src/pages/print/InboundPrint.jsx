@@ -76,12 +76,13 @@ export default function InboundPrint() {
       </table>
       <p className="muted small">Transport details: {advice.transport_details || '—'}</p>
 
-      <h2>Cargo Items</h2>
+      <h2>Handling Units</h2>
       <table className="print-table">
         <thead>
           <tr>
-            <th>Description</th>
-            <th>Qty</th>
+            <th>HU</th>
+            <th>Contents</th>
+            <th>Type</th>
             <th>Weight</th>
             <th>QR Code</th>
           </tr>
@@ -89,10 +90,9 @@ export default function InboundPrint() {
         <tbody>
           {cargoRows.map((c) => (
             <tr key={c.ROWID}>
+              <td>{advice.inbound_reference ? `${advice.inbound_reference}-${String(c.outer_package_no || '').padStart(3, '0')}` : c.outer_package_no}</td>
               <td>{c.description}</td>
-              <td>
-                {c.qty} {c.unit}
-              </td>
+              <td>{c.unit}</td>
               <td>{c.weight ? `${c.weight} kg` : '—'}</td>
               <td>
                 {c.qr_code ? <QrCodeImage value={c.qr_code} size={80} /> : <span className="muted">Not generated</span>}
@@ -101,7 +101,7 @@ export default function InboundPrint() {
           ))}
           {cargoRows.length === 0 && (
             <tr>
-              <td colSpan={4}>No cargo recorded.</td>
+              <td colSpan={5}>No Handling Units recorded.</td>
             </tr>
           )}
         </tbody>

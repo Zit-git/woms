@@ -841,6 +841,8 @@ function LocationsTab() {
   const [lengthCm, setLengthCm] = useState('');
   const [widthCm, setWidthCm] = useState('');
   const [heightCm, setHeightCm] = useState('');
+  const [bay, setBay] = useState('');
+  const [rackLevel, setRackLevel] = useState('');
 
   useEffect(() => {
     if (!warehouseId && warehouses.length) setWarehouseId(warehouses[0].ROWID);
@@ -867,6 +869,8 @@ function LocationsTab() {
       length_cm: lengthCm ? Number(lengthCm) : undefined,
       width_cm: widthCm ? Number(widthCm) : undefined,
       height_cm: heightCm ? Number(heightCm) : undefined,
+      bay: bay ? Number(bay) : undefined,
+      rack_level: rackLevel ? Number(rackLevel) : undefined,
       occupancy_status: 'Available',
       rack_id: rackId,
     }).then(() => {
@@ -877,11 +881,20 @@ function LocationsTab() {
       setLengthCm('');
       setWidthCm('');
       setHeightCm('');
+      setBay('');
+      setRackLevel('');
       reload();
     });
   };
 
   const setStatus = (locationId, status) => editLocation({ ROWID: locationId, occupancy_status: status }).then(reload);
+  // Bay (position along the rack) and level (height; 1 = floor) are optional
+  // and editable in place, so existing locations can be filled in over time.
+  const setPosition = (locationId, field, value) =>
+    editLocation({ ROWID: locationId, [field]: value === '' ? null : Number(value) }).then(reload);
+  const byPosition = [...items].sort(
+    (a, b) => (Number(a.bay) || 0) - (Number(b.bay) || 0) || (Number(a.rack_level) || 0) - (Number(b.rack_level) || 0) || String(a.location_code).localeCompare(String(b.location_code))
+  );
 
   return (
     <div>
@@ -954,6 +967,14 @@ function LocationsTab() {
             </select>
           </div>
           <div className="form-row">
+            <label>Bay (position along rack)</label>
+            <input type="number" min="1" value={bay} onChange={(e) => setBay(e.target.value)} placeholder="Optional, e.g. 3" />
+          </div>
+          <div className="form-row">
+            <label>Level (1 = floor)</label>
+            <input type="number" min="1" value={rackLevel} onChange={(e) => setRackLevel(e.target.value)} placeholder="Optional, e.g. 2" />
+          </div>
+          <div className="form-row">
             <label>Max weight (kg)</label>
             <input type="number" value={maxWeightKg} onChange={(e) => setMaxWeightKg(e.target.value)} placeholder="Optional" />
           </div>
@@ -983,6 +1004,8 @@ function LocationsTab() {
           <thead>
             <tr>
               <th>Location Code</th>
+              <th>Bay</th>
+              <th>Level</th>
               <th>Type</th>
               <th>Capacity</th>
               <th>Dimensions (L×W×H cm)</th>
@@ -992,9 +1015,29 @@ function LocationsTab() {
             </tr>
           </thead>
           <tbody>
-            {items.map((l) => (
+            {byPosition.map((l) => (
               <tr key={l.ROWID}>
                 <td>{l.location_code}</td>
+                <td>
+                  <input
+                    type="number"
+                    min="1"
+                    style={{ width: 60 }}
+                    defaultValue={l.bay ?? ''}
+                    key={`bay-${l.ROWID}-${l.bay}`}
+                    onBlur={(e) => e.target.value !== String(l.bay ?? '') && setPosition(l.ROWID, 'bay', e.target.value)}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    min="1"
+                    style={{ width: 60 }}
+                    defaultValue={l.rack_level ?? ''}
+                    key={`lvl-${l.ROWID}-${l.rack_level}`}
+                    onBlur={(e) => e.target.value !== String(l.rack_level ?? '') && setPosition(l.ROWID, 'rack_level', e.target.value)}
+                  />
+                </td>
                 <td>{l.location_type || <span className="muted">—</span>}</td>
                 <td>{l.capacity} {l.capacity_unit && <span className="muted small">{l.capacity_unit}</span>}</td>
                 <td>{l.length_cm && l.width_cm && l.height_cm ? `${l.length_cm}×${l.width_cm}×${l.height_cm}` : <span className="muted">—</span>}</td>
@@ -1021,7 +1064,7 @@ function LocationsTab() {
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={7} className="muted">
+                <td colSpan={9} className="muted">
                   No storage locations for this rack yet.
                 </td>
               </tr>
@@ -1107,7 +1150,7 @@ function WarehouseMapTab() {
                         <div
                           key={loc.ROWID}
                           className={'location-box' + (loc.occupied ? ' occupied' : ' empty')}
-                          title={`${loc.location_code} - ${loc.occupied ? 'Occupied' : 'Empty'}`}
+                          title={`${loc.location_code}${loc.bay ? ` · Bay ${loc.bay}` : ''}${loc.rack_level ? ` · Level ${loc.rack_level}` : ''} - ${loc.occupied ? 'Occupied' : 'Empty'}`}
                         >
                           {loc.location_code}
                         </div>
