@@ -130,6 +130,21 @@ export default function InboundMaster() {
     }
   };
 
+  // Request details and line items stay editable until the goods are received.
+  // An accepted (Confirmed) inbound was availability-checked against the old
+  // plan, so editing it sends it back to Requested for a fresh check.
+  const canEditRequest = isApprover && (advice.status === 'Requested' || advice.status === 'Confirmed') && action?.popup !== 'request';
+  const editRequest = () => {
+    if (advice.status === 'Confirmed') {
+      if (!window.confirm('This inbound is already accepted. Editing it sends it back to "Requested" so the availability check is run again. Continue?')) return;
+      patchAdvice({ status: 'Requested' })
+        .then(() => setActivePopup('request'))
+        .catch(() => {});
+    } else {
+      setActivePopup('request');
+    }
+  };
+
   const popupProps = {
     advice,
     lines,
@@ -177,6 +192,7 @@ export default function InboundMaster() {
             locationLabels={locationLabels}
             editLabel={action?.label || 'View'}
             onEdit={action ? openAction : undefined}
+            onEditRequest={canEditRequest ? editRequest : undefined}
           />
         </div>
 

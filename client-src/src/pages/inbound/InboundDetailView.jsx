@@ -7,7 +7,7 @@ import DocumentsSummary from '../../components/DocumentsSummary';
 // Plain read-only record view, used by InboundMaster regardless of status --
 // the one action button opens whichever stage popup is contextually next
 // (labeled by the caller), not an accident of clicking some other control.
-export default function InboundDetailView({ advice, lines, cargoRows, huContents, customers, transporters, suppliers, locationLabels, onEdit, editLabel = 'Edit' }) {
+export default function InboundDetailView({ advice, lines, cargoRows, huContents, customers, transporters, suppliers, locationLabels, onEdit, onEditRequest, editLabel = 'Edit' }) {
   const supplier = suppliers.find((s) => String(s.ROWID) === String(advice.supplier_id));
   const transporter = transporters.find((t) => String(t.ROWID) === String(advice.transporter_id));
   const summary = computeInboundSummary(advice, lines, cargoRows);
@@ -30,11 +30,18 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
           </div>
           <div className="wizard-ref-value">{advice.inbound_reference || '—'}</div>
         </div>
-        {onEdit && (
-          <button className="btn secondary" onClick={onEdit}>
-            {editLabel}
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {onEditRequest && (
+            <button className="btn secondary" onClick={onEditRequest}>
+              Edit Request
+            </button>
+          )}
+          {onEdit && (
+            <button className="btn secondary" onClick={onEdit}>
+              {editLabel}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="check-grid">

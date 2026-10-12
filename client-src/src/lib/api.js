@@ -366,6 +366,7 @@ const INBOUND_ADVICE_FIELDS = [
 // self-joins with an alias (tried: "Unkown Table Suppliers in SELECT"), so
 // its name is resolved client-side from the already-loaded customers list
 // (StepGeneral/StepCheck both load listCustomers() anyway for the lookup).
+const LEGACY_REQUESTED_STATUSES = ['Pending', 'Submitted'];
 export const getInboundAdviceById = (id) =>
   zcql(
     `SELECT ${INBOUND_ADVICE_FIELDS.join(', ')}, Customers.name, Customers.email, Transporters.name FROM InboundAdvice LEFT JOIN Customers ON InboundAdvice.customer_id = Customers.ROWID LEFT JOIN Transporters ON InboundAdvice.transporter_id = Transporters.ROWID WHERE InboundAdvice.ROWID = ${id}`
@@ -374,6 +375,9 @@ export const getInboundAdviceById = (id) =>
     if (!row) return null;
     return {
       ...row.InboundAdvice,
+      // Inbounds created before the current status model carry "Pending" or
+      // "Submitted"; they are requests still awaiting acceptance.
+      status: LEGACY_REQUESTED_STATUSES.includes(row.InboundAdvice.status) ? 'Requested' : row.InboundAdvice.status,
       customer_name: row.Customers?.name,
       customer_email: row.Customers?.email,
       transporter_name: row.Transporters?.name,
