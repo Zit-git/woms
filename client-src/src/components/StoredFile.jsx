@@ -6,7 +6,7 @@ const IMAGE = /\.(png|jpe?g|gif|webp|bmp|heic)$/i;
 // Shows an uploaded file: images as a thumbnail (click for full size), anything
 // else as an "Open" link. The storage buckets are private, so a short-lived
 // signed link is requested each time it is shown.
-export default function StoredFile({ fileId, bucketKey = 'DOCUMENTS', alt = 'Uploaded file', maxHeight = 90 }) {
+export default function StoredFile({ fileId, bucketKey, alt = 'Uploaded file', maxHeight = 90 }) {
   const [url, setUrl] = useState('');
   const [error, setError] = useState('');
 

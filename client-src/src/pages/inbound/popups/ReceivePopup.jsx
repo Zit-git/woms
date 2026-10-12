@@ -31,9 +31,6 @@ export default function ReceivePopup({ advice, lines, patchAdvice, reloadLines, 
   };
 
   const updateReceivedQty = (rowId, value) => setRows((r) => r.map((row) => (row.ROWID === rowId ? { ...row, received_qty: value } : row)));
-  const saveReceivedQty = (rowId, value) =>
-    editLine({ ROWID: rowId, received_qty: value === '' ? null : value }).catch((err) => setError?.(err.message || String(err)));
-
   const required = {
     warehouse_unloading_date: form.warehouse_unloading_date,
     warehouse_unloading_time: form.warehouse_unloading_time,
@@ -46,11 +43,20 @@ export default function ReceivePopup({ advice, lines, patchAdvice, reloadLines, 
   const markReceived = () => {
     setMarking(true);
     setLocalError('');
-    Promise.allSettled(rows.map((r) => editLine({ ROWID: r.ROWID, received_qty: r.received_qty === '' ? 0 : Number(r.received_qty) })))
-      .then((results) => {
-        // Don't move on to "Received" if any received quantity failed to save.
-        const failed = results.find((r) => r.status === 'rejected');
-        if (failed) throw new Error(`Could not save the received quantities: ${failed.reason?.message || failed.reason}`);
+    // Save only quantities that changed, one at a time: concurrent updates to
+    // the same rows (a blur-save racing this one) left requests hanging.
+    const changed = rows.filter((r) => {
+      const original = lines.find((l) => String(l.ROWID) === String(r.ROWID));
+      const value = r.received_qty === '' ? 0 : Number(r.received_qty);
+      return !original || original.received_qty === null || Number(original.received_qty) !== value;
+    });
+    changed
+      .reduce(
+        (chain, r) => chain.then(() => editLine({ ROWID: r.ROWID, received_qty: r.received_qty === '' ? 0 : Number(r.received_qty) })),
+        Promise.resolve()
+      )
+      .catch((err) => {
+        throw new Error(`Could not save the received quantities: ${err.message || err}`);
       })
       .then(() => reloadLines())
       .then(() => patchAdvice({ status: 'Received' }))
@@ -140,7 +146,6 @@ export default function ReceivePopup({ advice, lines, patchAdvice, reloadLines, 
                     style={{ width: 90 }}
                     value={r.received_qty ?? ''}
                     onChange={(e) => updateReceivedQty(r.ROWID, e.target.value)}
-                    onBlur={(e) => saveReceivedQty(r.ROWID, e.target.value)}
                   />
                 </td>
               </tr>

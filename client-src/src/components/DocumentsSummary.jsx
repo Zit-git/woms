@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { listDocumentsForRecord } from '../lib/api';
+import StoredFile from './StoredFile';
 
 // Read-only list of what's already been uploaded for a record -- unlike
 // DocumentUploader/DocumentSlot, this has no upload controls, for use on
@@ -24,16 +25,19 @@ export default function DocumentsSummary({ linkedModules, recordId, title = 'Doc
       ) : docs.length === 0 ? (
         <p className="muted small">No documents uploaded.</p>
       ) : (
-        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
           {docs.map((d) => (
-            <li key={d.ROWID}>
-              <span className="status-badge">{d.doc_type}</span>{' '}
-              <span className="muted">
-                — {d.uploaded_by}, {d.uploaded_date}
-              </span>
-            </li>
+            <div key={d.ROWID} style={{ fontSize: 13 }}>
+              <span className="status-badge">{d.doc_type}</span>
+              <div style={{ margin: '6px 0' }}>
+                <StoredFile fileId={d.file_id} alt={d.doc_type} maxHeight={120} />
+              </div>
+              <div className="muted small">
+                {d.uploaded_by}, {d.uploaded_date}
+              </div>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );

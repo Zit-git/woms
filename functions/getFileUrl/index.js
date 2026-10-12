@@ -16,11 +16,23 @@ app.post('/', async (req, res) => {
   const catalystApp = catalystSDK.initialize(req, { scope: 'admin' });
   try {
     const { fileId, bucketKey } = req.body || {};
-    const bucketName = BUCKET_KEYS[bucketKey];
-    if (!fileId || !bucketName) {
-      return res.status(400).send({ error: `fileId and bucketKey (${Object.keys(BUCKET_KEYS).join(' | ')}) are required` });
+    if (!fileId || (bucketKey && !BUCKET_KEYS[bucketKey])) {
+      return res.status(400).send({ error: `fileId is required; bucketKey, if given, must be one of ${Object.keys(BUCKET_KEYS).join(', ')}` });
     }
-    const signed = await catalystApp.stratus().bucket(bucketName).generatePreSignedUrl(fileId, 'GET', { expiryIn: URL_LIFETIME_SECONDS });
+    const stratus = catalystApp.stratus();
+    // The Documents table doesn't record which bucket a file went to, so when
+    // the caller doesn't know, look for the object in each bucket.
+    const candidates = bucketKey ? [BUCKET_KEYS[bucketKey]] : Object.values(BUCKET_KEYS);
+    let bucketName = null;
+    for (const name of candidates) {
+      const found = await stratus.bucket(name).headObject(fileId, { throwErr: false }).catch(() => null);
+      if (found) {
+        bucketName = name;
+        break;
+      }
+    }
+    if (!bucketName) bucketName = candidates[0];
+    const signed = await stratus.bucket(bucketName).generatePreSignedUrl(fileId, 'GET', { expiryIn: URL_LIFETIME_SECONDS });
     if (!signed?.signature) throw new Error('No link was returned for this file.');
     return res.status(200).send({ url: signed.signature });
   } catch (err) {

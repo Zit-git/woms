@@ -90,7 +90,7 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
         </div>
       </div>
 
-      <h3>Line Items</h3>
+      <h3 style={{ marginTop: 24 }}>Line Items</h3>
       <div style={{ overflowX: 'auto' }}>
         <table>
           <thead>
@@ -129,7 +129,7 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
         </table>
       </div>
 
-      <h3>Handling Units</h3>
+      <h3 style={{ marginTop: 24 }}>Handling Units</h3>
       {cargoRows.length === 0 ? (
         <p className="muted small">
           No Handling Units yet — they are created, and QR labels generated, after the goods are received.
