@@ -36,7 +36,10 @@ app.post('/', async (req, res) => {
 
     const buffer = Buffer.from(fileBase64, 'base64');
     const bucket = catalystApp.stratus().bucket(bucketName);
-    const safeFileName = `${linkedModule.replace(/\s+/g, '')}-${linkedRecordId}-${Date.now()}-${fileName}`;
+    // Keep keys to plain characters: file names from phones/macOS contain spaces
+    // and special spaces (e.g. U+202F in screenshots) that break URLs for the file.
+    const cleanName = String(fileName).replace(/[^A-Za-z0-9._-]+/g, '-');
+    const safeFileName = `${linkedModule.replace(/\s+/g, '')}-${linkedRecordId}-${Date.now()}-${cleanName}`;
     // A plain putObject() resolves to just `true` on success -- Stratus
     // objects are addressed by their key, not a separate returned id, so
     // the key we chose IS the identifier to store.

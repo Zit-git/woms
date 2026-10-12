@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getFileUrl } from '../lib/api';
 
-const IMAGE = /\.(png|jpe?g|gif|webp|bmp|heic)$/i;
+const IMAGE = /\.(png|jpe?g|gif|webp|bmp)$/i;
 
 // Shows an uploaded file: images as a thumbnail (click for full size), anything
 // else as an "Open" link. The storage buckets are private, so a short-lived

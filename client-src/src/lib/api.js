@@ -73,8 +73,23 @@ function formatDatetime(date = new Date()) {
 export const uploadDocument = (fileBase64, fileName, bucketKey, docType, linkedModule, linkedRecordId, uploadedBy) =>
   callFunction('uploadFile', { fileBase64, fileName, bucketKey, docType, linkedModule, linkedRecordId, uploadedBy });
 
-// A short-lived signed link to an uploaded file, so it can be shown on screen.
-export const getFileUrl = (fileId, bucketKey) => callFunction('getFileUrl', { fileId, bucketKey }).then((r) => r.url);
+// An uploaded file, ready to show: resolves to a URL the browser can display
+// (a local blob for files returned inline, a signed link for large ones).
+// Cached per file so re-renders don't refetch it.
+const fileUrlCache = new Map();
+export const getFileUrl = (fileId, bucketKey) => {
+  const key = `${bucketKey || ''}|${fileId}`;
+  if (!fileUrlCache.has(key)) {
+    const request = callFunction('getFileUrl', { fileId, bucketKey }).then((r) => {
+      if (r.url) return r.url;
+      const bytes = Uint8Array.from(atob(r.base64), (ch) => ch.charCodeAt(0));
+      return URL.createObjectURL(new Blob([bytes], { type: r.contentType }));
+    });
+    fileUrlCache.set(key, request);
+    request.catch(() => fileUrlCache.delete(key)); // let a failed load be retried
+  }
+  return fileUrlCache.get(key);
+};
 
 export const listDocumentsForRecord = (linkedModule, linkedRecordId) =>
   zcql(
