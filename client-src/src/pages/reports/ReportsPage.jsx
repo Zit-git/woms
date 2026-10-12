@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { listCargoRegister, listDispatchReport } from '../../lib/api';
 
 const TABS = [
@@ -8,6 +9,7 @@ const TABS = [
 ];
 
 export default function ReportsPage() {
+  const { viewer } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = useState('cargo');
   const [cargo, setCargo] = useState([]);
@@ -17,7 +19,7 @@ export default function ReportsPage() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([listCargoRegister(), listDispatchReport()])
+    Promise.all([listCargoRegister(viewer), listDispatchReport(viewer)])
       .then(([c, d]) => {
         setCargo(c);
         setDispatches(d);

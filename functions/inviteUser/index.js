@@ -6,7 +6,10 @@ const { logAudit } = require('./audit');
 const app = express();
 app.use(express.json());
 
-const BUSINESS_ROLES = ['System Administrator', 'Warehouse Manager', 'Warehouse Supervisor', 'Warehouse Operator'];
+// Global level of a user: administrators see every warehouse; everyone else
+// ("Warehouse Staff") gets a role per warehouse from UserWarehouseRole.
+const BUSINESS_ROLES = ['System Administrator', 'Warehouse Staff'];
+const WAREHOUSE_ROLES = ['Warehouse Manager', 'Warehouse Supervisor', 'Warehouse Operator'];
 
 // Native Catalyst roles only gate console/API access; fine-grained module
 // access is governed separately by RolePermissions. Only System
@@ -33,7 +36,8 @@ async function isSystemAdministrator(catalystApp, req) {
   return !!row && row.business_role === 'System Administrator' && row.user_status === 'Active';
 }
 
-// POST body: { firstName, lastName, email, businessRole, redirectUrl, warehouseId? }
+// POST body: { firstName, lastName, email, businessRole: 'System Administrator'|'Warehouse Staff',
+//   redirectUrl, assignments?: [{ warehouseId, role }] }
 // Invites a new Catalyst project user and creates the matching AppUsers row
 // that drives business-role-based UI gating.
 app.post('/', async (req, res) => {
@@ -44,12 +48,27 @@ app.post('/', async (req, res) => {
       return res.status(403).send({ error: 'Only a System Administrator can invite users.' });
     }
 
-    const { firstName, lastName, email, businessRole, redirectUrl, warehouseId } = req.body;
+    const { firstName, lastName, email, businessRole, redirectUrl, assignments = [] } = req.body;
     if (!firstName || !email || !businessRole || !redirectUrl) {
       return res.status(400).send({ error: 'firstName, email, businessRole and redirectUrl are required' });
     }
     if (!BUSINESS_ROLES.includes(businessRole)) {
       return res.status(400).send({ error: `businessRole must be one of ${BUSINESS_ROLES.join(', ')}` });
+    }
+
+    if (businessRole === 'Warehouse Staff') {
+      const seen = new Set();
+      const valid =
+        Array.isArray(assignments) &&
+        assignments.length > 0 &&
+        assignments.every((a) => {
+          const ok = a && /^\d+$/.test(String(a.warehouseId)) && WAREHOUSE_ROLES.includes(a.role) && !seen.has(String(a.warehouseId));
+          if (ok) seen.add(String(a.warehouseId));
+          return ok;
+        });
+      if (!valid) {
+        return res.status(400).send({ error: `Warehouse staff need at least one warehouse with a role (${WAREHOUSE_ROLES.join(', ')}), one per warehouse.` });
+      }
     }
 
     const roleId = CATALYST_ROLE_ID[businessRole] || CATALYST_ROLE_ID.default;
@@ -63,20 +82,30 @@ app.post('/', async (req, res) => {
     const catalystUserId = registered.user_details.user_id;
 
     const datastore = catalystApp.datastore();
-    await datastore.table(TABLES.APP_USERS).insertRow({
+    const appUser = await datastore.table(TABLES.APP_USERS).insertRow({
       catalyst_user_id: String(catalystUserId),
       email,
       business_role: businessRole,
-      warehouse_id: warehouseId || undefined,
       user_status: 'Active',
     });
+
+    if (businessRole === 'Warehouse Staff') {
+      const appUserId = appUser.ROWID || appUser.data?.ROWID;
+      for (const a of assignments) {
+        await datastore.table(TABLES.USER_WAREHOUSE_ROLE).insertRow({
+          app_user_id: String(appUserId),
+          warehouse_id: String(a.warehouseId),
+          business_role: a.role,
+        });
+      }
+    }
 
     await logAudit(catalystApp, {
       userId: req.headers['x-catalyst-user-id'] || '',
       actionType: 'INVITE_USER',
       module: 'System Administration',
       recordId: String(catalystUserId),
-      details: { email, businessRole },
+      details: { email, businessRole, assignments },
     });
 
     return res.status(200).send({ email, businessRole, catalystUserId });

@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getCustomerById, getCustomerActivity, editCustomer } from '../../lib/api';
 import CustomerForm from './CustomerForm';
+import { useAuth } from '../../context/AuthContext';
 import ContactList from '../../components/ContactList';
 
 export default function CustomerDetail() {
+  const { viewer } = useAuth();
   const { customerId } = useParams();
   const navigate = useNavigate();
   const [customer, setCustomer] = useState(null);
@@ -16,7 +18,7 @@ export default function CustomerDetail() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([getCustomerById(customerId), getCustomerActivity(customerId)])
+    Promise.all([getCustomerById(customerId), getCustomerActivity(customerId, viewer)])
       .then(([c, a]) => {
         setCustomer(c);
         setActivity(a);

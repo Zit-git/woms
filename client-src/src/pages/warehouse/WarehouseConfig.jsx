@@ -27,6 +27,8 @@ import {
 } from '../../lib/api';
 import { todayStr, addDays } from '../../lib/dates';
 import { computeCapacity, projectAvailability } from '../../lib/capacity';
+import { useAuth } from '../../context/AuthContext';
+import { accessibleWarehouses, scopeByWarehouse } from '../../lib/access';
 
 const TABS = ['Warehouses', 'Zones', 'Aisles', 'Racks', 'Storage Locations', 'Package Types', 'Map', 'Availability'];
 const CAPACITY_UNITS = ['Pallet Positions', 'Cartons', 'Crates', 'm²', 'm³', 'Other'];
@@ -52,8 +54,15 @@ function useList(loader, deps) {
   return { items, loading, error, reload };
 }
 
+// Warehouses the signed-in user may see (all of them for a System Administrator).
+function useMyWarehouses() {
+  const { viewer } = useAuth();
+  return useList(() => listWarehouses().then((w) => accessibleWarehouses(viewer, w)), [viewer]);
+}
+
 function WarehousesTab() {
-  const { items, loading, error, reload } = useList(listWarehouses, []);
+  const { isAdmin } = useAuth();
+  const { items, loading, error, reload } = useMyWarehouses();
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -87,7 +96,7 @@ function WarehousesTab() {
 
   return (
     <div>
-      <form className="card" onSubmit={add}>
+      {isAdmin && <form className="card" onSubmit={add}>
         <h3>Add Warehouse</h3>
         <div style={{ display: 'flex', gap: 12 }}>
           <div className="form-row" style={{ maxWidth: 300 }}>
@@ -102,7 +111,7 @@ function WarehousesTab() {
         <button className="btn" type="submit">
           + Add Warehouse
         </button>
-      </form>
+      </form>}
       {error && <div className="error-text">{error}</div>}
       {loading ? (
         <p className="muted">Loading...</p>
@@ -152,13 +161,15 @@ function WarehousesTab() {
                     <button className="link-btn" onClick={() => startEdit(w)}>
                       Edit
                     </button>{' '}
-                    <button
-                      className="link-btn"
-                      style={{ color: 'var(--danger)' }}
-                      onClick={() => removeWarehouse(w.ROWID).then(reload)}
-                    >
-                      Delete
-                    </button>
+                    {isAdmin && (
+                      <button
+                        className="link-btn"
+                        style={{ color: 'var(--danger)' }}
+                        onClick={() => removeWarehouse(w.ROWID).then(reload)}
+                      >
+                        Delete
+                      </button>
+                    )}
                   </td>
                 </tr>
               )
@@ -184,7 +195,8 @@ function WarehousesTab() {
 // that same math forward (lib/capacity.js's computeCapacity(asOfDate)), one
 // control switching between the two rather than two disconnected sections.
 function AvailabilityTab() {
-  const { items: warehouses } = useList(listWarehouses, []);
+  const { viewer } = useAuth();
+  const { items: warehouses } = useMyWarehouses();
   const [warehouseId, setWarehouseId] = useState('');
   const [viewMode, setViewMode] = useState('today'); // 'today' | 'range'
   const [locations, setLocations] = useState([]);
@@ -200,14 +212,16 @@ function AvailabilityTab() {
     setLoading(true);
     Promise.all([listCapacityLocations(), listCapacityCargo(), listCapacityOutboundCommitments(), listPackageTypes()])
       .then(([l, c, o, p]) => {
-        setLocations(l);
-        setCargoRows(c);
-        setOutboundCommitments(o);
+        // Capacity is only ever shown for the user's own warehouses.
+        setLocations(scopeByWarehouse(viewer, l));
+        setCargoRows(scopeByWarehouse(viewer, c));
+        setOutboundCommitments(scopeByWarehouse(viewer, o));
         setPackageTypes(p);
       })
       .catch((err) => setError(err.message || String(err)))
       .finally(() => setLoading(false));
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewer]);
 
   // Today = the real, ground-truth state (no asOfDate -- exactly what's in
   // the database right now, not a simulation).
@@ -518,7 +532,7 @@ function AvailabilityTab() {
 }
 
 function ZonesTab() {
-  const { items: warehouses } = useList(listWarehouses, []);
+  const { items: warehouses } = useMyWarehouses();
   const [warehouseId, setWarehouseId] = useState('');
   const { items, loading, error, reload } = useList(
     warehouseId ? () => listZonesByWarehouse(warehouseId) : null,
@@ -610,7 +624,7 @@ function ZonesTab() {
 }
 
 function AislesTab() {
-  const { items: warehouses } = useList(listWarehouses, []);
+  const { items: warehouses } = useMyWarehouses();
   const [warehouseId, setWarehouseId] = useState('');
   const { items: zones } = useList(warehouseId ? () => listZonesByWarehouse(warehouseId) : null, [warehouseId]);
   const [zoneId, setZoneId] = useState('');
@@ -706,7 +720,7 @@ function AislesTab() {
 }
 
 function RacksTab() {
-  const { items: warehouses } = useList(listWarehouses, []);
+  const { items: warehouses } = useMyWarehouses();
   const [warehouseId, setWarehouseId] = useState('');
   const { items: zones } = useList(warehouseId ? () => listZonesByWarehouse(warehouseId) : null, [warehouseId]);
   const [zoneId, setZoneId] = useState('');
@@ -817,7 +831,7 @@ function RacksTab() {
 }
 
 function LocationsTab() {
-  const { items: warehouses } = useList(listWarehouses, []);
+  const { items: warehouses } = useMyWarehouses();
   const [warehouseId, setWarehouseId] = useState('');
   const { items: zones } = useList(warehouseId ? () => listZonesByWarehouse(warehouseId) : null, [warehouseId]);
   const [zoneId, setZoneId] = useState('');
@@ -1070,7 +1084,7 @@ function LocationsTab() {
 }
 
 function WarehouseMapTab() {
-  const { items: warehouses } = useList(listWarehouses, []);
+  const { items: warehouses } = useMyWarehouses();
   const [warehouseId, setWarehouseId] = useState('');
   const { items: zoneMap, loading, error, reload } = useList(
     warehouseId ? () => getWarehouseMap(warehouseId) : null,

@@ -11,8 +11,7 @@ const TABS = [
 const day = (value) => (value ? String(value).slice(0, 10) : '');
 
 export default function DeliveryPage() {
-  const { businessRole, warehouseId, user } = useAuth();
-  const viewer = { businessRole, warehouseId, email: user?.email_id };
+  const { viewer, user } = useAuth();
   const actor = user?.email_id || '';
 
   const [rows, setRows] = useState([]);

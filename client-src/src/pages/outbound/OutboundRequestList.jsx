@@ -4,11 +4,11 @@ import { listOutboundRequests, createOutboundRequest, listCustomers, listTranspo
 import SortableTh from '../../components/SortableTh';
 import { useSortableData } from '../../lib/useSortableData';
 import { useAuth } from '../../context/AuthContext';
+import { accessibleWarehouses as scopeWarehouses } from '../../lib/access';
 
 export default function OutboundRequestList() {
   const navigate = useNavigate();
-  const { businessRole, warehouseId, user } = useAuth();
-  const viewer = { businessRole, warehouseId, email: user?.email_id };
+  const { viewer } = useAuth();
   const [requests, setRequests] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [transporters, setTransporters] = useState([]);
@@ -33,10 +33,12 @@ export default function OutboundRequestList() {
         setRequests(r);
         setCustomers(c);
         setTransporters(t);
-        setWarehouses(w);
+        // Only warehouses this user can see are offered for a new request.
+        const mine = scopeWarehouses(viewer, w);
+        setWarehouses(mine);
         if (!form.customer_id && c.length) setForm((f) => ({ ...f, customer_id: c[0].ROWID }));
-        if (!form.warehouse_id && w.length) {
-          setForm((f) => ({ ...f, warehouse_id: warehouseId || w[0].ROWID }));
+        if (!form.warehouse_id && mine.length) {
+          setForm((f) => ({ ...f, warehouse_id: mine[0].ROWID }));
         }
       })
       .catch((err) => setError(err.message || String(err)))
@@ -54,7 +56,7 @@ export default function OutboundRequestList() {
         setForm({
           customer_id: customers[0]?.ROWID || '',
           transporter_id: '',
-          warehouse_id: warehouseId || warehouses[0]?.ROWID || '',
+          warehouse_id: warehouses[0]?.ROWID || '',
           requested_date: '',
           reference_number: '',
         });

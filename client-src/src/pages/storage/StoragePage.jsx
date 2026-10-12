@@ -29,8 +29,7 @@ const statusClass = (status) => {
 };
 
 export default function StoragePage() {
-  const { businessRole, warehouseId, user } = useAuth();
-  const viewer = { businessRole, warehouseId, email: user?.email_id };
+  const { viewer, user } = useAuth();
   const actor = user?.email_id || '';
 
   const [stored, setStored] = useState([]);

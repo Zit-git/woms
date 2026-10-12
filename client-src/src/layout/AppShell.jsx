@@ -67,7 +67,7 @@ const NAV_GROUPS = [
 const BOTTOM_NAV_KEYS = ['/', '/inbound', '/storage', '/outbound'];
 
 export default function AppShell() {
-  const { user, businessRole, clearSession, canAccessPath } = useAuth();
+  const { user, businessRole, clearSession, canAccessPath, accessibleWarehouses, activeWarehouseId, setActiveWarehouseId } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
 
@@ -143,6 +143,25 @@ export default function AppShell() {
         <div className="sidebar-footer">
           <div className="muted small">{user?.email_id}</div>
           <div className="muted small">{businessRole}</div>
+          {accessibleWarehouses.length > 1 && (
+            <select
+              value={activeWarehouseId}
+              onChange={(e) => {
+                setActiveWarehouseId(e.target.value);
+                // Lists read the selection when they load, so reload the current page with it applied.
+                window.location.reload();
+              }}
+              aria-label="Show records for"
+              style={{ marginTop: 6, width: '100%' }}
+            >
+              <option value="">All my warehouses</option>
+              {accessibleWarehouses.map((w) => (
+                <option key={w.ROWID} value={w.ROWID}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          )}
           <button className="link-btn sign-out-btn" onClick={handleSignOut}>
             <IconLogout width={14} height={14} />
             Sign out

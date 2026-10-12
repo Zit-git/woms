@@ -6,6 +6,7 @@ import { computeInboundSummary } from '../../../lib/inboundSummary';
 import { computeCapacity, expandLines, projectAvailability, requiredCapacityByUnit, requiredWeightAndSpace } from '../../../lib/capacity';
 import { recommendWarehouses } from '../../../lib/allocation';
 import { addDays } from '../../../lib/dates';
+import { accessibleWarehouses } from '../../../lib/access';
 
 // Stage 2 (Availability Check & Acceptance): a Warehouse Manager/Supervisor
 // checks this request's required capacity against what's actually available
@@ -25,7 +26,7 @@ import { addDays } from '../../../lib/dates';
 const MAX_DAYS = 60;
 
 export default function ConfirmPopup({ advice, lines, suppliers, transporters, patchAdvice, reloadLines, onClose }) {
-  const { user } = useAuth();
+  const { user, viewer } = useAuth();
   const [confirming, setConfirming] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [showReject, setShowReject] = useState(false);
@@ -45,7 +46,8 @@ export default function ConfirmPopup({ advice, lines, suppliers, transporters, p
   useEffect(() => {
     Promise.all([listWarehouses(), listCapacityLocations(), listCapacityCargo(), listCapacityOutboundCommitments(), listPackageTypes()])
       .then(([warehouses, locations, cargo, outboundCommitments, packageTypes]) =>
-        setCapacityData({ warehouses, locations, cargo, outboundCommitments, packageTypes })
+        // Only warehouses this user can see are offered as alternatives.
+        setCapacityData({ warehouses: accessibleWarehouses(viewer, warehouses), locations, cargo, outboundCommitments, packageTypes })
       )
       .catch((err) => setError(err.message || String(err)));
     // eslint-disable-next-line react-hooks/exhaustive-deps

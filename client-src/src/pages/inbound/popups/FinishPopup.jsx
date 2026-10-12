@@ -3,13 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import Modal from '../../../components/Modal';
 import { sendInboundConfirmationEmail, startNewInboundAdvice, getGrnForAdvice, createGRN, verifyGRN } from '../../../lib/api';
 import { useAuth } from '../../../context/AuthContext';
-import { APPROVER_ROLES } from '../../../lib/roles';
 
 // Stage 5 (Completed): GRN verify gate + customer email -- unchanged logic
 // from the old wizard's Finish step, just inside a popup.
 export default function FinishPopup({ advice, patchAdvice, onClose }) {
   const navigate = useNavigate();
-  const { user, businessRole } = useAuth();
+  const { user, canApproveIn } = useAuth();
   const [grn, setGrn] = useState(undefined); // undefined = loading, null = none yet
   const [grnBusy, setGrnBusy] = useState(false);
   const [to, setTo] = useState(advice.customer_email || '');
@@ -20,7 +19,7 @@ export default function FinishPopup({ advice, patchAdvice, onClose }) {
   const [resumeTarget, setResumeTarget] = useState(null);
 
   const alreadyCompleted = advice.status === 'Completed';
-  const canVerify = APPROVER_ROLES.includes(businessRole);
+  const canVerify = canApproveIn(advice.warehouse_id);
   const grnVerified = grn?.status === 'Verified';
 
   useEffect(() => {

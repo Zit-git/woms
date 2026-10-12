@@ -6,8 +6,7 @@ const STATUSES = ['Assigned', 'In Progress', 'Completed'];
 const PRIORITIES = ['Low', 'Medium', 'High'];
 
 export default function TasksPage() {
-  const { businessRole, warehouseId, user } = useAuth();
-  const viewer = { businessRole, warehouseId, email: user?.email_id };
+  const { viewer, user } = useAuth();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

@@ -13,7 +13,6 @@ import FinishPopup from './popups/FinishPopup';
 import { computeInboundSummary } from '../../lib/inboundSummary';
 import { validateRequestDates, colliMismatch } from '../../lib/inboundValidation';
 import { useAuth } from '../../context/AuthContext';
-import { APPROVER_ROLES } from '../../lib/roles';
 
 const REQUIRED_GENERAL_FIELDS = ['expected_colli', 'destination', 'customer_id', 'expected_date'];
 
@@ -33,7 +32,7 @@ function isRequestIncomplete(advice, lines) {
 // only ever shows the read-only Master view plus one contextual action.
 export default function InboundMaster() {
   const { adviceId } = useParams();
-  const { businessRole } = useAuth();
+  const { isAdmin, canApproveIn, canAccessWarehouse } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -80,8 +79,9 @@ export default function InboundMaster() {
   useEffect(() => {
     if (loading || !advice || !location.state?.openRequest) return;
     navigate(location.pathname, { replace: true, state: null });
-    if (advice.status === 'Requested' && APPROVER_ROLES.includes(businessRole)) setActivePopup('request');
-  }, [loading, advice, location, navigate, businessRole]);
+    if (advice.status === 'Requested' && canApproveIn(advice.warehouse_id)) setActivePopup('request');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, advice, location, navigate]);
 
   const patchAdvice = (fields) => {
     setSaving(true);
@@ -105,10 +105,13 @@ export default function InboundMaster() {
 
   if (loading) return <p className="muted">Loading...</p>;
   if (!advice) return <p className="error-text">Inbound advice not found.</p>;
+  if (!canAccessWarehouse(advice.warehouse_id)) {
+    return <p className="error-text">You don't have access to this warehouse's records.</p>;
+  }
 
   const summary = computeInboundSummary(advice, lines, cargoRows);
-  const isApprover = APPROVER_ROLES.includes(businessRole);
-  const isAdmin = businessRole === 'System Administrator';
+  // Role is per warehouse: what this user may do here depends on this inbound's warehouse.
+  const isApprover = canApproveIn(advice.warehouse_id);
 
   let action = null;
   if (advice.status === 'Requested' && isApprover) {

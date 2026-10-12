@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { getCurrentUser } from '../lib/catalystClient';
-import { getAppUserByEmail, listRolePermissions } from '../lib/api';
+import { getAppUserByEmail, listRolePermissions, listUserWarehouseRoles, listWarehouses } from '../lib/api';
+import { ADMIN_ROLE, canApproveIn, canApproveAnywhere, canAccessWarehouse, roleIn, describeAccess } from '../lib/access';
 import { moduleForPath } from '../lib/permissions';
 
 const AuthContext = createContext(null);
@@ -8,6 +9,15 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [appUser, setAppUser] = useState(null);
+  const [assignments, setAssignments] = useState([]); // [{ warehouseId, role }]
+  const [warehouseNames, setWarehouseNames] = useState([]);
+  const [activeWarehouseId, setActiveWarehouseIdState] = useState(() => {
+    try {
+      return localStorage.getItem('woms.activeWarehouse') || '';
+    } catch {
+      return '';
+    }
+  });
   const [allowedModules, setAllowedModules] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
 
@@ -24,13 +34,18 @@ export function AuthProvider({ children }) {
       // Fetched together rather than one after the other: listRolePermissions
       // doesn't depend on the AppUsers lookup, and chaining them cost an extra
       // full network round trip on every page load.
-      Promise.all([getAppUserByEmail(currentUser.email_id), listRolePermissions()])
-        .then(([row, perms]) => {
+      Promise.all([getAppUserByEmail(currentUser.email_id), listRolePermissions(), listWarehouses()])
+        .then(async ([row, perms, warehouses]) => {
           if (cancelled) return;
+          const rows = row && row.business_role !== ADMIN_ROLE ? await listUserWarehouseRoles(row.ROWID) : [];
+          if (cancelled) return;
+          const mine = rows.map((r) => ({ warehouseId: String(r.warehouse_id), role: r.business_role }));
           setAppUser(row);
-          if (row?.business_role) {
-            setAllowedModules(new Set(perms.filter((p) => p.role === row.business_role).map((p) => p.module)));
-          }
+          setAssignments(mine);
+          setWarehouseNames(warehouses);
+          // Module access is the union of what each role the user holds grants.
+          const roles = row?.business_role === ADMIN_ROLE ? [ADMIN_ROLE] : [...new Set(mine.map((a) => a.role))];
+          setAllowedModules(new Set(perms.filter((p) => roles.includes(p.role)).map((p) => p.module)));
         })
         .catch(() => {
           // A *failed* lookup (network error, a half-cleared session right
@@ -59,19 +74,52 @@ export function AuthProvider({ children }) {
   const clearSession = () => {
     setUser(null);
     setAppUser(null);
+    setAssignments([]);
     setAllowedModules(new Set());
   };
 
-  // A signed-in user with no active app role gets no access at all (fail closed);
-  // the dashboard is open to any active role, every other page needs its module.
-  const hasActiveRole = !!appUser?.business_role && appUser.user_status !== 'Inactive';
+  const isAdmin = appUser?.business_role === ADMIN_ROLE && appUser.user_status !== 'Inactive';
+  // Admins have access everywhere; everyone else needs at least one warehouse assignment (fail closed).
+  const hasActiveRole = !!appUser && appUser.user_status !== 'Inactive' && (isAdmin || assignments.length > 0);
   const canAccessModule = (module) => hasActiveRole && (!module || allowedModules.has(module));
   const canAccessPath = (pathname) => canAccessModule(moduleForPath(pathname));
 
+  const setActiveWarehouseId = (id) => {
+    setActiveWarehouseIdState(id || '');
+    try {
+      if (id) localStorage.setItem('woms.activeWarehouse', id);
+      else localStorage.removeItem('woms.activeWarehouse');
+    } catch {
+      // the selector just won't be remembered
+    }
+  };
+
+  // What lib/api.js uses to scope every list to the viewer's warehouses.
+  const viewer = useMemo(
+    () => ({
+      isAdmin,
+      email: user?.email_id || '',
+      assignments,
+      // A remembered selection that no longer applies (access removed) is ignored.
+      activeWarehouseId: activeWarehouseId && (isAdmin || assignments.some((a) => a.warehouseId === activeWarehouseId)) ? activeWarehouseId : '',
+    }),
+    [isAdmin, user, assignments, activeWarehouseId]
+  );
+
   const value = {
     user,
-    businessRole: appUser?.business_role || null,
-    warehouseId: appUser?.warehouse_id || null,
+    viewer,
+    isAdmin,
+    assignments,
+    businessRole: appUser ? describeAccess(viewer, warehouseNames) || null : null,
+    // Role in a specific warehouse, and what that role may do there.
+    roleIn: (warehouseId) => roleIn(viewer, warehouseId),
+    canAccessWarehouse: (warehouseId) => canAccessWarehouse(viewer, warehouseId),
+    canApproveIn: (warehouseId) => canApproveIn(viewer, warehouseId),
+    canApproveAnywhere: canApproveAnywhere(viewer),
+    activeWarehouseId: viewer.activeWarehouseId,
+    setActiveWarehouseId,
+    accessibleWarehouses: warehouseNames.filter((w) => isAdmin || assignments.some((a) => a.warehouseId === String(w.ROWID))),
     loading,
     isAuthenticated: !!user,
     hasActiveRole,

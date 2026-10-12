@@ -24,7 +24,7 @@ const QrScannerModal = lazy(() => import('../../components/QrScannerModal'));
 
 export default function OutboundRequestDetail() {
   const { requestId } = useParams();
-  const { user } = useAuth();
+  const { user, canAccessWarehouse } = useAuth();
   const [request, setRequest] = useState(null);
   const [pickTasks, setPickTasks] = useState([]);
   const [availableCargo, setAvailableCargo] = useState([]);
@@ -158,6 +158,9 @@ export default function OutboundRequestDetail() {
 
   if (loading) return <p className="muted">Loading...</p>;
   if (!request) return <p className="error-text">Outbound request not found.</p>;
+  if (!canAccessWarehouse(request.warehouse_id)) {
+    return <p className="error-text">You don't have access to this warehouse's records.</p>;
+  }
 
   return (
     <div>

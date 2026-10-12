@@ -20,6 +20,7 @@ module.exports = {
     ROLE_PERMISSIONS: 'RolePermissions',
     AUDIT_LOG: 'AuditLog',
     APP_USERS: 'AppUsers',
+    USER_WAREHOUSE_ROLE: 'UserWarehouseRole',
   },
   BUCKETS: {
     DOCUMENTS: 'woms-documents',

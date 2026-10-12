@@ -1,5 +1,15 @@
-import { useEffect, useState } from 'react';
-import { listAppUsers, listRolePermissions, inviteUser, listWarehouses } from '../../lib/api';
+import { Fragment, useEffect, useState } from 'react';
+import {
+  listAppUsers,
+  listRolePermissions,
+  inviteUser,
+  listWarehouses,
+  listAllUserWarehouseRoles,
+  createUserWarehouseRole,
+  editUserWarehouseRole,
+  removeUserWarehouseRole,
+} from '../../lib/api';
+import { ADMIN_ROLE, STAFF_LEVEL, WAREHOUSE_ROLES } from '../../lib/access';
 import { authRedirectUrl } from '../../lib/catalystClient';
 import AuditTrail from '../../components/AuditTrail';
 
@@ -16,33 +26,31 @@ const MODULE_ORDER = [
   'System Administration',
 ];
 
-const BUSINESS_ROLES = ['System Administrator', 'Warehouse Manager', 'Warehouse Supervisor', 'Warehouse Operator'];
-
 export default function AdminPage() {
   const [users, setUsers] = useState([]);
+  const [access, setAccess] = useState([]); // UserWarehouseRole rows
   const [permissions, setPermissions] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showInvite, setShowInvite] = useState(false);
-  const [form, setForm] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    businessRole: BUSINESS_ROLES[3],
-    warehouseId: '',
-  });
+  const blankRow = (w = warehouses) => ({ warehouseId: w[0]?.ROWID || '', role: WAREHOUSE_ROLES[2] });
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', level: STAFF_LEVEL, rows: [] });
   const [inviting, setInviting] = useState(false);
   const [inviteResult, setInviteResult] = useState(null);
+  const [managingId, setManagingId] = useState(null); // AppUsers ROWID whose access is being edited
+  const [newRow, setNewRow] = useState({ warehouseId: '', role: WAREHOUSE_ROLES[2] });
+  const [busy, setBusy] = useState(false);
 
   const load = () => {
     setLoading(true);
-    Promise.all([listAppUsers(), listRolePermissions(), listWarehouses()])
-      .then(([u, p, w]) => {
+    Promise.all([listAppUsers(), listRolePermissions(), listWarehouses(), listAllUserWarehouseRoles()])
+      .then(([u, p, w, a]) => {
         setUsers(u);
         setPermissions(p);
         setWarehouses(w);
-        if (!form.warehouseId && w.length) setForm((f) => ({ ...f, warehouseId: w[0].ROWID }));
+        setAccess(a);
+        setForm((f) => (f.rows.length ? f : { ...f, rows: [blankRow(w)] }));
       })
       .catch((err) => setError(err.message || String(err)))
       .finally(() => setLoading(false));
@@ -50,25 +58,50 @@ export default function AdminPage() {
 
   useEffect(load, []);
 
-  const warehouseName = (id) => warehouses.find((w) => String(w.ROWID) === String(id))?.name;
+  const warehouseName = (id) => warehouses.find((w) => String(w.ROWID) === String(id))?.name || 'Unknown warehouse';
   const roles = [...new Set(permissions.map((p) => p.role))];
   const hasAccess = (role, module) => permissions.some((p) => p.role === role && p.module === module);
+  const accessOf = (userId) => access.filter((a) => String(a.app_user_id) === String(userId));
+
+  const setRow = (i, patch) => setForm((f) => ({ ...f, rows: f.rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) }));
 
   const submitInvite = (e) => {
     e.preventDefault();
+    const rows = form.level === ADMIN_ROLE ? [] : form.rows;
+    if (form.level !== ADMIN_ROLE) {
+      if (!rows.length || rows.some((r) => !r.warehouseId)) return setInviteResult({ ok: false, message: 'Give the user access to at least one warehouse.' });
+      if (new Set(rows.map((r) => String(r.warehouseId))).size !== rows.length) {
+        return setInviteResult({ ok: false, message: 'Each warehouse can only appear once per user.' });
+      }
+    }
     setInviting(true);
     setInviteResult(null);
-    const redirectUrl = authRedirectUrl();
-    const warehouseId = form.businessRole === 'System Administrator' ? undefined : form.warehouseId;
-    inviteUser(form.firstName, form.lastName, form.email, form.businessRole, redirectUrl, warehouseId)
+    const assignments = rows.map((r) => ({ warehouseId: String(r.warehouseId), role: r.role }));
+    inviteUser(form.firstName, form.lastName, form.email, form.level, authRedirectUrl(), assignments)
       .then((res) => {
         setInviteResult({ ok: true, email: res.email });
-        setForm({ firstName: '', lastName: '', email: '', businessRole: BUSINESS_ROLES[3], warehouseId: warehouses[0]?.ROWID || '' });
+        setForm({ firstName: '', lastName: '', email: '', level: STAFF_LEVEL, rows: [blankRow()] });
         setShowInvite(false);
         load();
       })
       .catch((err) => setInviteResult({ ok: false, message: err.error || err.message || String(err) }))
       .finally(() => setInviting(false));
+  };
+
+  const run = (fn) => {
+    setBusy(true);
+    setError('');
+    return fn()
+      .then(load)
+      .catch((err) => setError(err.error || err.message || String(err)))
+      .finally(() => setBusy(false));
+  };
+  const addAccess = (userId) => {
+    if (!newRow.warehouseId) return;
+    if (accessOf(userId).some((a) => String(a.warehouse_id) === String(newRow.warehouseId))) {
+      return setError('This user already has a role in that warehouse. Change it instead.');
+    }
+    run(() => createUserWarehouseRole({ app_user_id: userId, warehouse_id: newRow.warehouseId, business_role: newRow.role }));
   };
 
   return (
@@ -108,25 +141,41 @@ export default function AdminPage() {
             <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
           </div>
           <div className="form-row">
-            <label>Business role</label>
-            <select value={form.businessRole} onChange={(e) => setForm({ ...form, businessRole: e.target.value })}>
-              {BUSINESS_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
+            <label>Access level</label>
+            <select value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })}>
+              <option value={STAFF_LEVEL}>Warehouse staff (role per warehouse)</option>
+              <option value={ADMIN_ROLE}>System Administrator (all warehouses)</option>
             </select>
           </div>
-          {form.businessRole !== 'System Administrator' && (
+          {form.level !== ADMIN_ROLE && (
             <div className="form-row">
-              <label>Warehouse</label>
-              <select value={form.warehouseId} onChange={(e) => setForm({ ...form, warehouseId: e.target.value })} required>
-                {warehouses.map((w) => (
-                  <option key={w.ROWID} value={w.ROWID}>
-                    {w.name}
-                  </option>
-                ))}
-              </select>
+              <label>Warehouses and roles</label>
+              {form.rows.map((r, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                  <select value={r.warehouseId} onChange={(e) => setRow(i, { warehouseId: e.target.value })} required>
+                    {warehouses.map((w) => (
+                      <option key={w.ROWID} value={w.ROWID}>
+                        {w.name}
+                      </option>
+                    ))}
+                  </select>
+                  <select value={r.role} onChange={(e) => setRow(i, { role: e.target.value })}>
+                    {WAREHOUSE_ROLES.map((role) => (
+                      <option key={role} value={role}>
+                        {role}
+                      </option>
+                    ))}
+                  </select>
+                  {form.rows.length > 1 && (
+                    <button type="button" className="link-btn" onClick={() => setForm((f) => ({ ...f, rows: f.rows.filter((_, idx) => idx !== i) }))}>
+                      Remove
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button type="button" className="link-btn" onClick={() => setForm((f) => ({ ...f, rows: [...f.rows, blankRow()] }))}>
+                + Add another warehouse
+              </button>
               {!warehouses.length && <p className="muted small">Add a warehouse first (Warehouse Management).</p>}
             </div>
           )}
@@ -150,22 +199,91 @@ export default function AdminPage() {
             <thead>
               <tr>
                 <th>Email</th>
-                <th>Business Role</th>
-                <th>Warehouse</th>
+                <th>Access</th>
                 <th>Status</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
-                <tr key={u.ROWID}>
-                  <td>{u.email}</td>
-                  <td>
-                    <span className="status-badge">{u.business_role}</span>
-                  </td>
-                  <td>{warehouseName(u.warehouse_id) || <span className="muted">—</span>}</td>
-                  <td>{u.user_status}</td>
-                </tr>
-              ))}
+              {users.map((u) => {
+                const isAdminUser = u.business_role === ADMIN_ROLE;
+                const mine = accessOf(u.ROWID);
+                return (
+                  <Fragment key={u.ROWID}>
+                    <tr>
+                      <td>{u.email}</td>
+                      <td>
+                        {isAdminUser ? (
+                          <span className="status-badge">System Administrator · all warehouses</span>
+                        ) : mine.length ? (
+                          mine.map((a) => (
+                            <div key={a.ROWID}>
+                              <span className="status-badge">{a.business_role}</span> {warehouseName(a.warehouse_id)}
+                            </div>
+                          ))
+                        ) : (
+                          <span className="muted">No warehouse access</span>
+                        )}
+                      </td>
+                      <td>{u.user_status}</td>
+                      <td>
+                        {!isAdminUser && (
+                          <button className="link-btn" onClick={() => setManagingId(managingId === u.ROWID ? null : u.ROWID)}>
+                            {managingId === u.ROWID ? 'Close' : 'Manage access'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    {managingId === u.ROWID && (
+                      <tr key={`${u.ROWID}-manage`}>
+                        <td colSpan={4}>
+                          {mine.map((a) => (
+                            <div key={a.ROWID} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
+                              <strong style={{ minWidth: 160 }}>{warehouseName(a.warehouse_id)}</strong>
+                              <select
+                                value={a.business_role}
+                                disabled={busy}
+                                onChange={(e) => run(() => editUserWarehouseRole({ ROWID: a.ROWID, business_role: e.target.value }))}
+                              >
+                                {WAREHOUSE_ROLES.map((role) => (
+                                  <option key={role} value={role}>
+                                    {role}
+                                  </option>
+                                ))}
+                              </select>
+                              <button className="link-btn" style={{ color: 'var(--danger)' }} disabled={busy} onClick={() => run(() => removeUserWarehouseRole(a.ROWID))}>
+                                Remove access
+                              </button>
+                            </div>
+                          ))}
+                          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                            <select value={newRow.warehouseId} onChange={(e) => setNewRow({ ...newRow, warehouseId: e.target.value })}>
+                              <option value="">Add warehouse...</option>
+                              {warehouses
+                                .filter((w) => !mine.some((a) => String(a.warehouse_id) === String(w.ROWID)))
+                                .map((w) => (
+                                  <option key={w.ROWID} value={w.ROWID}>
+                                    {w.name}
+                                  </option>
+                                ))}
+                            </select>
+                            <select value={newRow.role} onChange={(e) => setNewRow({ ...newRow, role: e.target.value })}>
+                              {WAREHOUSE_ROLES.map((role) => (
+                                <option key={role} value={role}>
+                                  {role}
+                                </option>
+                              ))}
+                            </select>
+                            <button className="btn secondary" disabled={busy || !newRow.warehouseId} onClick={() => addAccess(u.ROWID)}>
+                              Add
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
               {users.length === 0 && (
                 <tr>
                   <td colSpan={4} className="muted">

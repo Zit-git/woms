@@ -5,12 +5,14 @@ import SortableTh from '../../components/SortableTh';
 import { useSortableData } from '../../lib/useSortableData';
 import { useAuth } from '../../context/AuthContext';
 import { FULFILLMENT_STATUSES, computeFulfillmentStatus, fulfillmentStatusClass } from '../../lib/fulfillmentStatus';
-import { APPROVER_ROLES } from '../../lib/roles';
+import { warehousesWhereCanApprove } from '../../lib/access';
 
 export default function InboundAdviceList() {
   const navigate = useNavigate();
-  const { businessRole, warehouseId, user } = useAuth();
-  const viewer = { businessRole, warehouseId, email: user?.email_id };
+  const { viewer, accessibleWarehouses } = useAuth();
+  // The warehouse a new inbound will belong to: only ones where this user can approve.
+  const creatableWarehouses = warehousesWhereCanApprove(viewer, accessibleWarehouses);
+  const [newWarehouseId, setNewWarehouseId] = useState('');
   const [advices, setAdvices] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -66,12 +68,13 @@ export default function InboundAdviceList() {
   );
   const { sorted, toggleSort, arrowFor } = useSortableData(filtered);
 
-  const canCreate = APPROVER_ROLES.includes(businessRole);
+  const canCreate = creatableWarehouses.length > 0;
+  const chosenWarehouse = newWarehouseId || (creatableWarehouses.length === 1 ? creatableWarehouses[0].ROWID : '');
 
   const startNew = () => {
     setCreating(true);
     setError('');
-    startNewInboundAdvice(warehouseId)
+    startNewInboundAdvice(chosenWarehouse)
       .then((created) => navigate(`/inbound/${created.ROWID}`, { state: { openRequest: true } }))
       .catch((err) => {
         setError(err.message || String(err));
@@ -92,9 +95,21 @@ export default function InboundAdviceList() {
       <div className="toolbar">
         <h2>Inbound Operations</h2>
         {canCreate && (
-          <button className="btn" onClick={startNew} disabled={creating}>
-            {creating ? 'Creating...' : '+ New Inbound'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {creatableWarehouses.length > 1 && (
+              <select value={newWarehouseId} onChange={(e) => setNewWarehouseId(e.target.value)} aria-label="Warehouse for the new inbound">
+                <option value="">Select warehouse...</option>
+                {creatableWarehouses.map((w) => (
+                  <option key={w.ROWID} value={w.ROWID}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button className="btn" onClick={startNew} disabled={creating || !chosenWarehouse}>
+              {creating ? 'Creating...' : '+ New Inbound'}
+            </button>
+          </div>
         )}
       </div>
 

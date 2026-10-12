@@ -14,12 +14,12 @@ const CARDS = [
 ];
 
 export default function DashboardHome() {
-  const { user, businessRole, canAccessPath } = useAuth();
+  const { user, viewer, businessRole, canAccessPath } = useAuth();
   const [stats, setStats] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    getDashboardStats()
+    getDashboardStats(viewer)
       .then(setStats)
       .catch((err) => setError(err.message || String(err)));
   }, []);

@@ -35,21 +35,28 @@ const TABLES = {
 const GONE_SQL = "status != 'Dispatched' AND status != 'Delivered'";
 const goneSql = (alias) => `${alias}.status != 'Dispatched' AND ${alias}.status != 'Delivered'`;
 
-// Tier-based visibility: System Administrator sees everything; Warehouse
-// Manager/Supervisor see everything in their own warehouse; Warehouse
-// Operator sees only records assigned to them. Returns a " AND ..." clause
-// fragment to append to a query's WHERE, or '' for unrestricted (Admin, or
-// a viewer with no role/warehouse info yet -- fails open rather than
-// hiding everything from a not-yet-fully-loaded session).
+// Warehouse-scoped visibility. System Administrators see everything; every
+// other user sees only the warehouses they are assigned to, with their role
+// in each: Managers/Supervisors see all of that warehouse's records,
+// Operators only the records assigned to them there. A non-admin with no
+// assignment sees nothing (fails closed). Returns a " AND ..." fragment to
+// append to a WHERE clause, or '' for unrestricted.
+const idOnly = (v) => String(v).replace(/\D/g, '');
+const sqlText = (v) => String(v).replace(/'/g, "''");
 function visibilityClause(viewer, { warehouseCol, assignedCol } = {}) {
-  if (!viewer || !viewer.businessRole || viewer.businessRole === 'System Administrator') return '';
-  if (viewer.businessRole === 'Warehouse Operator' && assignedCol && viewer.email) {
-    return ` AND ${assignedCol} = '${viewer.email}'`;
-  }
-  if (warehouseCol && viewer.warehouseId) {
-    return ` AND ${warehouseCol} = ${viewer.warehouseId}`;
-  }
-  return '';
+  const active = viewer?.activeWarehouseId ? idOnly(viewer.activeWarehouseId) : '';
+  if (viewer?.isAdmin) return active && warehouseCol ? ` AND ${warehouseCol} = ${active}` : '';
+  const parts = (viewer?.assignments || [])
+    .filter((a) => !active || idOnly(a.warehouseId) === active)
+    .map((a) => {
+      const inWarehouse = `${warehouseCol} = ${idOnly(a.warehouseId)}`;
+      if (a.role === 'Warehouse Operator' && assignedCol && viewer.email) {
+        return `(${inWarehouse} AND ${assignedCol} = '${sqlText(viewer.email)}')`;
+      }
+      return `(${inWarehouse})`;
+    });
+  if (!warehouseCol || !parts.length) return ' AND 1 = 0';
+  return ` AND (${parts.join(' OR ')})`;
 }
 
 // Catalyst datetime columns expect "YYYY-MM-DD HH:mm:ss" on insert/update
@@ -117,15 +124,15 @@ export const setPrimaryContact = (customerId, contactId) =>
     ).then(() => editContact({ ROWID: contactId, is_primary: true }))
   );
 
-export const getCustomerActivity = (customerId) =>
+export const getCustomerActivity = (customerId, viewer) =>
   Promise.all([
     zcql(
-      `SELECT ROWID, expected_date, status FROM InboundAdvice WHERE customer_id = ${customerId} ORDER BY CREATEDTIME DESC`
+      `SELECT ROWID, expected_date, status FROM InboundAdvice WHERE customer_id = ${customerId}${visibilityClause(viewer, { warehouseCol: 'warehouse_id' })} ORDER BY CREATEDTIME DESC`
     ).then((rows) => rows.map((r) => r.InboundAdvice)),
     zcql(
-      `SELECT ROWID, requested_date, status FROM OutboundRequest WHERE customer_id = ${customerId} ORDER BY CREATEDTIME DESC`
+      `SELECT ROWID, requested_date, status FROM OutboundRequest WHERE customer_id = ${customerId}${visibilityClause(viewer, { warehouseCol: 'warehouse_id' })} ORDER BY CREATEDTIME DESC`
     ).then((rows) => rows.map((r) => r.OutboundRequest)),
-    zcql(`SELECT ROWID, description, qty, unit, status FROM Cargo WHERE customer_id = ${customerId} ORDER BY CREATEDTIME DESC`).then(
+    zcql(`SELECT ROWID, description, qty, unit, status FROM Cargo WHERE customer_id = ${customerId}${visibilityClause(viewer, { warehouseCol: 'warehouse_id' })} ORDER BY CREATEDTIME DESC`).then(
       (rows) => rows.map((r) => r.Cargo)
     ),
   ]).then(([inbound, outbound, cargo]) => ({ inbound, outbound, cargo }));
@@ -604,7 +611,7 @@ export const createValTask = (row) => addRow(TABLES.VAL_TASK, row);
 export const editValTask = (row) => updateRow(TABLES.VAL_TASK, row);
 
 export const listCargoForCustomer = (customerId) =>
-  zcql(`SELECT ROWID, description, qty, unit, status FROM Cargo WHERE customer_id = ${customerId} ORDER BY CREATEDTIME DESC`).then(
+  zcql(`SELECT ROWID, description, qty, unit, status FROM Cargo WHERE customer_id = ${customerId}${visibilityClause(viewer, { warehouseCol: 'warehouse_id' })} ORDER BY CREATEDTIME DESC`).then(
     (rows) => rows.map((r) => r.Cargo)
   );
 
@@ -771,16 +778,17 @@ const countOf = (table, expr, where = '') =>
     return row ? Object.values(row)[0] : 0;
   });
 
-export const getDashboardStats = () => {
+export const getDashboardStats = (viewer) => {
   const since = todayStart();
+  const scope = (warehouseCol, assignedCol) => visibilityClause(viewer, { warehouseCol, assignedCol });
   return Promise.all([
     countOf('Customers', 'ROWID'),
     countOf('StorageLocations', 'ROWID'),
-    countOf('Cargo', 'DISTINCT current_location_id', 'current_location_id IS NOT NULL'),
-    countOf('Cargo', 'ROWID', GONE_SQL),
-    countOf('InboundAdvice', 'ROWID', `CREATEDTIME >= '${since}'`),
-    countOf('OutboundRequest', 'ROWID', `CREATEDTIME >= '${since}'`),
-    countOf('Tasks', 'ROWID', "status != 'Completed'"),
+    countOf('Cargo', 'DISTINCT current_location_id', `current_location_id IS NOT NULL${scope('warehouse_id')}`),
+    countOf('Cargo', 'ROWID', `${GONE_SQL}${scope('warehouse_id')}`),
+    countOf('InboundAdvice', 'ROWID', `CREATEDTIME >= '${since}'${scope('warehouse_id')}`),
+    countOf('OutboundRequest', 'ROWID', `CREATEDTIME >= '${since}'${scope('warehouse_id')}`),
+    countOf('Tasks', 'ROWID', `status != 'Completed'${scope('warehouse_id', 'assigned_to')}`),
     countOf('VALRequest', 'ROWID', "status != 'Completed'"),
   ]).then(
     ([
@@ -806,9 +814,9 @@ export const getDashboardStats = () => {
 };
 
 // -- Reports --
-export const listCargoRegister = () =>
+export const listCargoRegister = (viewer) =>
   zcql(
-    `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.status, Cargo.qr_code, Customers.name, StorageLocations.location_code FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID LEFT JOIN StorageLocations ON Cargo.current_location_id = StorageLocations.ROWID ORDER BY Cargo.CREATEDTIME DESC`
+    `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.status, Cargo.qr_code, Customers.name, StorageLocations.location_code FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID LEFT JOIN StorageLocations ON Cargo.current_location_id = StorageLocations.ROWID WHERE Cargo.ROWID != 0${visibilityClause(viewer, { warehouseCol: 'Cargo.warehouse_id' })} ORDER BY Cargo.CREATEDTIME DESC`
   ).then((rows) =>
     rows.map((r) => ({
       ...r.Cargo,
@@ -817,9 +825,9 @@ export const listCargoRegister = () =>
     }))
   );
 
-export const listDispatchReport = () =>
+export const listDispatchReport = (viewer) =>
   zcql(
-    `SELECT Dispatch.ROWID, Dispatch.status, Dispatch.dispatched_by, Dispatch.dispatch_date, Dispatch.vehicle_details, OutboundRequest.ROWID, Customers.name FROM Dispatch LEFT JOIN OutboundRequest ON Dispatch.outbound_request_id = OutboundRequest.ROWID LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID ORDER BY Dispatch.CREATEDTIME DESC`
+    `SELECT Dispatch.ROWID, Dispatch.status, Dispatch.dispatched_by, Dispatch.dispatch_date, Dispatch.vehicle_details, OutboundRequest.ROWID, Customers.name FROM Dispatch LEFT JOIN OutboundRequest ON Dispatch.outbound_request_id = OutboundRequest.ROWID LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID WHERE Dispatch.ROWID != 0${visibilityClause(viewer, { warehouseCol: 'OutboundRequest.warehouse_id' })} ORDER BY Dispatch.CREATEDTIME DESC`
   ).then((rows) =>
     rows.map((r) => ({
       ...r.Dispatch,
@@ -850,9 +858,20 @@ export const getAppUserByEmail = (email) =>
 
 // -- System Administration --
 export const listAppUsers = () => getAllRows('AppUsers', 500);
+
+// -- Per-warehouse roles (UserWarehouseRole) --
+export const listUserWarehouseRoles = (appUserId) =>
+  zcql(`SELECT ROWID, warehouse_id, business_role FROM UserWarehouseRole WHERE app_user_id = ${idOnly(appUserId)}`).then((rows) =>
+    rows.map((r) => r.UserWarehouseRole)
+  );
+export const listAllUserWarehouseRoles = () => getAllRows('UserWarehouseRole', 500);
+export const createUserWarehouseRole = (row) => addRow('UserWarehouseRole', row);
+export const editUserWarehouseRole = (row) => updateRow('UserWarehouseRole', row);
+export const removeUserWarehouseRole = (rowId) => deleteRow('UserWarehouseRole', rowId);
+export const editAppUser = (row) => updateRow('AppUsers', row);
 export const listRolePermissions = () => getAllRows('RolePermissions', 500);
-export const inviteUser = (firstName, lastName, email, businessRole, redirectUrl, warehouseId) =>
-  callFunction('inviteUser', { firstName, lastName, email, businessRole, redirectUrl, warehouseId });
+export const inviteUser = (firstName, lastName, email, businessRole, redirectUrl, assignments) =>
+  callFunction('inviteUser', { firstName, lastName, email, businessRole, redirectUrl, assignments });
 
 // -- Audit trail, scoped per module (shown inline on each module's pages) --
 export const listAuditLogForModule = (modules, recordId, limit = 50) => {
