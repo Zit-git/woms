@@ -11,8 +11,11 @@
       "notifyEvent",
       "logAudit",
       "inviteUser",
-      "uploadFile"
+      "uploadFile",
+      "getFileUrl"
     ],
-    "ignore": [".output"]
+    "ignore": [
+      ".output"
+    ]
   }
 }

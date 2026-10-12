@@ -5,6 +5,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { computeInboundSummary } from '../../../lib/inboundSummary';
 import { computeCapacity, expandLines, projectAvailability, requiredCapacityByUnit, requiredWeightAndSpace } from '../../../lib/capacity';
 import { recommendWarehouses } from '../../../lib/allocation';
+import { addDays } from '../../../lib/dates';
 
 // Stage 2 (Availability Check & Acceptance): a Warehouse Manager/Supervisor
 // checks this request's required capacity against what's actually available
@@ -21,12 +22,6 @@ import { recommendWarehouses } from '../../../lib/allocation';
 // real item in hand, not a future plan. Accept only checks aggregate
 // capacity and recommends a warehouse -- both legitimate decisions this
 // early, unlike a specific rack.
-const todayStr = () => new Date().toISOString().slice(0, 10);
-function addDays(dateStr, n) {
-  const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
-}
 const MAX_DAYS = 60;
 
 export default function ConfirmPopup({ advice, lines, suppliers, transporters, patchAdvice, reloadLines, onClose }) {
@@ -215,6 +210,10 @@ export default function ConfirmPopup({ advice, lines, suppliers, transporters, p
       <div className="form-section-title">
         Availability Check{hasStoragePeriod ? `: ${dates[0]} → ${dates[dates.length - 1]}` : ' (today only — no storage period set)'}
       </div>
+      <p className="muted small" style={{ marginTop: -8 }}>
+        One row per day of this inbound's storage period. Each row shows how much of that warehouse is still free on that day, after goods already
+        accepted or due to leave are taken into account. Red means this inbound needs more than is free.
+      </p>
       {!evaluation ? (
         <p className="muted small">Checking warehouse capacity...</p>
       ) : lines.length === 0 ? (

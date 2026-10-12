@@ -10,9 +10,9 @@ import {
 } from '../../../lib/api';
 import { useAuth } from '../../../context/AuthContext';
 import { computeCapacity } from '../../../lib/capacity';
+import { todayStr } from '../../../lib/dates';
 import { allocateLocations } from '../../../lib/allocation';
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
 
 // Stage: Put-away, done from inside the inbound. Shows what the warehouse
 // has free right now, suggests a location for each Handling Unit (same

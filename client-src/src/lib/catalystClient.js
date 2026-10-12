@@ -104,20 +104,47 @@ export function signOut(redirectUrl) {
   setTimeout(fallbackRedirect, 3000);
 }
 
+// The SDK can leave a request pending forever (stale session, token it can't
+// refresh). A screen waiting on it would sit on "Saving..." / "Loading..."
+// for good, so every data call gets a deadline and fails with a readable
+// message instead.
+const DATA_TIMEOUT_MS = 25000;
+function withDeadline(promise, label) {
+  let timer;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `The server did not respond while ${label}. Check your connection, then reload; if it keeps happening, sign out and back in.`
+          )
+        ),
+      DATA_TIMEOUT_MS
+    );
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
+
 export function table(tableName) {
   return sdk().table.tableId(tableName);
 }
 
 export function addRow(tableName, row) {
-  return table(tableName)
-    .addRow([row])
-    .then((res) => res.content[0]);
+  return withDeadline(
+    table(tableName)
+      .addRow([row])
+      .then((res) => res.content[0]),
+    `saving to ${tableName}`
+  );
 }
 
 export function updateRow(tableName, rowWithId) {
-  return table(tableName)
-    .updateRow([rowWithId])
-    .then((res) => res.content[0]);
+  return withDeadline(
+    table(tableName)
+      .updateRow([rowWithId])
+      .then((res) => res.content[0]),
+    `updating ${tableName}`
+  );
 }
 
 export function deleteRow(tableName, rowId) {
@@ -140,16 +167,19 @@ export function getAllRows(tableName, maxRows = 200) {
 }
 
 export function zcql(query) {
-  return sdk()
-    .ZCatalystQL.executeQuery(query)
-    .then((res) => {
-      // The SDK resolves (rather than rejects) on a rejected query, handing
-      // back an empty object; surface the real reason instead of {}.
-      if (res.status && res.status !== 200) {
-        throw new Error(res.message || `Query failed (${res.status})`);
-      }
-      return res.content || [];
-    });
+  return withDeadline(
+    sdk()
+      .ZCatalystQL.executeQuery(query)
+      .then((res) => {
+        // The SDK resolves (rather than rejects) on a rejected query, handing
+        // back an empty object; surface the real reason instead of {}.
+        if (res.status && res.status !== 200) {
+          throw new Error(res.message || `Query failed (${res.status})`);
+        }
+        return res.content || [];
+      }),
+    'loading data'
+  );
 }
 
 // This project's function domain -- stable per Catalyst project/environment,

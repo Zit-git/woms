@@ -11,6 +11,7 @@ import PutawayPopup from './popups/PutawayPopup';
 import CheckPopup from './popups/CheckPopup';
 import FinishPopup from './popups/FinishPopup';
 import { computeInboundSummary } from '../../lib/inboundSummary';
+import { validateRequestDates, colliMismatch } from '../../lib/inboundValidation';
 import { useAuth } from '../../context/AuthContext';
 import { APPROVER_ROLES } from '../../lib/roles';
 
@@ -21,7 +22,10 @@ function isRequestIncomplete(advice, lines) {
   const missingLines =
     lines.length === 0 ||
     lines.some((r) => !r.unit || !r.description || !Number(r.qty) || r.weight === null || r.weight === '' || r.weight === undefined || !r.length_cm || !r.width_cm || !r.height_cm);
-  return missingGeneral || missingLines;
+  // A request is only ready for the availability check when its dates make
+  // sense and Expected Colli equals the packages actually listed.
+  const brokenRules = Object.keys(validateRequestDates(advice, { allowPast: advice.status !== 'Requested' })).length > 0 || Boolean(colliMismatch(advice.expected_colli, lines));
+  return missingGeneral || missingLines || brokenRules;
 }
 
 // The single stable page per inbound record, regardless of status. Each
@@ -91,7 +95,13 @@ export default function InboundMaster() {
       .finally(() => setSaving(false));
   };
 
-  const closePopup = () => setActivePopup(null);
+  // Popups edit records directly, so refresh everything on the page when one closes.
+  const closePopup = () => {
+    setActivePopup(null);
+    loadAdvice();
+    loadLines();
+    loadCargo();
+  };
 
   if (loading) return <p className="muted">Loading...</p>;
   if (!advice) return <p className="error-text">Inbound advice not found.</p>;

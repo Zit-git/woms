@@ -20,8 +20,13 @@ function blankLine(inboundAdviceId, customerId, warehouseId, index) {
 
 // embedded: used inline inside RequestPopup (no wizard chrome, no Back/Next
 // footer -- every field already autosaves on blur/add/remove).
-export default function StepGoods({ advice, lines, reloadLines, patchAdvice, goNext, goBack, saving, setError: setParentError, embedded = false }) {
+export default function StepGoods({ advice, lines, reloadLines, patchAdvice, goNext, goBack, saving, setError: setParentError, embedded = false, onRowsChange }) {
   const [rows, setRows] = useState(lines);
+  // Lets the parent popup (Expected Colli check) see edits as they happen.
+  useEffect(() => {
+    onRowsChange?.(rows);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
   // Unit types come from the Package Types master so a line's capacity
   // weighting always matches a configured type.
   const [unitTypes, setUnitTypes] = useState(DEFAULT_UNIT_TYPES);

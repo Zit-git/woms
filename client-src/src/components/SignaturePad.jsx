@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { uploadDocument, listDocumentsForRecord } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import StoredFile from './StoredFile';
 
 // Captures a driver signature on receipt/handover and stores it through the
 // same Documents pipeline as photos/paperwork, tagged with docType so it
 // shows up alongside them on the record.
-export default function SignaturePad({ linkedModule, linkedRecordId, docType, title = 'Driver Signature', embedded = false }) {
+export default function SignaturePad({ linkedModule, linkedRecordId, docType, title = 'Driver Signature', embedded = false, onSaved }) {
   const { user } = useAuth();
   const canvasRef = useRef(null);
   const drawing = useRef(false);
@@ -98,6 +99,7 @@ export default function SignaturePad({ linkedModule, linkedRecordId, docType, ti
       .then(() => {
         setCapturing(false);
         load();
+        onSaved?.();
       })
       .catch((err) => setError(err.error || err.message || String(err)))
       .finally(() => setSaving(false));
@@ -131,12 +133,15 @@ export default function SignaturePad({ linkedModule, linkedRecordId, docType, ti
           </div>
         </>
       ) : existing ? (
-        <p className="muted small">
-          Signature captured by {existing.uploaded_by} on {existing.uploaded_date}.{' '}
-          <button className="link-btn" onClick={() => setCapturing(true)}>
-            Re-capture
-          </button>
-        </p>
+        <>
+          <StoredFile fileId={existing.file_id} bucketKey="DOCUMENTS" alt="Captured signature" maxHeight={110} />
+          <p className="muted small">
+            Signature captured by {existing.uploaded_by} on {existing.uploaded_date}.{' '}
+            <button className="link-btn" onClick={() => setCapturing(true)}>
+              Re-capture
+            </button>
+          </p>
+        </>
       ) : (
         <button className="btn secondary" onClick={() => setCapturing(true)}>
           Capture Signature

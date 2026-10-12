@@ -10,9 +10,9 @@ import {
   recordScan,
 } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
+import { todayStr } from '../../lib/dates';
 import { allocateLocations } from '../../lib/allocation';
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
 
 const QrScannerModal = lazy(() => import('../../components/QrScannerModal'));
 

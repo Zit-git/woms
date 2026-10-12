@@ -14,6 +14,7 @@ export default function ReceivePopup({ advice, lines, patchAdvice, reloadLines, 
   const [rows, setRows] = useState(lines.map((r) => ({ ...r, received_qty: r.received_qty ?? r.qty ?? '' })));
   const [hasSignature, setHasSignature] = useState(false);
   const [marking, setMarking] = useState(false);
+  const [localError, setLocalError] = useState('');
 
   useEffect(() => setForm(advice), [advice]);
   useEffect(() => setRows(lines.map((r) => ({ ...r, received_qty: r.received_qty ?? r.qty ?? '' }))), [lines]);
@@ -44,16 +45,26 @@ export default function ReceivePopup({ advice, lines, patchAdvice, reloadLines, 
 
   const markReceived = () => {
     setMarking(true);
+    setLocalError('');
     Promise.allSettled(rows.map((r) => editLine({ ROWID: r.ROWID, received_qty: r.received_qty === '' ? 0 : Number(r.received_qty) })))
+      .then((results) => {
+        // Don't move on to "Received" if any received quantity failed to save.
+        const failed = results.find((r) => r.status === 'rejected');
+        if (failed) throw new Error(`Could not save the received quantities: ${failed.reason?.message || failed.reason}`);
+      })
       .then(() => reloadLines())
       .then(() => patchAdvice({ status: 'Received' }))
       .then(onClose)
-      .catch((err) => setError?.(err.message || String(err)))
+      .catch((err) => {
+        setLocalError(err.message || String(err));
+        setError?.(err.message || String(err));
+      })
       .finally(() => setMarking(false));
   };
 
   return (
     <Modal title={`Receive: ${advice.inbound_reference || ''}`} onClose={onClose} wide>
+      {localError && <div className="error-text">{localError}</div>}
       <div className="form-section-title" style={{ marginTop: 0 }}>Warehouse Unloading Information</div>
       <div className="form-grid-3">
         <div className="form-row">
@@ -83,6 +94,12 @@ export default function ReceivePopup({ advice, lines, patchAdvice, reloadLines, 
             onChange={set('received_piece_count')}
             onBlur={save('received_piece_count')}
           />
+          {form.received_piece_count !== null && form.received_piece_count !== undefined && form.received_piece_count !== '' &&
+            Number(form.received_piece_count) !== rows.reduce((sum, r) => sum + (Number(r.received_qty) || 0), 0) && (
+              <div className="error-text small">
+                Differs from the received quantities below ({rows.reduce((sum, r) => sum + (Number(r.received_qty) || 0), 0)}).
+              </div>
+            )}
         </div>
       </div>
       <div className="form-grid-3">
@@ -145,6 +162,7 @@ export default function ReceivePopup({ advice, lines, patchAdvice, reloadLines, 
         linkedRecordId={advice.ROWID}
         docType={DRIVER_SIGNATURE_DOC_TYPE}
         title="Driver Signature * — by signing, the driver confirms delivery of the goods"
+        onSaved={() => setHasSignature(true)}
       />
 
       <div className="doc-slot-grid">
@@ -164,7 +182,7 @@ export default function ReceivePopup({ advice, lines, patchAdvice, reloadLines, 
       )}
 
       <div className="form-actions" style={{ justifyContent: 'flex-end', marginTop: 16 }}>
-        <button className="btn" onClick={markReceived} disabled={marking}>
+        <button className="btn" onClick={markReceived} disabled={marking || missing.length > 0 || !hasSignature}>
           {marking ? 'Saving...' : 'Mark as Received'}
         </button>
       </div>

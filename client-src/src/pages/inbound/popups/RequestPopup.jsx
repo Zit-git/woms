@@ -3,6 +3,7 @@ import Modal from '../../../components/Modal';
 import StepGoods from '../steps/StepGoods';
 import { createSupplier } from '../../../lib/api';
 import { COUNTRIES } from '../../../lib/countries';
+import { validateRequestDates, colliMismatch, totalPackages } from '../../../lib/inboundValidation';
 
 const TRANSPORT_TYPES = ['Sea/Ocean Freight', 'Air Freight', 'Road Freight', 'Rail Freight', 'Courier', 'Other'];
 const NEW_SUPPLIER = '__new__';
@@ -25,6 +26,7 @@ export default function RequestPopup({
   onClose,
 }) {
   const [form, setForm] = useState(advice);
+  const [liveLines, setLiveLines] = useState(lines);
   const [otherDestination, setOtherDestination] = useState(false);
   const [addingSupplier, setAddingSupplier] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState('');
@@ -36,7 +38,12 @@ export default function RequestPopup({
   }, [advice]);
 
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
+  // Past dates are only refused while the request is still open; later
+  // stages (admin edits of a finished inbound) keep their historical dates.
+  const dateErrors = validateRequestDates(form, { allowPast: advice.status !== 'Requested' });
+  const colliError = colliMismatch(form.expected_colli, liveLines);
   const save = (field) => () => {
+    if (dateErrors[field]) return; // never store a date that breaks a rule
     if (form[field] !== advice[field]) patchAdvice({ [field]: form[field] || null });
   };
   const saveNow = (field, value) => patchAdvice({ [field]: value || null });
@@ -71,6 +78,23 @@ export default function RequestPopup({
             onChange={set('expected_colli')}
             onBlur={save('expected_colli')}
           />
+          {colliError ? (
+            <div className="error-text small">
+              {colliError}{' '}
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => {
+                  setForm((f) => ({ ...f, expected_colli: totalPackages(liveLines) }));
+                  patchAdvice({ expected_colli: totalPackages(liveLines) });
+                }}
+              >
+                Set to {totalPackages(liveLines)}
+              </button>
+            </div>
+          ) : (
+            <p className="muted small">Must equal the total packages in the line items below.</p>
+          )}
         </div>
         <div className="form-row">
           <label>Destination (Country) *</label>
@@ -109,6 +133,7 @@ export default function RequestPopup({
         <div className="form-row">
           <label>Expected Arrival (ETA) *</label>
           <input type="date" value={form.expected_date ?? ''} onChange={set('expected_date')} onBlur={save('expected_date')} />
+          {dateErrors.expected_date && <div className="error-text small">{dateErrors.expected_date}</div>}
         </div>
       </div>
 
@@ -243,10 +268,12 @@ export default function RequestPopup({
         <div className="form-row">
           <label>Expected Storage Period: From</label>
           <input type="date" value={form.storage_start_date ?? ''} onChange={set('storage_start_date')} onBlur={save('storage_start_date')} />
+          {dateErrors.storage_start_date && <div className="error-text small">{dateErrors.storage_start_date}</div>}
         </div>
         <div className="form-row">
           <label>Expected Storage Period: To</label>
           <input type="date" value={form.storage_end_date ?? ''} onChange={set('storage_end_date')} onBlur={save('storage_end_date')} />
+          {dateErrors.storage_end_date && <div className="error-text small">{dateErrors.storage_end_date}</div>}
         </div>
       </div>
       <p className="muted small">Optional, but needed to check location availability for the full stay at the Availability Check step.</p>
@@ -256,6 +283,7 @@ export default function RequestPopup({
         advice={advice}
         lines={lines}
         reloadLines={reloadLines}
+        onRowsChange={setLiveLines}
         patchAdvice={patchAdvice}
         saving={saving}
         setError={setError}

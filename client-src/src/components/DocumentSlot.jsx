@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { uploadDocument, listDocumentsForRecord } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import StoredFile from './StoredFile';
 
 // One upload tile for a specific doc_type (e.g. "Signed CMR"). Used both for
 // the quick-capture tiles on the General step and the formal checklist on
@@ -116,9 +117,18 @@ export default function DocumentSlot({
         )}
       </div>
       {error && <div className="error-text small">{error}</div>}
-      {!loading && (
+      {loading ? (
+        <div className="muted small">Checking uploads...</div>
+      ) : (
         <div className={`doc-slot-status ${uploaded ? 'uploaded' : ''}`}>
           {uploaded ? `✓ Uploaded${multiple && docs.length > 1 ? ` (${docs.length})` : ''}` : required ? 'Required' : 'Optional'}
+        </div>
+      )}
+      {uploaded && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+          {(multiple ? docs : docs.slice(0, 1)).map((d) => (
+            <StoredFile key={d.ROWID} fileId={d.file_id} bucketKey={variant === 'photo' ? 'CARGO_PHOTOS' : 'DOCUMENTS'} alt={title} />
+          ))}
         </div>
       )}
     </div>

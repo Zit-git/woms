@@ -1,0 +1,1 @@
+const n=()=>{const t=new Date,a=e=>String(e).padStart(2,"0");return`${t.getFullYear()}-${a(t.getMonth()+1)}-${a(t.getDate())}`};function r(t,a){const e=new Date(`${t}T00:00:00Z`);return e.setUTCDate(e.getUTCDate()+a),e.toISOString().slice(0,10)}export{r as a,n as t};

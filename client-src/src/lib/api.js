@@ -66,6 +66,9 @@ function formatDatetime(date = new Date()) {
 export const uploadDocument = (fileBase64, fileName, bucketKey, docType, linkedModule, linkedRecordId, uploadedBy) =>
   callFunction('uploadFile', { fileBase64, fileName, bucketKey, docType, linkedModule, linkedRecordId, uploadedBy });
 
+// A short-lived signed link to an uploaded file, so it can be shown on screen.
+export const getFileUrl = (fileId, bucketKey) => callFunction('getFileUrl', { fileId, bucketKey }).then((r) => r.url);
+
 export const listDocumentsForRecord = (linkedModule, linkedRecordId) =>
   zcql(
     `SELECT ROWID, doc_type, file_id, uploaded_by, uploaded_date FROM Documents WHERE linked_module = '${linkedModule}' AND linked_record_id = '${linkedRecordId}' ORDER BY CREATEDTIME DESC`

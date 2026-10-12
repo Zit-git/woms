@@ -25,6 +25,7 @@ import {
   listCapacityCargo,
   listCapacityOutboundCommitments,
 } from '../../lib/api';
+import { todayStr, addDays } from '../../lib/dates';
 import { computeCapacity, projectAvailability } from '../../lib/capacity';
 
 const TABS = ['Warehouses', 'Zones', 'Aisles', 'Racks', 'Storage Locations', 'Package Types', 'Map', 'Availability'];
@@ -176,14 +177,6 @@ function WarehousesTab() {
   );
 }
 
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
-}
-function addDays(dateStr, n) {
-  const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
-}
 
 // Capacity (the numbers configured on each Storage Location) is static
 // warehouse setup; Availability is the live, time-dependent state computed
