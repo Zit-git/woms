@@ -9,10 +9,9 @@ import { warehousesWhereCanApprove } from '../../lib/access';
 
 export default function InboundAdviceList() {
   const navigate = useNavigate();
-  const { viewer, accessibleWarehouses } = useAuth();
+  const { viewer, accessibleWarehouses, activeWarehouseId } = useAuth();
   // The warehouse a new inbound will belong to: only ones where this user can approve.
   const creatableWarehouses = warehousesWhereCanApprove(viewer, accessibleWarehouses);
-  const [newWarehouseId, setNewWarehouseId] = useState('');
   const [advices, setAdvices] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -69,7 +68,9 @@ export default function InboundAdviceList() {
   const { sorted, toggleSort, arrowFor } = useSortableData(filtered);
 
   const canCreate = creatableWarehouses.length > 0;
-  const chosenWarehouse = newWarehouseId || (creatableWarehouses.length === 1 ? creatableWarehouses[0].ROWID : '');
+  // A new inbound belongs to the warehouse chosen in the sidebar (or the user's only one).
+  const chosenWarehouse =
+    creatableWarehouses.find((w) => String(w.ROWID) === String(activeWarehouseId))?.ROWID || (creatableWarehouses.length === 1 ? creatableWarehouses[0].ROWID : '');
 
   const startNew = () => {
     setCreating(true);
@@ -96,16 +97,7 @@ export default function InboundAdviceList() {
         <h2>Inbound Operations</h2>
         {canCreate && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {creatableWarehouses.length > 1 && (
-              <select value={newWarehouseId} onChange={(e) => setNewWarehouseId(e.target.value)} aria-label="Warehouse for the new inbound">
-                <option value="">Select warehouse...</option>
-                {creatableWarehouses.map((w) => (
-                  <option key={w.ROWID} value={w.ROWID}>
-                    {w.name}
-                  </option>
-                ))}
-              </select>
-            )}
+            {!chosenWarehouse && <span className="muted small">Choose a warehouse at the bottom left first</span>}
             <button className="btn" onClick={startNew} disabled={creating || !chosenWarehouse}>
               {creating ? 'Creating...' : '+ New Inbound'}
             </button>

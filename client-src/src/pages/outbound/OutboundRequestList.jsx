@@ -8,7 +8,7 @@ import { accessibleWarehouses as scopeWarehouses } from '../../lib/access';
 
 export default function OutboundRequestList() {
   const navigate = useNavigate();
-  const { viewer } = useAuth();
+  const { viewer, activeWarehouseId } = useAuth();
   const [requests, setRequests] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [transporters, setTransporters] = useState([]);
@@ -47,10 +47,14 @@ export default function OutboundRequestList() {
 
   useEffect(load, []);
 
+  // The request belongs to the warehouse chosen in the sidebar (or the user's only one).
+  const chosenWarehouse =
+    warehouses.find((w) => String(w.ROWID) === String(activeWarehouseId))?.ROWID || (warehouses.length === 1 ? warehouses[0].ROWID : '');
+
   const submit = (e) => {
     e.preventDefault();
     setSaving(true);
-    createOutboundRequest({ ...form, transporter_id: form.transporter_id || undefined, status: 'Submitted' })
+    createOutboundRequest({ ...form, warehouse_id: chosenWarehouse, transporter_id: form.transporter_id || undefined, status: 'Submitted' })
       .then(() => {
         setShowForm(false);
         setForm({
@@ -71,9 +75,12 @@ export default function OutboundRequestList() {
       <div className="toolbar">
         <h2>Outbound Operations</h2>
         {!showForm && (
-          <button className="btn" onClick={() => setShowForm(true)}>
-            + New Outbound Request
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {!chosenWarehouse && <span className="muted small">Choose a warehouse at the bottom left first</span>}
+            <button className="btn" onClick={() => setShowForm(true)} disabled={!chosenWarehouse}>
+              + New Outbound Request
+            </button>
+          </div>
         )}
       </div>
 
@@ -99,16 +106,6 @@ export default function OutboundRequestList() {
               {transporters.map((t) => (
                 <option key={t.ROWID} value={t.ROWID}>
                   {t.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="form-row">
-            <label>Warehouse</label>
-            <select value={form.warehouse_id} onChange={(e) => setForm({ ...form, warehouse_id: e.target.value })} required>
-              {warehouses.map((w) => (
-                <option key={w.ROWID} value={w.ROWID}>
-                  {w.name}
                 </option>
               ))}
             </select>

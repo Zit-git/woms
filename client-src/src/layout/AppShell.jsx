@@ -151,10 +151,10 @@ export default function AppShell() {
                 // Lists read the selection when they load, so reload the current page with it applied.
                 window.location.reload();
               }}
-              aria-label="Show records for"
+              aria-label="Working warehouse" title="The warehouse you are working in: new inbounds and outbounds are created here"
               style={{ marginTop: 6, width: '100%' }}
             >
-              <option value="">All my warehouses</option>
+              <option value="">All my warehouses (view only)</option>
               {accessibleWarehouses.map((w) => (
                 <option key={w.ROWID} value={w.ROWID}>
                   {w.name}
