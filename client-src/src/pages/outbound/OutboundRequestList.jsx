@@ -1,12 +1,13 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listOutboundRequests, createOutboundRequest, listCustomers, listTransporters, listWarehouses } from '../../lib/api';
+import { listOutboundRequests, listPickStatusForAllRequests, createOutboundRequest, listCustomers, listTransporters, listWarehouses } from '../../lib/api';
 import SortableTh from '../../components/SortableTh';
 import { useSortableData } from '../../lib/useSortableData';
 import { useAuth } from '../../context/AuthContext';
 import { accessibleWarehouses as scopeWarehouses } from '../../lib/access';
 import { todayStr, addDays } from '../../lib/dates';
 import { PICKUP_QR_PREFIX } from '../../lib/reference';
+import { OUTBOUND_FULFILLMENT_STATUSES, computeOutboundFulfillment, outboundStatusClass } from '../../lib/outboundStatus';
 
 const QrScannerModal = lazy(() => import('../../components/QrScannerModal'));
 
@@ -33,6 +34,7 @@ export default function OutboundRequestList() {
   const [customFrom, setCustomFrom] = useState(todayStr());
   const [customTo, setCustomTo] = useState(todayStr());
   const [statusFilter, setStatusFilter] = useState('');
+  const [customerFilter, setCustomerFilter] = useState('');
   // Gate lookup: type or scan the pickup reference printed on the driver's Pickup Pass.
   const [search, setSearch] = useState('');
   const [scanning, setScanning] = useState(false);
@@ -51,7 +53,7 @@ export default function OutboundRequestList() {
       // Looking for a specific pass: ignore the date filter so a driver turning up on the wrong day is still found.
       return [r.outbound_reference, r.reference_number, r.customer_name, String(r.ROWID)].filter(Boolean).some((v) => String(v).toLowerCase().includes(query));
     }
-    return (!range || (day(r.requested_date) >= range[0] && day(r.requested_date) <= range[1])) && (!statusFilter || r.status === statusFilter);
+    return (!range || (day(r.requested_date) >= range[0] && day(r.requested_date) <= range[1])) && (!statusFilter || r.fulfillment_status === statusFilter) && (!customerFilter || String(r.customer_id) === customerFilter);
   });
   const onScanned = (text) => {
     setScanning(false);
@@ -62,9 +64,15 @@ export default function OutboundRequestList() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([listOutboundRequests(viewer), listCustomers(), listTransporters(), listWarehouses()])
-      .then(([r, c, t, w]) => {
-        setRequests(r);
+    Promise.all([listOutboundRequests(viewer), listPickStatusForAllRequests(), listCustomers(), listTransporters(), listWarehouses()])
+      .then(([r, picks, c, t, w]) => {
+        const picksByRequest = new Map();
+        picks.forEach((p) => {
+          const key = String(p.outbound_request_id);
+          if (!picksByRequest.has(key)) picksByRequest.set(key, []);
+          picksByRequest.get(key).push(p);
+        });
+        setRequests(r.map((x) => ({ ...x, fulfillment_status: computeOutboundFulfillment(picksByRequest.get(String(x.ROWID))) })));
         setCustomers(c);
         setTransporters(t);
         // Only warehouses this user can see are offered for a new request.
@@ -200,10 +208,21 @@ export default function OutboundRequestList() {
             <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} aria-label="To" />
           </>
         )}
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Status" style={{ marginLeft: 'auto' }}>
+        <select value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)} aria-label="Customer" style={{ marginLeft: 'auto' }}>
+          <option value="">All customers</option>
+          {customers.map((c) => (
+            <option key={c.ROWID} value={c.ROWID}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Status">
           <option value="">All statuses</option>
-          <option value="Submitted">Submitted</option>
-          <option value="Dispatched">Dispatched</option>
+          {OUTBOUND_FULFILLMENT_STATUSES.map((st) => (
+            <option key={st} value={st}>
+              {st}
+            </option>
+          ))}
         </select>
         <span className="muted small">
           {shown.length} of {requests.length} request{requests.length === 1 ? '' : 's'}
@@ -222,7 +241,7 @@ export default function OutboundRequestList() {
               <SortableTh label="Customer" sortKey="customer_name" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Transporter" sortKey="transporter_name" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Requested date" sortKey="requested_date" onSort={toggleSort} arrowFor={arrowFor} />
-              <SortableTh label="Status" sortKey="status" onSort={toggleSort} arrowFor={arrowFor} />
+              <SortableTh label="Fulfillment Status" sortKey="fulfillment_status" onSort={toggleSort} arrowFor={arrowFor} />
               <th></th>
             </tr>
           </thead>
@@ -235,7 +254,7 @@ export default function OutboundRequestList() {
                 <td>{r.transporter_name || <span className="muted">—</span>}</td>
                 <td>{r.requested_date}</td>
                 <td>
-                  <span className="status-badge">{r.status}</span>
+                  <span className={`status-badge ${outboundStatusClass(r.fulfillment_status)}`}>{r.fulfillment_status}</span>
                 </td>
                 <td>
                   <span className="link-btn">Open</span>

@@ -18,6 +18,13 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
     if (!outboundByHu.has(k)) outboundByHu.set(k, []);
     outboundByHu.get(k).push(l);
   });
+  const linkedOutbounds = new Map();
+  (outboundLinks || []).forEach((l) => {
+    const k = String(l.outbound_request_id);
+    const cur = linkedOutbounds.get(k) || { id: l.outbound_request_id, reference: l.outbound_reference, status: l.outbound_status, hus: 0 };
+    cur.hus += 1;
+    linkedOutbounds.set(k, cur);
+  });
   const summary = computeInboundSummary(advice, lines, cargoRows);
   const linesById = new Map((lines || []).map((l) => [String(l.ROWID), l]));
   const contentsByHu = new Map();
@@ -105,6 +112,23 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
             </>
           ) : (
             <div className="muted small">Not generated yet</div>
+          )}
+        </div>
+        <div className="check-block">
+          <div className="check-block-title">Linked Outbounds</div>
+          {linkedOutbounds.size === 0 ? (
+            <div className="muted small">No goods have left on an outbound yet</div>
+          ) : (
+            [...linkedOutbounds.values()].map((o) => (
+              <div key={o.id}>
+                <Link className="link-btn" to={`/outbound/${o.id}`}>
+                  {o.reference || `#${o.id}`}
+                </Link>{' '}
+                <span className="muted small">
+                  {o.hus} of {cargoRows.length} HU{cargoRows.length === 1 ? '' : 's'} · {o.status === 'Dispatched' ? 'Dispatched' : 'Open'}
+                </span>
+              </div>
+            ))
           )}
         </div>
       </div>

@@ -633,7 +633,7 @@ export const listCargoForCustomer = (customerId) =>
 // -- Outbound Operations --
 export const listOutboundRequests = (viewer) =>
   zcql(
-    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.reference_number, OutboundRequest.outbound_reference, OutboundRequest.warehouse_id, Customers.name, Transporters.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID WHERE OutboundRequest.ROWID != 0${visibilityClause(viewer, { warehouseCol: 'OutboundRequest.warehouse_id' })} ORDER BY OutboundRequest.CREATEDTIME DESC`
+    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.reference_number, OutboundRequest.outbound_reference, OutboundRequest.warehouse_id, OutboundRequest.customer_id, OutboundRequest.arrived_at, Customers.name, Transporters.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID WHERE OutboundRequest.ROWID != 0${visibilityClause(viewer, { warehouseCol: 'OutboundRequest.warehouse_id' })} ORDER BY OutboundRequest.CREATEDTIME DESC`
   ).then((rows) =>
     rows.map((r) => ({ ...r.OutboundRequest, customer_name: r.Customers?.name, transporter_name: r.Transporters?.name }))
   );
@@ -668,7 +668,7 @@ export const checkInPickup = (requestId, fields, actor) =>
   );
 export const getOutboundRequestById = (id) =>
   zcql(
-    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.reference_number, OutboundRequest.customer_id, OutboundRequest.transporter_id, OutboundRequest.warehouse_id, OutboundRequest.outbound_reference, OutboundRequest.driver_name, OutboundRequest.driver_id_number, OutboundRequest.driver_phone, OutboundRequest.vehicle_plate, OutboundRequest.trailer_plate, OutboundRequest.arrived_at, OutboundRequest.checked_in_by, Customers.name, Customers.email, Transporters.name, Warehouses.name, Warehouses.address FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID LEFT JOIN Warehouses ON OutboundRequest.warehouse_id = Warehouses.ROWID WHERE OutboundRequest.ROWID = ${id}`
+    `SELECT OutboundRequest.ROWID, OutboundRequest.CREATEDTIME, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.reference_number, OutboundRequest.customer_id, OutboundRequest.transporter_id, OutboundRequest.warehouse_id, OutboundRequest.outbound_reference, OutboundRequest.driver_name, OutboundRequest.driver_id_number, OutboundRequest.driver_phone, OutboundRequest.vehicle_plate, OutboundRequest.trailer_plate, OutboundRequest.arrived_at, OutboundRequest.checked_in_by, Customers.name, Customers.email, Transporters.name, Warehouses.name, Warehouses.address FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID LEFT JOIN Warehouses ON OutboundRequest.warehouse_id = Warehouses.ROWID WHERE OutboundRequest.ROWID = ${id}`
   ).then((rows) => {
     const row = rows[0];
     return row
@@ -710,18 +710,27 @@ export const listPickTasksByRequest = (outboundRequestId) =>
 // Which outbound request (if any) each Handling Unit of an inbound went out on.
 export const listOutboundLinksByAdvice = (inboundAdviceId) =>
   zcql(
-    `SELECT PickTask.cargo_id, OutboundRequest.ROWID, OutboundRequest.reference_number, OutboundRequest.status, OutboundRequest.requested_date FROM PickTask LEFT JOIN OutboundRequest ON PickTask.outbound_request_id = OutboundRequest.ROWID LEFT JOIN Cargo ON PickTask.cargo_id = Cargo.ROWID WHERE Cargo.inbound_advice_id = ${idOnly(inboundAdviceId)}`
+    `SELECT PickTask.cargo_id, OutboundRequest.ROWID, OutboundRequest.outbound_reference, OutboundRequest.status, OutboundRequest.requested_date FROM PickTask LEFT JOIN OutboundRequest ON PickTask.outbound_request_id = OutboundRequest.ROWID LEFT JOIN Cargo ON PickTask.cargo_id = Cargo.ROWID WHERE Cargo.inbound_advice_id = ${idOnly(inboundAdviceId)}`
   ).then((rows) =>
     rows.map((r) => ({
       cargo_id: r.PickTask.cargo_id,
       outbound_request_id: r.OutboundRequest?.ROWID,
-      outbound_reference: r.OutboundRequest?.reference_number,
+      outbound_reference: r.OutboundRequest?.outbound_reference,
       outbound_status: r.OutboundRequest?.status,
       requested_date: r.OutboundRequest?.requested_date,
     }))
   );
+// Pick and Handling Unit status for every outbound, so the list can compute
+// each request's Fulfillment Status without a round trip per row.
+export const listPickStatusForAllRequests = () =>
+  zcql(
+    `SELECT PickTask.outbound_request_id, PickTask.status, Cargo.status FROM PickTask LEFT JOIN Cargo ON PickTask.cargo_id = Cargo.ROWID WHERE PickTask.outbound_request_id IS NOT NULL`
+  ).then((rows) =>
+    rows.map((r) => ({ outbound_request_id: r.PickTask.outbound_request_id, status: r.PickTask.status, cargo_status: r.Cargo?.status }))
+  );
 export const createPickTask = (row) => addRow(TABLES.PICK_TASK, row);
 export const editPickTask = (row) => updateRow(TABLES.PICK_TASK, row);
+export const removePickTask = (rowId) => deleteRow(TABLES.PICK_TASK, rowId);
 
 export const listDispatchesByRequest = (outboundRequestId) =>
   zcql(
