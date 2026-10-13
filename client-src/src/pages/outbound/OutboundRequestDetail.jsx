@@ -14,6 +14,7 @@ import {
   notifySafe,
   logAudit,
   markCargoDelivered,
+  checkInPickup,
 } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import DocumentUploader from '../../components/DocumentUploader';
@@ -41,12 +42,24 @@ export default function OutboundRequestDetail() {
   const [dispatching, setDispatching] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [markingDelivered, setMarkingDelivered] = useState(false);
+  const [checkIn, setCheckIn] = useState({ driver_name: '', driver_id_number: '', driver_phone: '', vehicle_plate: '', trailer_plate: '' });
+  const [editingCheckIn, setEditingCheckIn] = useState(false);
+  const [savingCheckIn, setSavingCheckIn] = useState(false);
 
   const load = () => {
     setLoading(true);
     getOutboundRequestById(requestId)
       .then((r) => {
         setRequest(r);
+        if (r) {
+          setCheckIn({
+            driver_name: r.driver_name || '',
+            driver_id_number: r.driver_id_number || '',
+            driver_phone: r.driver_phone || '',
+            vehicle_plate: r.vehicle_plate || '',
+            trailer_plate: r.trailer_plate || '',
+          });
+        }
         return Promise.all([
           listPickTasksByRequest(requestId),
           r ? listAvailableCargoForCustomer(r.customer_id) : [],
@@ -98,6 +111,24 @@ export default function OutboundRequestDetail() {
       .finally(() => setSavingPick(false));
   };
 
+  const checkedIn = Boolean(request?.arrived_at);
+  const submitCheckIn = (e) => {
+    e.preventDefault();
+    if (!checkIn.driver_name.trim() || !checkIn.vehicle_plate.trim()) {
+      setError('Enter the driver name and the vehicle plate to check the driver in.');
+      return;
+    }
+    setSavingCheckIn(true);
+    setError('');
+    checkInPickup(requestId, checkIn, user?.email_id || '')
+      .then(() => {
+        setEditingCheckIn(false);
+        load();
+      })
+      .catch((err) => setError(err.message || String(err)))
+      .finally(() => setSavingCheckIn(false));
+  };
+
   const handleScanPick = (task) => {
     setBusyRow(task.ROWID);
     recordScan(task.cargo_id, user?.email_id || '', 'pick')
@@ -143,7 +174,7 @@ export default function OutboundRequestDetail() {
       .then(() =>
         createDispatch({
           outbound_request_id: requestId,
-          vehicle_details: vehicleDetails,
+          vehicle_details: vehicleDetails || [request.vehicle_plate, request.trailer_plate].filter(Boolean).join(' / '),
           dispatched_by: user?.email_id || '',
           status: 'Dispatched',
         })
@@ -185,12 +216,17 @@ export default function OutboundRequestDetail() {
       </Link>
       <div className="toolbar">
         <h2>
-          Outbound Request #{request.ROWID}
-          {request.reference_number && <span className="muted small"> ({request.reference_number})</span>}
+          {request.outbound_reference || `Outbound Request #${request.ROWID}`}
+          {request.reference_number && <span className="muted small"> (customer ref {request.reference_number})</span>}
         </h2>
-        <a className="btn secondary" href={`${import.meta.env.BASE_URL}print/outbound/${requestId}`} target="_blank" rel="noreferrer">
-          Print Dispatch Note
-        </a>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <a className="btn secondary" href={`${import.meta.env.BASE_URL}print/pickup/${requestId}`} target="_blank" rel="noreferrer">
+            Print Pickup Pass
+          </a>
+          <a className="btn secondary" href={`${import.meta.env.BASE_URL}print/outbound/${requestId}`} target="_blank" rel="noreferrer">
+            Print Dispatch Note
+          </a>
+        </div>
       </div>
 
       {error && <div className="error-text">{error}</div>}
@@ -205,6 +241,67 @@ export default function OutboundRequestDetail() {
         <p>
           <strong>Status:</strong> <span className="status-badge">{request.status}</span>
         </p>
+      </div>
+
+      <div className="card">
+        <h3>Pickup check-in</h3>
+        <p className="muted small" style={{ marginTop: -8 }}>
+          Expected carrier: <strong>{request.transporter_name || 'not specified'}</strong> · Pickup reference <strong>{request.outbound_reference || '—'}</strong>.
+          Check the driver's ID and the pass before anything is loaded.
+        </p>
+        {checkedIn && !editingCheckIn ? (
+          <>
+            <div>
+              <span className="status-badge">Checked in</span> {request.arrived_at} by {request.checked_in_by || '—'}
+            </div>
+            <div className="muted small" style={{ margin: '6px 0' }}>
+              Driver: {request.driver_name || '—'} (ID {request.driver_id_number || '—'}, {request.driver_phone || 'no phone'}) · Vehicle: {request.vehicle_plate || '—'}
+              {request.trailer_plate ? ` / trailer ${request.trailer_plate}` : ''}
+            </div>
+            {!alreadyDispatched && (
+              <button className="link-btn" onClick={() => setEditingCheckIn(true)}>
+                Edit
+              </button>
+            )}
+          </>
+        ) : alreadyDispatched ? (
+          <p className="muted small">No check-in was recorded for this pickup.</p>
+        ) : (
+          <form onSubmit={submitCheckIn}>
+            <div className="form-grid-3">
+              <div className="form-row">
+                <label>Driver name *</label>
+                <input value={checkIn.driver_name} onChange={(e) => setCheckIn({ ...checkIn, driver_name: e.target.value })} />
+              </div>
+              <div className="form-row">
+                <label>Driver ID number</label>
+                <input value={checkIn.driver_id_number} onChange={(e) => setCheckIn({ ...checkIn, driver_id_number: e.target.value })} />
+              </div>
+              <div className="form-row">
+                <label>Driver phone</label>
+                <input value={checkIn.driver_phone} onChange={(e) => setCheckIn({ ...checkIn, driver_phone: e.target.value })} />
+              </div>
+              <div className="form-row">
+                <label>Vehicle plate *</label>
+                <input value={checkIn.vehicle_plate} onChange={(e) => setCheckIn({ ...checkIn, vehicle_plate: e.target.value })} />
+              </div>
+              <div className="form-row">
+                <label>Trailer plate</label>
+                <input value={checkIn.trailer_plate} onChange={(e) => setCheckIn({ ...checkIn, trailer_plate: e.target.value })} />
+              </div>
+            </div>
+            <div className="form-actions">
+              <button className="btn" type="submit" disabled={savingCheckIn}>
+                {savingCheckIn ? 'Saving...' : checkedIn ? 'Save changes' : 'Check driver in'}
+              </button>
+              {checkedIn && (
+                <button className="btn secondary" type="button" onClick={() => setEditingCheckIn(false)}>
+                  Cancel
+                </button>
+              )}
+            </div>
+          </form>
+        )}
       </div>
 
       <DocumentUploader
@@ -384,10 +481,11 @@ export default function OutboundRequestDetail() {
               placeholder="e.g. Truck NL-12-AB-34"
             />
           </div>
-          <button className="btn" onClick={handleConfirmDispatch} disabled={dispatching || !allPicked}>
+          <button className="btn" onClick={handleConfirmDispatch} disabled={dispatching || !allPicked || !checkedIn}>
             {dispatching ? 'Confirming...' : 'Confirm Dispatch'}
           </button>
           {!allPicked && <p className="muted small">All pick lines must be scanned & picked before dispatch.</p>}
+          {!checkedIn && <p className="muted small">Check the driver in (above) before dispatch.</p>}
         </div>
       )}
 

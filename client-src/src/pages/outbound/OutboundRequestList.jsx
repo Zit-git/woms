@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { listOutboundRequests, createOutboundRequest, listCustomers, listTransporters, listWarehouses } from '../../lib/api';
 import SortableTh from '../../components/SortableTh';
@@ -6,6 +6,9 @@ import { useSortableData } from '../../lib/useSortableData';
 import { useAuth } from '../../context/AuthContext';
 import { accessibleWarehouses as scopeWarehouses } from '../../lib/access';
 import { todayStr, addDays } from '../../lib/dates';
+import { PICKUP_QR_PREFIX } from '../../lib/reference';
+
+const QrScannerModal = lazy(() => import('../../components/QrScannerModal'));
 
 export default function OutboundRequestList() {
   const navigate = useNavigate();
@@ -30,6 +33,9 @@ export default function OutboundRequestList() {
   const [customFrom, setCustomFrom] = useState(todayStr());
   const [customTo, setCustomTo] = useState(todayStr());
   const [statusFilter, setStatusFilter] = useState('');
+  // Gate lookup: type or scan the pickup reference printed on the driver's Pickup Pass.
+  const [search, setSearch] = useState('');
+  const [scanning, setScanning] = useState(false);
   const range = (() => {
     const today = todayStr();
     if (dateMode === 'today') return [today, today];
@@ -39,9 +45,19 @@ export default function OutboundRequestList() {
     return null;
   })();
   const day = (v) => (v ? String(v).slice(0, 10) : '');
-  const shown = requests.filter(
-    (r) => (!range || (day(r.requested_date) >= range[0] && day(r.requested_date) <= range[1])) && (!statusFilter || r.status === statusFilter)
-  );
+  const query = search.trim().toLowerCase();
+  const shown = requests.filter((r) => {
+    if (query) {
+      // Looking for a specific pass: ignore the date filter so a driver turning up on the wrong day is still found.
+      return [r.outbound_reference, r.reference_number, r.customer_name, String(r.ROWID)].filter(Boolean).some((v) => String(v).toLowerCase().includes(query));
+    }
+    return (!range || (day(r.requested_date) >= range[0] && day(r.requested_date) <= range[1])) && (!statusFilter || r.status === statusFilter);
+  });
+  const onScanned = (text) => {
+    setScanning(false);
+    if (String(text).startsWith(PICKUP_QR_PREFIX)) navigate(`/outbound/${String(text).slice(PICKUP_QR_PREFIX.length)}`);
+    else setError(`"${text}" is not a Pickup Pass code.`);
+  };
   const { sorted, toggleSort, arrowFor } = useSortableData(shown);
 
   const load = () => {
@@ -156,6 +172,15 @@ export default function OutboundRequestList() {
       )}
 
       <div className="card" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Find by pickup reference, customer ref or customer"
+          style={{ minWidth: 260 }}
+        />
+        <button className="btn secondary small-btn" onClick={() => setScanning(true)}>
+          Scan pass
+        </button>
         <strong>Pickups:</strong>
         {[
           ['today', 'Today'],
@@ -192,7 +217,8 @@ export default function OutboundRequestList() {
         <table>
           <thead>
             <tr>
-              <SortableTh label="Ref #" sortKey="reference_number" onSort={toggleSort} arrowFor={arrowFor} />
+              <SortableTh label="Pickup ref" sortKey="outbound_reference" onSort={toggleSort} arrowFor={arrowFor} />
+              <SortableTh label="Customer ref" sortKey="reference_number" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Customer" sortKey="customer_name" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Transporter" sortKey="transporter_name" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Requested date" sortKey="requested_date" onSort={toggleSort} arrowFor={arrowFor} />
@@ -203,6 +229,7 @@ export default function OutboundRequestList() {
           <tbody>
             {sorted.map((r) => (
               <tr key={r.ROWID} className="clickable-row" onClick={() => navigate(`/outbound/${r.ROWID}`)}>
+                <td>{r.outbound_reference || <span className="muted">—</span>}</td>
                 <td>{r.reference_number || <span className="muted">—</span>}</td>
                 <td>{r.customer_name}</td>
                 <td>{r.transporter_name || <span className="muted">—</span>}</td>
@@ -217,13 +244,18 @@ export default function OutboundRequestList() {
             ))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={6} className="muted">
+                <td colSpan={7} className="muted">
                   {requests.length ? 'No pickups for these dates. Try another day or "All dates".' : 'No outbound requests yet.'}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
+      )}
+      {scanning && (
+        <Suspense fallback={null}>
+          <QrScannerModal onDecode={onScanned} onClose={() => setScanning(false)} />
+        </Suspense>
       )}
     </div>
   );

@@ -24,6 +24,7 @@ const AdminPage = lazy(() => import('./pages/admin/AdminPage'));
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage'));
 const InboundPrint = lazy(() => import('./pages/print/InboundPrint'));
 const OutboundPrint = lazy(() => import('./pages/print/OutboundPrint'));
+const PickupPass = lazy(() => import('./pages/print/PickupPass'));
 const PutawayPrint = lazy(() => import('./pages/print/PutawayPrint'));
 
 const PageLoading = () => <div style={{ padding: 40 }}>Loading...</div>;
@@ -96,6 +97,16 @@ function Gate() {
           <Guarded module="Outbound Operations">
             <Suspense fallback={<PageLoading />}>
               <OutboundPrint />
+            </Suspense>
+          </Guarded>
+        }
+      />
+      <Route
+        path="/print/pickup/:requestId"
+        element={
+          <Guarded module="Outbound Operations">
+            <Suspense fallback={<PageLoading />}>
+              <PickupPass />
             </Suspense>
           </Guarded>
         }

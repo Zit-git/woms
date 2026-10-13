@@ -6,3 +6,6 @@ export function formatSequentialRef(prefix, rowId, date = new Date()) {
   const seq = String(rowId).slice(-6).padStart(6, '0');
   return `${prefix}-${year}-${seq}`;
 }
+
+// What the QR code on a Pickup Pass contains, followed by the outbound request's ROWID.
+export const PICKUP_QR_PREFIX = 'WOMS-OB-';

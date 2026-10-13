@@ -633,15 +633,42 @@ export const listCargoForCustomer = (customerId) =>
 // -- Outbound Operations --
 export const listOutboundRequests = (viewer) =>
   zcql(
-    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.reference_number, Customers.name, Transporters.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID WHERE OutboundRequest.ROWID != 0${visibilityClause(viewer, { warehouseCol: 'OutboundRequest.warehouse_id' })} ORDER BY OutboundRequest.CREATEDTIME DESC`
+    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.reference_number, OutboundRequest.outbound_reference, OutboundRequest.warehouse_id, Customers.name, Transporters.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID WHERE OutboundRequest.ROWID != 0${visibilityClause(viewer, { warehouseCol: 'OutboundRequest.warehouse_id' })} ORDER BY OutboundRequest.CREATEDTIME DESC`
   ).then((rows) =>
     rows.map((r) => ({ ...r.OutboundRequest, customer_name: r.Customers?.name, transporter_name: r.Transporters?.name }))
   );
-export const createOutboundRequest = (row) => addRow(TABLES.OUTBOUND_REQUEST, row);
 export const editOutboundRequest = (row) => updateRow(TABLES.OUTBOUND_REQUEST, row);
+// Every outbound request gets its own pickup reference (OB-year-number), the
+// number printed on the Pickup Pass that the driver presents at the gate.
+export const createOutboundRequest = (row) =>
+  addRow(TABLES.OUTBOUND_REQUEST, row).then((created) => {
+    if (!created?.ROWID) throw new Error('Could not create the outbound request.');
+    return editOutboundRequest({ ROWID: created.ROWID, outbound_reference: formatSequentialRef('OB', created.ROWID) }).then(() => created);
+  });
+
+// Records the driver arriving for a pickup: who, with what vehicle, when, and who let them in.
+export const checkInPickup = (requestId, fields, actor) =>
+  editOutboundRequest({
+    ROWID: requestId,
+    driver_name: fields.driver_name || null,
+    driver_id_number: fields.driver_id_number || null,
+    driver_phone: fields.driver_phone || null,
+    vehicle_plate: fields.vehicle_plate || null,
+    trailer_plate: fields.trailer_plate || null,
+    arrived_at: formatDatetime(),
+    checked_in_by: actor || null,
+  }).then(() =>
+    logAudit({
+      userId: actor,
+      actionType: 'PICKUP_CHECK_IN',
+      module: 'Outbound Operations',
+      recordId: requestId,
+      details: { driver: fields.driver_name, plate: fields.vehicle_plate },
+    })
+  );
 export const getOutboundRequestById = (id) =>
   zcql(
-    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.reference_number, OutboundRequest.customer_id, OutboundRequest.transporter_id, OutboundRequest.warehouse_id, Customers.name, Customers.email, Transporters.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID WHERE OutboundRequest.ROWID = ${id}`
+    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.reference_number, OutboundRequest.customer_id, OutboundRequest.transporter_id, OutboundRequest.warehouse_id, OutboundRequest.outbound_reference, OutboundRequest.driver_name, OutboundRequest.driver_id_number, OutboundRequest.driver_phone, OutboundRequest.vehicle_plate, OutboundRequest.trailer_plate, OutboundRequest.arrived_at, OutboundRequest.checked_in_by, Customers.name, Customers.email, Transporters.name, Warehouses.name, Warehouses.address FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID LEFT JOIN Warehouses ON OutboundRequest.warehouse_id = Warehouses.ROWID WHERE OutboundRequest.ROWID = ${id}`
   ).then((rows) => {
     const row = rows[0];
     return row
@@ -650,6 +677,8 @@ export const getOutboundRequestById = (id) =>
           customer_name: row.Customers?.name,
           customer_email: row.Customers?.email,
           transporter_name: row.Transporters?.name,
+          warehouse_name: row.Warehouses?.name,
+          warehouse_address: row.Warehouses?.address,
         }
       : null;
   });
