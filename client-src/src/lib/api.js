@@ -641,7 +641,7 @@ export const createOutboundRequest = (row) => addRow(TABLES.OUTBOUND_REQUEST, ro
 export const editOutboundRequest = (row) => updateRow(TABLES.OUTBOUND_REQUEST, row);
 export const getOutboundRequestById = (id) =>
   zcql(
-    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.reference_number, OutboundRequest.customer_id, OutboundRequest.transporter_id, Customers.name, Customers.email, Transporters.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID WHERE OutboundRequest.ROWID = ${id}`
+    `SELECT OutboundRequest.ROWID, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.reference_number, OutboundRequest.customer_id, OutboundRequest.transporter_id, OutboundRequest.warehouse_id, Customers.name, Customers.email, Transporters.name FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID WHERE OutboundRequest.ROWID = ${id}`
   ).then((rows) => {
     const row = rows[0];
     return row
@@ -663,7 +663,7 @@ export const listAvailableCargoForCustomer = (customerId) =>
 
 export const listPickTasksByRequest = (outboundRequestId) =>
   zcql(
-    `SELECT PickTask.ROWID, PickTask.status, PickTask.assigned_to, PickTask.cargo_id, Cargo.description, Cargo.qty, Cargo.unit, Cargo.qr_code, Cargo.status, Cargo.inbound_advice_id, InboundAdvice.inbound_reference FROM PickTask LEFT JOIN Cargo ON PickTask.cargo_id = Cargo.ROWID LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID WHERE PickTask.outbound_request_id = ${outboundRequestId} ORDER BY PickTask.CREATEDTIME`
+    `SELECT PickTask.ROWID, PickTask.status, PickTask.assigned_to, PickTask.cargo_id, Cargo.description, Cargo.qty, Cargo.unit, Cargo.qr_code, Cargo.status, Cargo.current_location_id, Cargo.outer_package_no, Cargo.inbound_advice_id, InboundAdvice.inbound_reference FROM PickTask LEFT JOIN Cargo ON PickTask.cargo_id = Cargo.ROWID LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID WHERE PickTask.outbound_request_id = ${outboundRequestId} ORDER BY PickTask.CREATEDTIME`
   ).then((rows) =>
     rows.map((r) => ({
       ...r.PickTask,
@@ -672,6 +672,8 @@ export const listPickTasksByRequest = (outboundRequestId) =>
       cargo_unit: r.Cargo?.unit,
       cargo_qr_code: r.Cargo?.qr_code,
       cargo_status: r.Cargo?.status,
+      cargo_location_id: r.Cargo?.current_location_id,
+      cargo_hu_no: r.Cargo?.outer_package_no,
       inbound_advice_id: r.Cargo?.inbound_advice_id,
       inbound_reference: r.InboundAdvice?.inbound_reference,
     }))

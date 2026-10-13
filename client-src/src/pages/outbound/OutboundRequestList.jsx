@@ -5,6 +5,7 @@ import SortableTh from '../../components/SortableTh';
 import { useSortableData } from '../../lib/useSortableData';
 import { useAuth } from '../../context/AuthContext';
 import { accessibleWarehouses as scopeWarehouses } from '../../lib/access';
+import { todayStr, addDays } from '../../lib/dates';
 
 export default function OutboundRequestList() {
   const navigate = useNavigate();
@@ -24,7 +25,24 @@ export default function OutboundRequestList() {
     reference_number: '',
   });
   const [saving, setSaving] = useState(false);
-  const { sorted, toggleSort, arrowFor } = useSortableData(requests);
+  // Pickups are planned by date, so the list opens on today's.
+  const [dateMode, setDateMode] = useState('today'); // today | tomorrow | week | all | custom
+  const [customFrom, setCustomFrom] = useState(todayStr());
+  const [customTo, setCustomTo] = useState(todayStr());
+  const [statusFilter, setStatusFilter] = useState('');
+  const range = (() => {
+    const today = todayStr();
+    if (dateMode === 'today') return [today, today];
+    if (dateMode === 'tomorrow') return [addDays(today, 1), addDays(today, 1)];
+    if (dateMode === 'week') return [today, addDays(today, 6)];
+    if (dateMode === 'custom') return [customFrom || '0000-01-01', customTo || '9999-12-31'];
+    return null;
+  })();
+  const day = (v) => (v ? String(v).slice(0, 10) : '');
+  const shown = requests.filter(
+    (r) => (!range || (day(r.requested_date) >= range[0] && day(r.requested_date) <= range[1])) && (!statusFilter || r.status === statusFilter)
+  );
+  const { sorted, toggleSort, arrowFor } = useSortableData(shown);
 
   const load = () => {
     setLoading(true);
@@ -137,6 +155,37 @@ export default function OutboundRequestList() {
         </form>
       )}
 
+      <div className="card" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <strong>Pickups:</strong>
+        {[
+          ['today', 'Today'],
+          ['tomorrow', 'Tomorrow'],
+          ['week', 'Next 7 days'],
+          ['all', 'All dates'],
+          ['custom', 'Pick dates'],
+        ].map(([key, label]) => (
+          <button key={key} className={dateMode === key ? 'btn small-btn' : 'btn secondary small-btn'} onClick={() => setDateMode(key)}>
+            {label}
+          </button>
+        ))}
+        {dateMode === 'custom' && (
+          <>
+            <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} aria-label="From" />
+            <span className="muted small">to</span>
+            <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} aria-label="To" />
+          </>
+        )}
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Status" style={{ marginLeft: 'auto' }}>
+          <option value="">All statuses</option>
+          <option value="Submitted">Submitted</option>
+          <option value="Dispatched">Dispatched</option>
+        </select>
+        <span className="muted small">
+          {shown.length} of {requests.length} request{requests.length === 1 ? '' : 's'}
+          {range && dateMode !== 'all' ? ` · ${range[0] === range[1] ? range[0] : `${range[0]} to ${range[1]}`}` : ''}
+        </span>
+      </div>
+
       {loading ? (
         <p className="muted">Loading...</p>
       ) : (
@@ -169,7 +218,7 @@ export default function OutboundRequestList() {
             {sorted.length === 0 && (
               <tr>
                 <td colSpan={6} className="muted">
-                  No outbound requests yet.
+                  {requests.length ? 'No pickups for these dates. Try another day or "All dates".' : 'No outbound requests yet.'}
                 </td>
               </tr>
             )}

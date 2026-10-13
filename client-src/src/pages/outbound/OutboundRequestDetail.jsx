@@ -8,6 +8,7 @@ import {
   listAvailableCargoForCustomer,
   recordScan,
   listDispatchesByRequest,
+  listAllStorageLocations,
   createDispatch,
   editOutboundRequest,
   notifySafe,
@@ -29,6 +30,7 @@ export default function OutboundRequestDetail() {
   const [pickTasks, setPickTasks] = useState([]);
   const [availableCargo, setAvailableCargo] = useState([]);
   const [dispatches, setDispatches] = useState([]);
+  const [locations, setLocations] = useState(() => new Map()); // location id -> { code, path }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyRow, setBusyRow] = useState(null); // PickTask ROWID currently being scanned
@@ -62,6 +64,20 @@ export default function OutboundRequestDetail() {
   };
 
   useEffect(load, [requestId]);
+  useEffect(() => {
+    listAllStorageLocations()
+      .then((list) => setLocations(new Map(list.map((l) => [String(l.ROWID), { code: l.location_code, path: l.path }]))))
+      .catch(() => {});
+  }, []);
+
+  // Fetch order: what still has to be picked first, walking the warehouse by location code; picked lines last.
+  const orderedTasks = [...pickTasks].sort((a, b) => {
+    if ((a.status === 'Picked') !== (b.status === 'Picked')) return a.status === 'Picked' ? 1 : -1;
+    const codeA = locations.get(String(a.cargo_location_id))?.code || '\uffff';
+    const codeB = locations.get(String(b.cargo_location_id))?.code || '\uffff';
+    return codeA.localeCompare(codeB, undefined, { numeric: true });
+  });
+  const pickedCount = pickTasks.filter((t) => t.status === 'Picked').length;
 
   const addPickTask = (e) => {
     e.preventDefault();
@@ -213,7 +229,14 @@ export default function OutboundRequestDetail() {
       <RecordTasks moduleRef="Outbound Operations" recordRefId={requestId} />
 
       <div className="toolbar">
-        <h3>Pick Tasks</h3>
+        <h3>
+          Pick Tasks
+          {pickTasks.length > 0 && (
+            <span className="muted small" style={{ marginLeft: 8, fontWeight: 400 }}>
+              {pickedCount} of {pickTasks.length} picked
+            </span>
+          )}
+        </h3>
         <div style={{ display: 'flex', gap: 8 }}>
           {!alreadyDispatched && pickTasks.some((t) => t.status !== 'Picked') && (
             <button className="btn secondary" onClick={() => setShowScanner(true)}>
@@ -270,6 +293,7 @@ export default function OutboundRequestDetail() {
       <table>
         <thead>
           <tr>
+            <th>Fetch from</th>
             <th>Cargo</th>
             <th>From inbound</th>
             <th>Qty</th>
@@ -279,9 +303,25 @@ export default function OutboundRequestDetail() {
           </tr>
         </thead>
         <tbody>
-          {pickTasks.map((t) => (
+          {orderedTasks.map((t) => {
+            const loc = locations.get(String(t.cargo_location_id));
+            return (
             <tr key={t.ROWID}>
-              <td>{t.cargo_description}</td>
+              <td>
+                {t.status === 'Picked' ? (
+                  <span className="muted small">Picked</span>
+                ) : loc ? (
+                  <>
+                    <strong>{loc.code}</strong>
+                    <div className="muted small">{loc.path}</div>
+                  </>
+                ) : (
+                  <span className="muted small">Not in a rack: at the dock</span>
+                )}
+              </td>
+              <td>
+                {t.cargo_hu_no ? <strong>HU {t.cargo_hu_no}</strong> : null} {t.cargo_description}
+              </td>
               <td>
                 {t.inbound_advice_id ? <Link className="link-btn" to={`/inbound/${t.inbound_advice_id}`}>{t.inbound_reference || `#${t.inbound_advice_id}`}</Link> : <span className="muted">—</span>}
               </td>
@@ -300,10 +340,11 @@ export default function OutboundRequestDetail() {
                 )}
               </td>
             </tr>
-          ))}
+            );
+          })}
           {pickTasks.length === 0 && (
             <tr>
-              <td colSpan={6} className="muted">
+              <td colSpan={7} className="muted">
                 No pick lines added yet.
               </td>
             </tr>
