@@ -663,7 +663,7 @@ export const listAvailableCargoForCustomer = (customerId) =>
 
 export const listPickTasksByRequest = (outboundRequestId) =>
   zcql(
-    `SELECT PickTask.ROWID, PickTask.status, PickTask.assigned_to, PickTask.cargo_id, Cargo.description, Cargo.qty, Cargo.unit, Cargo.qr_code, Cargo.status FROM PickTask LEFT JOIN Cargo ON PickTask.cargo_id = Cargo.ROWID WHERE PickTask.outbound_request_id = ${outboundRequestId} ORDER BY PickTask.CREATEDTIME`
+    `SELECT PickTask.ROWID, PickTask.status, PickTask.assigned_to, PickTask.cargo_id, Cargo.description, Cargo.qty, Cargo.unit, Cargo.qr_code, Cargo.status, Cargo.inbound_advice_id, InboundAdvice.inbound_reference FROM PickTask LEFT JOIN Cargo ON PickTask.cargo_id = Cargo.ROWID LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID WHERE PickTask.outbound_request_id = ${outboundRequestId} ORDER BY PickTask.CREATEDTIME`
   ).then((rows) =>
     rows.map((r) => ({
       ...r.PickTask,
@@ -672,6 +672,21 @@ export const listPickTasksByRequest = (outboundRequestId) =>
       cargo_unit: r.Cargo?.unit,
       cargo_qr_code: r.Cargo?.qr_code,
       cargo_status: r.Cargo?.status,
+      inbound_advice_id: r.Cargo?.inbound_advice_id,
+      inbound_reference: r.InboundAdvice?.inbound_reference,
+    }))
+  );
+// Which outbound request (if any) each Handling Unit of an inbound went out on.
+export const listOutboundLinksByAdvice = (inboundAdviceId) =>
+  zcql(
+    `SELECT PickTask.cargo_id, OutboundRequest.ROWID, OutboundRequest.reference_number, OutboundRequest.status, OutboundRequest.requested_date FROM PickTask LEFT JOIN OutboundRequest ON PickTask.outbound_request_id = OutboundRequest.ROWID LEFT JOIN Cargo ON PickTask.cargo_id = Cargo.ROWID WHERE Cargo.inbound_advice_id = ${idOnly(inboundAdviceId)}`
+  ).then((rows) =>
+    rows.map((r) => ({
+      cargo_id: r.PickTask.cargo_id,
+      outbound_request_id: r.OutboundRequest?.ROWID,
+      outbound_reference: r.OutboundRequest?.reference_number,
+      outbound_status: r.OutboundRequest?.status,
+      requested_date: r.OutboundRequest?.requested_date,
     }))
   );
 export const createPickTask = (row) => addRow(TABLES.PICK_TASK, row);

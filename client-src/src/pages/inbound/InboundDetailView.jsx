@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { computeInboundSummary } from '../../lib/inboundSummary';
 import RecordTasks from '../../components/RecordTasks';
 import AuditTrail from '../../components/AuditTrail';
@@ -7,9 +8,16 @@ import DocumentsSummary from '../../components/DocumentsSummary';
 // Plain read-only record view, used by InboundMaster regardless of status --
 // the one action button opens whichever stage popup is contextually next
 // (labeled by the caller), not an accident of clicking some other control.
-export default function InboundDetailView({ advice, lines, cargoRows, huContents, customers, transporters, suppliers, locationLabels, onEdit, onEditRequest, editLabel = 'Edit' }) {
+export default function InboundDetailView({ advice, lines, cargoRows, huContents, customers, transporters, suppliers, warehouses, grn, outboundLinks, locationLabels, onEdit, onEditRequest, editLabel = 'Edit' }) {
   const supplier = suppliers.find((s) => String(s.ROWID) === String(advice.supplier_id));
   const transporter = transporters.find((t) => String(t.ROWID) === String(advice.transporter_id));
+  const warehouse = (warehouses || []).find((w) => String(w.ROWID) === String(advice.warehouse_id));
+  const outboundByHu = new Map();
+  (outboundLinks || []).forEach((l) => {
+    const k = String(l.cargo_id);
+    if (!outboundByHu.has(k)) outboundByHu.set(k, []);
+    outboundByHu.get(k).push(l);
+  });
   const summary = computeInboundSummary(advice, lines, cargoRows);
   const linesById = new Map((lines || []).map((l) => [String(l.ROWID), l]));
   const contentsByHu = new Map();
@@ -64,6 +72,40 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
           <div>Carrier: {transporter?.name || '—'}</div>
           <div>CMR Number: {advice.cmr_number || '—'}</div>
           <div>ETA: {advice.expected_date || '—'}</div>
+        </div>
+        <div className="check-block">
+          <div className="check-block-title">Warehouse &amp; Storage</div>
+          <div>{warehouse?.name || '—'}</div>
+          <div className="muted small">
+            Storage period: {advice.storage_start_date || '—'} → {advice.storage_end_date || 'open-ended'}
+          </div>
+          <div className="muted small">Goods: {advice.adr_status === 'Yes' ? 'Dangerous goods (ADR)' : 'Standard'}</div>
+        </div>
+        <div className="check-block">
+          <div className="check-block-title">Receiving</div>
+          <div>
+            {advice.warehouse_unloading_date || '—'} {advice.warehouse_unloading_time || ''}
+          </div>
+          <div className="muted small">Plate: {advice.license_plate || '—'}</div>
+          <div className="muted small">Driver: {advice.driver_name || '—'}</div>
+          <div className="muted small">Pieces counted: {advice.received_piece_count ?? '—'}</div>
+        </div>
+        <div className="check-block">
+          <div className="check-block-title">Goods Receipt Note</div>
+          {grn ? (
+            <>
+              <div>{grn.grn_number}</div>
+              <div className="muted small">
+                {grn.status}
+                {grn.verified_by ? ` · verified by ${grn.verified_by}` : ''}
+              </div>
+              <a className="link-btn" href={`${import.meta.env.BASE_URL}print/grn/${advice.ROWID}`} target="_blank" rel="noreferrer">
+                View GRN
+              </a>
+            </>
+          ) : (
+            <div className="muted small">Not generated yet</div>
+          )}
         </div>
       </div>
 
@@ -145,6 +187,7 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
                 <th>Contents</th>
                 <th>Weight (kg)</th>
                 <th>Storage Location</th>
+                <th>Outbound</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -169,6 +212,20 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
                   </td>
                   <td>{c.weight ?? '—'}</td>
                   <td>{locationLabels?.get(String(c.current_location_id)) || <span className="muted">Not put away yet</span>}</td>
+                  <td>
+                    {(outboundByHu.get(String(c.ROWID)) || []).length ? (
+                      outboundByHu.get(String(c.ROWID)).map((o) => (
+                        <div key={o.outbound_request_id}>
+                          <Link className="link-btn" to={`/outbound/${o.outbound_request_id}`}>
+                            {o.outbound_reference || `#${o.outbound_request_id}`}
+                          </Link>{' '}
+                          <span className="muted small">{o.outbound_status}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
                   <td>
                     <span className={`status-badge ${c.status === 'Stored' ? 'status-stored' : 'status-received'}`}>{c.status}</span>
                   </td>

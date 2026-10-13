@@ -271,6 +271,7 @@ export default function OutboundRequestDetail() {
         <thead>
           <tr>
             <th>Cargo</th>
+            <th>From inbound</th>
             <th>Qty</th>
             <th>QR Code</th>
             <th>Pick Status</th>
@@ -281,6 +282,9 @@ export default function OutboundRequestDetail() {
           {pickTasks.map((t) => (
             <tr key={t.ROWID}>
               <td>{t.cargo_description}</td>
+              <td>
+                {t.inbound_advice_id ? <Link className="link-btn" to={`/inbound/${t.inbound_advice_id}`}>{t.inbound_reference || `#${t.inbound_advice_id}`}</Link> : <span className="muted">—</span>}
+              </td>
               <td>
                 {t.cargo_qty} {t.cargo_unit}
               </td>
@@ -299,7 +303,7 @@ export default function OutboundRequestDetail() {
           ))}
           {pickTasks.length === 0 && (
             <tr>
-              <td colSpan={5} className="muted">
+              <td colSpan={6} className="muted">
                 No pick lines added yet.
               </td>
             </tr>

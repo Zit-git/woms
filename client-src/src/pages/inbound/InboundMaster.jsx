@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
-import { getInboundAdviceById, editInboundAdvice, listCargoByAdvice, listLinesByAdvice, listHuContentsByAdvice, listCustomers, listTransporters, listSuppliers, listAllStorageLocations } from '../../lib/api';
+import { getInboundAdviceById, editInboundAdvice, listCargoByAdvice, listLinesByAdvice, listHuContentsByAdvice, listCustomers, listTransporters, listSuppliers, listAllStorageLocations, listWarehouses, getGrnForAdvice, listOutboundLinksByAdvice } from '../../lib/api';
 import InboundDetailView from './InboundDetailView';
 import InboundSidebar from './InboundSidebar';
 import RequestPopup from './popups/RequestPopup';
@@ -43,6 +43,9 @@ export default function InboundMaster() {
   const [customers, setCustomers] = useState([]);
   const [transporters, setTransporters] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
+  const [grn, setGrn] = useState(null);
+  const [outboundLinks, setOutboundLinks] = useState([]); // which outbound each HU left on
   const [locationLabels, setLocationLabels] = useState(() => new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -58,12 +61,21 @@ export default function InboundMaster() {
     }),
     [adviceId]
   );
+  const loadExtras = useCallback(
+    () =>
+      Promise.all([getGrnForAdvice(adviceId), listOutboundLinksByAdvice(adviceId), listWarehouses()]).then(([g, links, w]) => {
+        setGrn(g);
+        setOutboundLinks(links);
+        setWarehouses(w);
+      }),
+    [adviceId]
+  );
   const reloadSuppliers = useCallback(() => listSuppliers().then(setSuppliers), []);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([loadAdvice(), loadLines(), loadCargo(), listCustomers(), listTransporters(), listSuppliers(), listAllStorageLocations()])
-      .then(([, , , c, t, s, l]) => {
+    Promise.all([loadAdvice(), loadLines(), loadCargo(), loadExtras(), listCustomers(), listTransporters(), listSuppliers(), listAllStorageLocations()])
+      .then(([, , , , c, t, s, l]) => {
         setLocationLabels(new Map(l.map((x) => [String(x.ROWID), x.location_code])));
         setCustomers(c);
         setTransporters(t);
@@ -71,7 +83,7 @@ export default function InboundMaster() {
       })
       .catch((err) => setError(err.message || String(err)))
       .finally(() => setLoading(false));
-  }, [loadAdvice, loadLines, loadCargo]);
+  }, [loadAdvice, loadLines, loadCargo, loadExtras]);
 
   // A freshly created inbound (from "+ New Inbound") goes straight into the
   // Request popup instead of showing an empty page first. The flag is cleared
@@ -101,6 +113,7 @@ export default function InboundMaster() {
     loadAdvice();
     loadLines();
     loadCargo();
+    loadExtras();
   };
 
   if (loading) return <p className="muted">Loading...</p>;
@@ -199,6 +212,9 @@ export default function InboundMaster() {
             lines={lines}
             cargoRows={cargoRows}
             huContents={huContents}
+            warehouses={warehouses}
+            grn={grn}
+            outboundLinks={outboundLinks}
             customers={customers}
             transporters={transporters}
             suppliers={suppliers}
