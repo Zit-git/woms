@@ -54,10 +54,14 @@ function useList(loader, deps) {
   return { items, loading, error, reload };
 }
 
+// This module has its own warehouse choices, so the sidebar's working-warehouse
+// selection is ignored here.
+const ignoringSidebarChoice = (viewer) => ({ ...viewer, activeWarehouseId: '' });
+
 // Warehouses the signed-in user may see (all of them for a System Administrator).
 function useMyWarehouses() {
   const { viewer } = useAuth();
-  return useList(() => listWarehouses().then((w) => accessibleWarehouses(viewer, w)), [viewer]);
+  return useList(() => listWarehouses().then((w) => accessibleWarehouses(ignoringSidebarChoice(viewer), w)), [viewer]);
 }
 
 function WarehousesTab() {
@@ -213,9 +217,9 @@ function AvailabilityTab() {
     Promise.all([listCapacityLocations(), listCapacityCargo(), listCapacityOutboundCommitments(), listPackageTypes()])
       .then(([l, c, o, p]) => {
         // Capacity is only ever shown for the user's own warehouses.
-        setLocations(scopeByWarehouse(viewer, l));
-        setCargoRows(scopeByWarehouse(viewer, c));
-        setOutboundCommitments(scopeByWarehouse(viewer, o));
+        setLocations(scopeByWarehouse(ignoringSidebarChoice(viewer), l));
+        setCargoRows(scopeByWarehouse(ignoringSidebarChoice(viewer), c));
+        setOutboundCommitments(scopeByWarehouse(ignoringSidebarChoice(viewer), o));
         setPackageTypes(p);
       })
       .catch((err) => setError(err.message || String(err)))
@@ -271,9 +275,9 @@ function AvailabilityTab() {
             </select>
           </div>
           <div className="form-row" style={{ maxWidth: 260, marginBottom: 0 }}>
-            <label>Filter to warehouse</label>
+            <label>Warehouse</label>
             <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
-              <option value="">All warehouses (overall)</option>
+              <option value="">All warehouses (consolidated)</option>
               {warehouses.map((w) => (
                 <option key={w.ROWID} value={w.ROWID}>
                   {w.name}
@@ -1269,13 +1273,17 @@ function PackageTypesTab() {
 }
 
 export default function WarehouseConfig() {
-  const [tab, setTab] = useState(TABS[0]);
+  const { isAdmin } = useAuth();
+  // Only a System Administrator configures the warehouse structure; everyone else with
+  // access to this module just sees Availability for their own warehouses.
+  const tabs = isAdmin ? TABS : ['Availability'];
+  const [tab, setTab] = useState(tabs[0]);
 
   return (
     <div>
       <h2>Warehouse Management</h2>
       <div className="tabs">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <div key={t} className={'tab' + (tab === t ? ' active' : '')} onClick={() => setTab(t)}>
             {t}
           </div>
