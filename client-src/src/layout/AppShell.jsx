@@ -141,27 +141,34 @@ export default function AppShell() {
         </div>
         {nav}
         <div className="sidebar-footer">
-          <div className="muted small">{user?.email_id}</div>
-          <div className="muted small">{businessRole}</div>
           {accessibleWarehouses.length > 1 && (
-            <select
-              value={activeWarehouseId}
-              onChange={(e) => {
-                setActiveWarehouseId(e.target.value);
-                // Lists read the selection when they load, so reload the current page with it applied.
-                window.location.reload();
-              }}
-              aria-label="Working warehouse" title="The warehouse you are working in: new inbounds and outbounds are created here"
-              style={{ marginTop: 6, width: '100%' }}
-            >
-              <option value="">All my warehouses (view only)</option>
-              {accessibleWarehouses.map((w) => (
-                <option key={w.ROWID} value={w.ROWID}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
+            <label className="workspace-switch" title="The warehouse you are working in: new inbounds and outbounds are created here">
+              <IconWarehouse width={16} height={16} />
+              <select
+                value={activeWarehouseId}
+                onChange={(e) => {
+                  setActiveWarehouseId(e.target.value);
+                  // Lists read the selection when they load, so reload the current page with it applied.
+                  window.location.reload();
+                }}
+                aria-label="Working warehouse"
+              >
+                <option value="">All my warehouses (view only)</option>
+                {accessibleWarehouses.map((w) => (
+                  <option key={w.ROWID} value={w.ROWID}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
+          <div className="user-chip">
+            <span className="user-avatar">{(user?.email_id || '?').charAt(0)}</span>
+            <div className="user-meta">
+              <div className="user-email">{user?.email_id}</div>
+              <div className="user-role">{businessRole}</div>
+            </div>
+          </div>
           <button className="link-btn sign-out-btn" onClick={handleSignOut}>
             <IconLogout width={14} height={14} />
             Sign out
