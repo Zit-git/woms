@@ -20,6 +20,8 @@ export function AuthProvider({ children }) {
   });
   const [allowedModules, setAllowedModules] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
+  // Why the sign-in was refused after Catalyst accepted it (shown on the login screen).
+  const [authError, setAuthError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -34,7 +36,7 @@ export function AuthProvider({ children }) {
       // Fetched together rather than one after the other: listRolePermissions
       // doesn't depend on the AppUsers lookup, and chaining them cost an extra
       // full network round trip on every page load.
-      Promise.all([getAppUserByEmail(currentUser.email_id), listRolePermissions(), listWarehouses()])
+      Promise.all([getAppUserByEmail(currentUser.email_id), listRolePermissions(), listWarehouses().catch(() => [])])
         .then(async ([row, perms, warehouses]) => {
           if (cancelled) return;
           const rows = row && row.business_role !== ADMIN_ROLE ? await listUserWarehouseRoles(row.ROWID) : [];
@@ -47,7 +49,8 @@ export function AuthProvider({ children }) {
           const roles = row?.business_role === ADMIN_ROLE ? [ADMIN_ROLE] : [...new Set(mine.map((a) => a.role))];
           setAllowedModules(new Set(perms.filter((p) => roles.includes(p.role)).map((p) => p.module)));
         })
-        .catch(() => {
+        .catch((err) => {
+          if (!cancelled) setAuthError(err?.message || String(err));
           // A *failed* lookup (network error, a half-cleared session right
           // after sign-out, ...) is not the same thing as "this account
           // genuinely has no role" -- treating them the same showed a
@@ -108,6 +111,7 @@ export function AuthProvider({ children }) {
 
   const value = {
     user,
+    authError,
     viewer,
     isAdmin,
     assignments,

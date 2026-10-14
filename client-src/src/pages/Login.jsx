@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { embedSignIn, authReturnPath, authRedirectUrl } from '../lib/catalystClient';
+import { useAuth } from '../context/AuthContext';
 
 // If this screen keeps being loaded again and again (sign-in succeeds on Catalyst's side but
 // the app doesn't see a session, so it redirects back here), stop embedding the form -- which
@@ -65,6 +66,7 @@ async function runSessionCheck() {
 // card, and on success it returns to authReturnPath() -- the Slate root, or
 // /app/index.html on the legacy host.
 export default function Login() {
+  const { authError } = useAuth();
   const [report, setReport] = useState('');
   const [checking, setChecking] = useState(false);
   const [looping, setLooping] = useState(false);
@@ -113,6 +115,11 @@ export default function Login() {
           <div className="login-widget">
             <div id="catalyst-signin" />
           </div>
+        )}
+        {authError && (
+          <p className="error-text" style={{ textAlign: 'center', marginTop: 12 }}>
+            You are signed in, but your access could not be loaded: {authError}
+          </p>
         )}
         <p className="muted small" style={{ textAlign: 'center', marginTop: 16 }}>
           Form not loading?{' '}
