@@ -851,3 +851,7 @@ tbody tr:last-child td { border-bottom: none; }
 .user-role { color: var(--sidebar-text); opacity: 0.75; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-footer .sign-out-btn { width: 100%; justify-content: flex-start; padding: 8px 4px 0; color: var(--sidebar-text); font-size: 13px; }
 .sidebar-footer .sign-out-btn:hover { color: #fff; opacity: 1; }
+
+/* Fallback sign-in link sits below the card, on the dark login background. */
+.login-card > .muted { color: #9fb0cc; }
+.login-card > .muted a { color: #bcd2ff; }

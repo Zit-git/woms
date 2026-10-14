@@ -27,6 +27,14 @@ export function authRedirectUrl() {
   return window.location.origin + (IS_LEGACY_WEBCLIENT ? `${import.meta.env.BASE_URL}index.html` : '/');
 }
 
+// The Web SDK's embedded sign-in only forwards a *path* as service_url -- any
+// full web address is silently dropped, and Catalyst then falls back to the
+// legacy /app/index.html (a 404 on Slate). So the in-app form gets this path
+// rather than authRedirectUrl().
+export function authReturnPath() {
+  return IS_LEGACY_WEBCLIENT ? `${import.meta.env.BASE_URL}index.html` : '/';
+}
+
 export function embedSignIn(elementId, serviceUrl) {
   sdk().auth.signIn(elementId, { service_url: serviceUrl });
 }
