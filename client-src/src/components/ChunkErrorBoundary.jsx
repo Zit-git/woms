@@ -6,12 +6,12 @@ import { Component } from 'react';
 // fails to fetch its chunk.
 //
 // Recovery is: re-fetch the page bypassing the cache (which refreshes the cached
-// copy, so the reload picks up the new chunk list), then reload -- at most once a
-// minute. The earlier version cleared its "already tried" flag whenever the
+// copy, so the reload picks up the new chunk list), then reload -- at most once per
+// ten minutes. The earlier version cleared its "already tried" flag whenever the
 // boundary mounted, which it does on every load even when the chunk then fails, so
 // a persistently stale page reloaded forever.
 const RELOAD_AT = 'woms-chunk-reload-at';
-const MIN_GAP_MS = 60 * 1000;
+const MIN_GAP_MS = 10 * 60 * 1000;
 
 export default class ChunkErrorBoundary extends Component {
   state = { failed: false };

@@ -629,7 +629,7 @@ export const listValTasksByRequest = (valRequestId) =>
 export const createValTask = (row) => addRow(TABLES.VAL_TASK, row);
 export const editValTask = (row) => updateRow(TABLES.VAL_TASK, row);
 
-export const listCargoForCustomer = (customerId) =>
+export const listCargoForCustomer = (customerId, viewer) =>
   zcql(`SELECT ROWID, description, qty, unit, status FROM Cargo WHERE customer_id = ${customerId}${visibilityClause(viewer, { warehouseCol: 'warehouse_id' })} ORDER BY CREATEDTIME DESC`).then(
     (rows) => rows.map((r) => r.Cargo)
   );

@@ -1,6 +1,31 @@
 import { useEffect, useState } from 'react';
 import { embedSignIn, authReturnPath, authRedirectUrl } from '../lib/catalystClient';
 
+// If this screen keeps being loaded again and again (sign-in succeeds on Catalyst's side but
+// the app doesn't see a session, so it redirects back here), stop embedding the form -- which
+// is what triggers the next redirect -- and show the evidence instead of looping forever.
+const MOUNTS_KEY = 'woms.loginMounts';
+const LOOP_WINDOW_MS = 60 * 1000;
+const LOOP_LIMIT = 4;
+function recordMountAndDetectLoop() {
+  try {
+    const now = Date.now();
+    const recent = (JSON.parse(sessionStorage.getItem(MOUNTS_KEY)) || []).filter((t) => now - t < LOOP_WINDOW_MS);
+    recent.push(now);
+    sessionStorage.setItem(MOUNTS_KEY, JSON.stringify(recent));
+    return recent.length >= LOOP_LIMIT;
+  } catch {
+    return false;
+  }
+}
+function clearLoopRecord() {
+  try {
+    sessionStorage.removeItem(MOUNTS_KEY);
+  } catch {
+    // nothing to clear
+  }
+}
+
 // What the browser and Catalyst each think about the session, in plain text, so a
 // "signed in but back at the login screen" report comes with its own evidence.
 async function runSessionCheck() {
@@ -42,10 +67,7 @@ async function runSessionCheck() {
 export default function Login() {
   const [report, setReport] = useState('');
   const [checking, setChecking] = useState(false);
-
-  useEffect(() => {
-    embedSignIn('catalyst-signin', authReturnPath());
-  }, []);
+  const [looping, setLooping] = useState(false);
 
   const check = () => {
     setChecking(true);
@@ -54,14 +76,44 @@ export default function Login() {
       .finally(() => setChecking(false));
   };
 
+  useEffect(() => {
+    if (recordMountAndDetectLoop()) {
+      setLooping(true);
+      check();
+      return;
+    }
+    embedSignIn('catalyst-signin', authReturnPath());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const tryAgain = () => {
+    clearLoopRecord();
+    window.location.reload();
+  };
+
   return (
     <div className="login-page">
       <div className="login-card">
         <div className="login-brand">WOMS</div>
         <div className="login-subtitle">Warehouse Operations Management System</div>
-        <div className="login-widget">
-          <div id="catalyst-signin" />
-        </div>
+        {looping ? (
+          <div className="login-widget" style={{ padding: '24px 16px', textAlign: 'center' }}>
+            <p style={{ marginTop: 0 }}>
+              <strong>The sign-in keeps coming back to this page.</strong>
+            </p>
+            <p className="muted small">
+              Catalyst accepted the sign-in but the app could not see the session. The details below show why. Please send them to the
+              development team.
+            </p>
+            <button className="btn" onClick={tryAgain}>
+              Try again
+            </button>
+          </div>
+        ) : (
+          <div className="login-widget">
+            <div id="catalyst-signin" />
+          </div>
+        )}
         <p className="muted small" style={{ textAlign: 'center', marginTop: 16 }}>
           Form not loading?{' '}
           <a href={`/__catalyst/auth/login?service_url=${encodeURIComponent(authRedirectUrl())}`}>Use the Catalyst sign-in page</a>

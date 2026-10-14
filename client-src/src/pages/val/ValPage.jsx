@@ -14,7 +14,7 @@ import { useAuth } from '../../context/AuthContext';
 const SERVICE_TYPES = ['Inspection', 'Repacking', 'Relabelling', 'Kitting', 'Quality Check'];
 
 export default function ValPage() {
-  const { user } = useAuth();
+  const { user, viewer } = useAuth();
   const [requests, setRequests] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [customerCargo, setCustomerCargo] = useState([]);
@@ -41,7 +41,7 @@ export default function ValPage() {
 
   useEffect(() => {
     if (!form.customer_id) return;
-    listCargoForCustomer(form.customer_id).then((cargo) => {
+    listCargoForCustomer(form.customer_id, viewer).then((cargo) => {
       setCustomerCargo(cargo);
       setForm((f) => ({ ...f, cargo_id: cargo[0]?.ROWID || '' }));
     });
