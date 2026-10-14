@@ -43,7 +43,7 @@ const goneSql = (alias) => `${alias}.status != 'Dispatched' AND ${alias}.status 
 // append to a WHERE clause, or '' for unrestricted.
 const idOnly = (v) => String(v).replace(/\D/g, '');
 const sqlText = (v) => String(v).replace(/'/g, "''");
-function visibilityClause(viewer, { warehouseCol, assignedCol } = {}) {
+export function visibilityClause(viewer, { warehouseCol, assignedCol } = {}) {
   const active = viewer?.activeWarehouseId ? idOnly(viewer.activeWarehouseId) : '';
   if (viewer?.isAdmin) return active && warehouseCol ? ` AND ${warehouseCol} = ${active}` : '';
   const parts = (viewer?.assignments || [])
