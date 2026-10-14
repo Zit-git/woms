@@ -63,14 +63,17 @@ async function runSessionCheck() {
   return lines.join('\n');
 }
 
-// Sign-in happens right here in the page: Catalyst's own form is embedded in the
-// card, and on success it returns to authReturnPath() -- the Slate root, or
-// /app/index.html on the legacy host.
+// Sign-in uses Catalyst's full-page sign-in. The form embedded in this card is only an
+// optional alternative: after a successful embedded sign-in the browser tries to load the
+// app *inside* that frame, which some browsers (Firefox) refuse, leaving a reload loop
+// that never reaches the home screen. The full-page flow has no frame to be blocked.
 export default function Login() {
   const { authError } = useAuth();
   const [report, setReport] = useState('');
   const [checking, setChecking] = useState(false);
   const [looping, setLooping] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const hostedUrl = `/__catalyst/auth/login?service_url=${encodeURIComponent(authRedirectUrl())}`;
 
   const check = () => {
     setChecking(true);
@@ -83,11 +86,14 @@ export default function Login() {
     if (recordMountAndDetectLoop()) {
       setLooping(true);
       check();
-      return;
     }
-    embedSignIn('catalyst-signin', authReturnPath());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The embedded form is only drawn when someone asks for it.
+  useEffect(() => {
+    if (showForm && !looping) embedSignIn('catalyst-signin', authReturnPath());
+  }, [showForm, looping]);
 
   const tryAgain = () => {
     clearLoopRecord();
@@ -112,9 +118,16 @@ export default function Login() {
               Try again
             </button>
           </div>
-        ) : (
+        ) : showForm ? (
           <div className="login-widget">
             <div id="catalyst-signin" />
+          </div>
+        ) : (
+          <div className="login-widget" style={{ padding: '32px 24px', textAlign: 'center' }}>
+            <p style={{ marginTop: 0 }}>Sign in with your WOMS account.</p>
+            <a className="btn" href={hostedUrl}>
+              Sign in
+            </a>
           </div>
         )}
         {authError && (
@@ -123,8 +136,15 @@ export default function Login() {
           </p>
         )}
         <p className="muted small" style={{ textAlign: 'center', marginTop: 16 }}>
-          Form not loading?{' '}
-          <a href={`/__catalyst/auth/login?service_url=${encodeURIComponent(authRedirectUrl())}`}>Use the Catalyst sign-in page</a>
+          {showForm ? (
+            <button className="link-btn" style={{ color: '#bcd2ff', fontSize: 'inherit' }} onClick={() => setShowForm(false)}>
+              Back to the full-page sign-in
+            </button>
+          ) : (
+            <button className="link-btn" style={{ color: '#bcd2ff', fontSize: 'inherit' }} onClick={() => setShowForm(true)}>
+              Use the form in this page instead
+            </button>
+          )}
           <br />
           Signed in but back here?{' '}
           <button className="link-btn" style={{ color: '#bcd2ff', fontSize: 'inherit' }} onClick={check} disabled={checking}>
