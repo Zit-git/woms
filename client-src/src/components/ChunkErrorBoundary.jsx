@@ -1,13 +1,17 @@
 import { Component } from 'react';
 
-// After a new deploy, a tab left open from before it still holds the old
-// index.html, which references JS chunk filenames the server no longer
-// has (each build hashes filenames differently). Clicking into a
-// not-yet-loaded page then fails to fetch its chunk and, with no boundary,
-// silently renders blank. This reloads once to pick up the current file
-// list -- sessionStorage guards against looping if the error is real and
-// persists after the reload.
-const RELOAD_FLAG = 'woms-chunk-reload-attempted';
+// After a new deploy, a tab (or a browser cache -- Slate serves index.html with a
+// one-year max-age) can still hold the old index.html, which references JS chunk
+// filenames the server no longer has. Clicking into a not-yet-loaded page then
+// fails to fetch its chunk.
+//
+// Recovery is: re-fetch the page bypassing the cache (which refreshes the cached
+// copy, so the reload picks up the new chunk list), then reload -- at most once a
+// minute. The earlier version cleared its "already tried" flag whenever the
+// boundary mounted, which it does on every load even when the chunk then fails, so
+// a persistently stale page reloaded forever.
+const RELOAD_AT = 'woms-chunk-reload-at';
+const MIN_GAP_MS = 60 * 1000;
 
 export default class ChunkErrorBoundary extends Component {
   state = { failed: false };
@@ -16,23 +20,35 @@ export default class ChunkErrorBoundary extends Component {
     return { failed: true };
   }
 
-  componentDidMount() {
-    // A fresh, successful mount means this page load is healthy -- clear the
-    // flag so a later, unrelated failure still gets its one auto-reload.
-    sessionStorage.removeItem(RELOAD_FLAG);
-  }
-
   componentDidCatch(error) {
     console.error('Route failed to load:', error);
-    if (!sessionStorage.getItem(RELOAD_FLAG)) {
-      sessionStorage.setItem(RELOAD_FLAG, '1');
-      window.location.reload();
+    let last = 0;
+    try {
+      last = Number(sessionStorage.getItem(RELOAD_AT)) || 0;
+    } catch {
+      return;
     }
+    if (Date.now() - last < MIN_GAP_MS) return;
+    try {
+      sessionStorage.setItem(RELOAD_AT, String(Date.now()));
+    } catch {
+      return;
+    }
+    fetch(window.location.pathname + window.location.search, { cache: 'reload' })
+      .catch(() => {})
+      .finally(() => window.location.reload());
   }
 
   render() {
     if (this.state.failed) {
-      return <p className="muted" style={{ padding: 24 }}>Loading the latest version...</p>;
+      return (
+        <div className="card" style={{ maxWidth: 520, margin: 24 }}>
+          <h3>Loading the latest version...</h3>
+          <p className="muted small">
+            If this stays on screen, your browser is holding an out-of-date copy. Press Ctrl+Shift+R (Cmd+Shift+R on a Mac) once.
+          </p>
+        </div>
+      );
     }
     return this.props.children;
   }
