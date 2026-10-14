@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { getCurrentUser } from '../lib/catalystClient';
+import { getCurrentUser, recordAuthIssue, readAuthIssue, clearAuthIssue } from '../lib/catalystClient';
 import { getAppUserByEmail, listRolePermissions, listUserWarehouseRoles, listWarehouses } from '../lib/api';
 import { ADMIN_ROLE, canApproveIn, canApproveAnywhere, canAccessWarehouse, roleIn, describeAccess } from '../lib/access';
 import { moduleForPath } from '../lib/permissions';
@@ -21,7 +21,7 @@ export function AuthProvider({ children }) {
   const [allowedModules, setAllowedModules] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   // Why the sign-in was refused after Catalyst accepted it (shown on the login screen).
-  const [authError, setAuthError] = useState('');
+  const [authError, setAuthError] = useState(() => readAuthIssue());
 
   useEffect(() => {
     let cancelled = false;
@@ -42,6 +42,8 @@ export function AuthProvider({ children }) {
           const rows = row && row.business_role !== ADMIN_ROLE ? await listUserWarehouseRoles(row.ROWID) : [];
           if (cancelled) return;
           const mine = rows.map((r) => ({ warehouseId: String(r.warehouse_id), role: r.business_role }));
+          clearAuthIssue();
+          setAuthError('');
           setAppUser(row);
           setAssignments(mine);
           setWarehouseNames(warehouses);
@@ -50,7 +52,9 @@ export function AuthProvider({ children }) {
           setAllowedModules(new Set(perms.filter((p) => roles.includes(p.role)).map((p) => p.module)));
         })
         .catch((err) => {
-          if (!cancelled) setAuthError(err?.message || String(err));
+          const reason = `Your access could not be loaded after sign-in: ${err?.message || err?.error || JSON.stringify(err)}`;
+          recordAuthIssue(reason);
+          if (!cancelled) setAuthError(reason);
           // A *failed* lookup (network error, a half-cleared session right
           // after sign-out, ...) is not the same thing as "this account
           // genuinely has no role" -- treating them the same showed a

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { embedSignIn, authReturnPath, authRedirectUrl } from '../lib/catalystClient';
+import { embedSignIn, authReturnPath, authRedirectUrl, readAuthIssue } from '../lib/catalystClient';
 import { useAuth } from '../context/AuthContext';
 
 // If this screen keeps being loaded again and again (sign-in succeeds on Catalyst's side but
@@ -32,6 +32,7 @@ function clearLoopRecord() {
 async function runSessionCheck() {
   const lines = [`Page: ${window.location.href}`, `Came from: ${document.referrer || '(none)'}`];
   const sdk = window.catalyst;
+  lines.push(`Last app sign-in problem: ${readAuthIssue() || '(none recorded)'}`);
   if (!sdk) return [...lines, 'Catalyst SDK did not load.'].join('\n');
   try {
     const r = await sdk.userManagement.getCurrentProjectUser();
@@ -118,7 +119,7 @@ export default function Login() {
         )}
         {authError && (
           <p className="error-text" style={{ textAlign: 'center', marginTop: 12 }}>
-            You are signed in, but your access could not be loaded: {authError}
+            Last sign-in problem: {authError}
           </p>
         )}
         <p className="muted small" style={{ textAlign: 'center', marginTop: 16 }}>

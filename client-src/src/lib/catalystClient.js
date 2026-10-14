@@ -8,11 +8,49 @@ function sdk() {
   return window.catalyst;
 }
 
+// Why the sign-in loops is invisible if the reason is thrown away, and the page
+// reloads before anyone can read a message -- so the reason is kept in
+// sessionStorage, which survives the reloads, and shown on the login screen.
+const AUTH_ISSUE_KEY = 'woms.authIssue';
+export function recordAuthIssue(message) {
+  try {
+    sessionStorage.setItem(AUTH_ISSUE_KEY, `${new Date().toLocaleTimeString()}: ${message}`);
+  } catch {
+    // the message just won't survive a reload
+  }
+}
+export function readAuthIssue() {
+  try {
+    return sessionStorage.getItem(AUTH_ISSUE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+export function clearAuthIssue() {
+  try {
+    sessionStorage.removeItem(AUTH_ISSUE_KEY);
+  } catch {
+    // nothing to clear
+  }
+}
+
 export function getCurrentUser() {
-  return sdk()
-    .userManagement.getCurrentProjectUser()
-    .then((res) => res.content)
-    .catch(() => null);
+  try {
+    return sdk()
+      .userManagement.getCurrentProjectUser()
+      .then((res) => {
+        if (res?.content?.email_id) return res.content;
+        recordAuthIssue(`Catalyst returned no signed-in user (response: ${JSON.stringify(res)?.slice(0, 200)})`);
+        return null;
+      })
+      .catch((err) => {
+        recordAuthIssue(`Checking the signed-in user failed: ${err?.message || err?.error || JSON.stringify(err)}`);
+        return null;
+      });
+  } catch (err) {
+    recordAuthIssue(err.message);
+    return Promise.resolve(null);
+  }
 }
 
 // Catalyst's own docs are explicit that Slate (root-served) auth redirects
