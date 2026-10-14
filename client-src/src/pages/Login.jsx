@@ -1,20 +1,26 @@
-import { authRedirectUrl } from '../lib/catalystClient';
+import { useEffect } from 'react';
+import { embedSignIn, authReturnPath, authRedirectUrl } from '../lib/catalystClient';
 
+// Sign-in happens right here in the page: Catalyst's own form is embedded in the
+// card, and on success it returns to authReturnPath() -- the Slate root, or
+// /app/index.html on the legacy host.
 export default function Login() {
+  useEffect(() => {
+    embedSignIn('catalyst-signin', authReturnPath());
+  }, []);
+
   return (
     <div className="login-page">
       <div className="login-card">
         <div className="login-brand">WOMS</div>
         <div className="login-subtitle">Warehouse Operations Management System</div>
-        <div className="login-widget" style={{ padding: '32px 16px', textAlign: 'center' }}>
-          <p className="muted" style={{ marginTop: 0 }}>You need to sign in to continue.</p>
-          {/* Without service_url Catalyst sends people to the legacy /app/index.html after
-              signing in, which doesn't exist on Slate (404). Passing where this build
-              lives (Slate root, or /app/index.html for the legacy host) fixes both. */}
-          <button className="btn" onClick={() => { window.location.href = `/__catalyst/auth/login?service_url=${encodeURIComponent(authRedirectUrl())}`; }}>
-            Sign in
-          </button>
+        <div className="login-widget">
+          <div id="catalyst-signin" />
         </div>
+        <p className="muted small" style={{ textAlign: 'center', marginTop: 16 }}>
+          Form not loading?{' '}
+          <a href={`/__catalyst/auth/login?service_url=${encodeURIComponent(authRedirectUrl())}`}>Use the Catalyst sign-in page</a>
+        </p>
       </div>
     </div>
   );

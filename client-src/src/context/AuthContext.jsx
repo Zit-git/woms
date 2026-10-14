@@ -6,46 +6,11 @@ import { moduleForPath } from '../lib/permissions';
 
 const AuthContext = createContext(null);
 
-// The last verified session, kept so a reload can paint the app straight away
-// instead of waiting ~2-3 sequential Catalyst round trips (~0.8 s each) for the
-// sign-in bootstrap. It is only a UI hint: it's re-verified in the background on
-// every load, replaced if the signed-in user differs, and wiped on sign-out
-// (signOut clears localStorage). Catalyst still enforces access server-side.
-const SNAPSHOT_KEY = 'woms.authSnapshot';
-const readSnapshot = () => {
-  try {
-    return JSON.parse(localStorage.getItem(SNAPSHOT_KEY)) || null;
-  } catch {
-    return null;
-  }
-};
-const writeSnapshot = (snap) => {
-  try {
-    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snap));
-  } catch {
-    // just means the next load takes the slower path
-  }
-};
-const clearSnapshot = () => {
-  try {
-    localStorage.removeItem(SNAPSHOT_KEY);
-  } catch {
-    // nothing to clear
-  }
-};
-
-// Module access is the union of what each role the user holds grants.
-function modulesFor(row, assignments, perms) {
-  const roles = row?.business_role === ADMIN_ROLE ? [ADMIN_ROLE] : [...new Set(assignments.map((a) => a.role))];
-  return new Set(perms.filter((p) => roles.includes(p.role)).map((p) => p.module));
-}
-
 export function AuthProvider({ children }) {
-  const [snapshot] = useState(readSnapshot);
-  const [user, setUser] = useState(snapshot?.user || null);
-  const [appUser, setAppUser] = useState(snapshot?.appUser || null);
-  const [assignments, setAssignments] = useState(snapshot?.assignments || []); // [{ warehouseId, role }]
-  const [warehouseNames, setWarehouseNames] = useState(snapshot?.warehouses || []);
+  const [user, setUser] = useState(null);
+  const [appUser, setAppUser] = useState(null);
+  const [assignments, setAssignments] = useState([]); // [{ warehouseId, role }]
+  const [warehouseNames, setWarehouseNames] = useState([]);
   const [activeWarehouseId, setActiveWarehouseIdState] = useState(() => {
     try {
       return localStorage.getItem('woms.activeWarehouse') || '';
@@ -53,41 +18,23 @@ export function AuthProvider({ children }) {
       return '';
     }
   });
-  const [allowedModules, setAllowedModules] = useState(() =>
-    snapshot ? modulesFor(snapshot.appUser, snapshot.assignments || [], snapshot.perms || []) : new Set()
-  );
-  const [loading, setLoading] = useState(!snapshot);
+  const [allowedModules, setAllowedModules] = useState(() => new Set());
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    // Neither of these depends on who is signed in, so they start now, alongside
-    // the session check, instead of after it.
-    const permsP = listRolePermissions();
-    const warehousesP = listWarehouses();
-    permsP.catch(() => {});
-    warehousesP.catch(() => {});
 
     getCurrentUser().then((currentUser) => {
       if (cancelled) return;
+      setUser(currentUser);
       if (!currentUser) {
-        clearSnapshot();
-        setUser(null);
-        setAppUser(null);
-        setAssignments([]);
-        setAllowedModules(new Set());
         setLoading(false);
         return;
       }
-      setUser(currentUser);
-      // The remembered session belonged to someone else: don't show their access.
-      if (snapshot && snapshot.user?.email_id !== currentUser.email_id) {
-        clearSnapshot();
-        setAppUser(null);
-        setAssignments([]);
-        setAllowedModules(new Set());
-        setLoading(true);
-      }
-      Promise.all([getAppUserByEmail(currentUser.email_id), permsP, warehousesP])
+      // Fetched together rather than one after the other: listRolePermissions
+      // doesn't depend on the AppUsers lookup, and chaining them cost an extra
+      // full network round trip on every page load.
+      Promise.all([getAppUserByEmail(currentUser.email_id), listRolePermissions(), listWarehouses()])
         .then(async ([row, perms, warehouses]) => {
           if (cancelled) return;
           const rows = row && row.business_role !== ADMIN_ROLE ? await listUserWarehouseRoles(row.ROWID) : [];
@@ -96,8 +43,9 @@ export function AuthProvider({ children }) {
           setAppUser(row);
           setAssignments(mine);
           setWarehouseNames(warehouses);
-          setAllowedModules(modulesFor(row, mine, perms));
-          writeSnapshot({ user: currentUser, appUser: row, assignments: mine, warehouses, perms });
+          // Module access is the union of what each role the user holds grants.
+          const roles = row?.business_role === ADMIN_ROLE ? [ADMIN_ROLE] : [...new Set(mine.map((a) => a.role))];
+          setAllowedModules(new Set(perms.filter((p) => roles.includes(p.role)).map((p) => p.module)));
         })
         .catch(() => {
           // A *failed* lookup (network error, a half-cleared session right
@@ -106,10 +54,7 @@ export function AuthProvider({ children }) {
           // confusing "no role" screen to people whose session had simply
           // gone stale. Fall back to signed-out instead: safe (still fails
           // closed) and correct (Login is the honest state here).
-          if (!cancelled) {
-            clearSnapshot();
-            setUser(null);
-          }
+          if (!cancelled) setUser(null);
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -119,7 +64,6 @@ export function AuthProvider({ children }) {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Clears our own app-level session state immediately, independent of
@@ -128,7 +72,6 @@ export function AuthProvider({ children }) {
   // route gate in App.jsx reacts to `user` becoming null and swaps to the
   // Login screen instantly, no page reload required.
   const clearSession = () => {
-    clearSnapshot();
     setUser(null);
     setAppUser(null);
     setAssignments([]);
