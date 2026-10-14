@@ -205,21 +205,27 @@ export function invalidateTable(tableName) {
 }
 
 export function addRow(tableName, row) {
-  return table(tableName)
-    .addRow([row])
-    .then((res) => {
-      invalidateTable(tableName);
-      return res.content[0];
-    });
+  return withDeadline(
+    table(tableName)
+      .addRow([row])
+      .then((res) => {
+        invalidateTable(tableName);
+        return res.content[0];
+      }),
+    `saving to ${tableName}`
+  );
 }
 
 export function updateRow(tableName, rowWithId) {
-  return table(tableName)
-    .updateRow([rowWithId])
-    .then((res) => {
-      invalidateTable(tableName);
-      return res.content[0];
-    });
+  return withDeadline(
+    table(tableName)
+      .updateRow([rowWithId])
+      .then((res) => {
+        invalidateTable(tableName);
+        return res.content[0];
+      }),
+    `updating ${tableName}`
+  );
 }
 
 export function deleteRow(tableName, rowId) {
@@ -232,11 +238,21 @@ export function deleteRow(tableName, rowId) {
     });
 }
 
+// The API rejects max_rows above 300 -- and the SDK still *resolves*, handing back an
+// error object instead of rows -- so the size is capped here and a bad response is
+// turned into a readable error instead of crashing whatever called this (it broke
+// sign-in: the role list asks for 500).
 export function getAllRows(tableName, maxRows = 200) {
   const load = () =>
-    table(tableName)
-      .getPagedRows({ max_rows: maxRows })
-      .then((res) => res.content || []);
+    withDeadline(
+      table(tableName)
+        .getPagedRows({ max_rows: Math.min(maxRows, 300) })
+        .then((res) => {
+          if (res?.status && res.status !== 200) throw new Error(res.message || `Could not load ${tableName} (${res.status})`);
+          return Array.isArray(res?.content) ? res.content : [];
+        }),
+      `loading ${tableName}`
+    );
   if (!CACHED_TABLES.has(tableName)) return load();
   // Callers get their own array so sorting/filtering it can't corrupt the cache.
   return cachedFetch(`rows:${tableName}:${maxRows}`, [tableName], load).then((rows) => rows.slice());
