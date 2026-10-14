@@ -99,9 +99,15 @@ export default function InboundMaster() {
     setSaving(true);
     setError('');
     return editInboundAdvice({ ROWID: adviceId, ...fields })
-      .then(() => loadAdvice())
+      .then(() => {
+        // Show the saved values at once; the re-read (which also refreshes joined
+        // names) runs behind it instead of adding a second round trip to every save.
+        setAdvice((a) => ({ ...a, ...fields }));
+        loadAdvice().catch(() => {});
+      })
       .catch((err) => {
         setError(err.message || String(err));
+        loadAdvice().catch(() => {});
         throw err;
       })
       .finally(() => setSaving(false));

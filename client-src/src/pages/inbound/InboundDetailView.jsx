@@ -4,6 +4,7 @@ import RecordTasks from '../../components/RecordTasks';
 import AuditTrail from '../../components/AuditTrail';
 import QrCodeImage from '../../components/QrCodeImage';
 import DocumentsSummary from '../../components/DocumentsSummary';
+import LazySection from '../../components/LazySection';
 
 // Plain read-only record view, used by InboundMaster regardless of status --
 // the one action button opens whichever stage popup is contextually next
@@ -273,9 +274,9 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
         </div>
       )}
 
-      <DocumentsSummary linkedModules={['Inbound Operations', 'Inbound Operations Photos']} recordId={advice.ROWID} />
-      <RecordTasks moduleRef="Inbound Operations" recordRefId={advice.ROWID} />
-      <AuditTrail modules={['Inbound Operations', 'Inbound Operations Photos']} recordId={advice.ROWID} />
+      <LazySection><DocumentsSummary linkedModules={['Inbound Operations', 'Inbound Operations Photos']} recordId={advice.ROWID} /></LazySection>
+      <LazySection><RecordTasks moduleRef="Inbound Operations" recordRefId={advice.ROWID} /></LazySection>
+      <LazySection><AuditTrail modules={['Inbound Operations', 'Inbound Operations Photos']} recordId={advice.ROWID} /></LazySection>
     </div>
   );
 }

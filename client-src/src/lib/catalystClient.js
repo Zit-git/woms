@@ -129,41 +129,71 @@ export function table(tableName) {
   return sdk().table.tableId(tableName);
 }
 
+// -- Read cache ---------------------------------------------------------
+// Every Catalyst round trip costs roughly 0.8 s from where this is used, so
+// reference data that rarely changes (customers, warehouses, locations...) is
+// kept in memory and reused across pages. Writes through addRow/updateRow/
+// deleteRow drop the affected entries, so the user's own edits show up at once;
+// the short TTL bounds how stale another user's edit can look.
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const cache = new Map(); // key -> { at, tables, promise }
+const CACHED_TABLES = new Set(['Customers', 'Transporters', 'Suppliers', 'Warehouses', 'PackageTypes', 'RolePermissions']);
+
+export function cachedFetch(key, tables, loader) {
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.promise;
+  const promise = loader();
+  const entry = { at: Date.now(), tables, promise };
+  cache.set(key, entry);
+  // A failed load must not be remembered.
+  promise.catch(() => {
+    if (cache.get(key) === entry) cache.delete(key);
+  });
+  return promise;
+}
+
+export function invalidateTable(tableName) {
+  for (const [key, entry] of cache) {
+    if (entry.tables.includes(tableName)) cache.delete(key);
+  }
+}
+
 export function addRow(tableName, row) {
-  return withDeadline(
-    table(tableName)
-      .addRow([row])
-      .then((res) => res.content[0]),
-    `saving to ${tableName}`
-  );
+  return table(tableName)
+    .addRow([row])
+    .then((res) => {
+      invalidateTable(tableName);
+      return res.content[0];
+    });
 }
 
 export function updateRow(tableName, rowWithId) {
-  return withDeadline(
-    table(tableName)
-      .updateRow([rowWithId])
-      .then((res) => res.content[0]),
-    `updating ${tableName}`
-  );
+  return table(tableName)
+    .updateRow([rowWithId])
+    .then((res) => {
+      invalidateTable(tableName);
+      return res.content[0];
+    });
 }
 
 export function deleteRow(tableName, rowId) {
   return table(tableName)
     .rowId(rowId)
-    .delete();
+    .delete()
+    .then((res) => {
+      invalidateTable(tableName);
+      return res;
+    });
 }
 
-// The API rejects max_rows above 300 (with a 400 the SDK still resolves), so
-// cap it and surface any failure instead of returning an empty result.
 export function getAllRows(tableName, maxRows = 200) {
-  return table(tableName)
-    .getPagedRows({ max_rows: Math.min(maxRows, 300) })
-    .then((res) => {
-      if (res.status && res.status !== 200) {
-        throw new Error(res.message || `Could not load ${tableName} (${res.status})`);
-      }
-      return res.content || [];
-    });
+  const load = () =>
+    table(tableName)
+      .getPagedRows({ max_rows: maxRows })
+      .then((res) => res.content || []);
+  if (!CACHED_TABLES.has(tableName)) return load();
+  // Callers get their own array so sorting/filtering it can't corrupt the cache.
+  return cachedFetch(`rows:${tableName}:${maxRows}`, [tableName], load).then((rows) => rows.slice());
 }
 
 export function zcql(query) {

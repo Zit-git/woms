@@ -1,4 +1,4 @@
-import { addRow, updateRow, deleteRow, getAllRows, zcql, callFunction } from './catalystClient';
+import { addRow, updateRow, deleteRow, getAllRows, zcql, callFunction, cachedFetch } from './catalystClient';
 import { formatSequentialRef } from './reference';
 import { expandLines } from './capacity';
 
@@ -524,7 +524,7 @@ export const sendInboundConfirmationEmail = (inboundAdviceId, recipientEmail, me
   notifyEvent('INBOUND_COMPLETED', recipientEmail, String(inboundAdviceId), message, 'Inbound Operations');
 
 // -- Storage (put-away / relocation) --
-export const listAllStorageLocations = () =>
+const loadAllStorageLocations = () =>
   zcql(
     `SELECT StorageLocations.ROWID, StorageLocations.location_code, StorageLocations.capacity, StorageLocations.bay, StorageLocations.rack_level, Racks.code, Aisles.name, Zones.name, Warehouses.name FROM StorageLocations LEFT JOIN Racks ON StorageLocations.rack_id = Racks.ROWID LEFT JOIN Aisles ON Racks.aisle_id = Aisles.ROWID LEFT JOIN Zones ON Aisles.zone_id = Zones.ROWID LEFT JOIN Warehouses ON Zones.warehouse_id = Warehouses.ROWID`
   ).then((rows) =>
@@ -546,6 +546,10 @@ export const listAllStorageLocations = () =>
         .join(' / '),
     }))
   );
+
+// Used on nearly every page (location labels); rebuilt only when the warehouse layout changes.
+export const listAllStorageLocations = () =>
+  cachedFetch('allStorageLocations', ['StorageLocations', 'Racks', 'Aisles', 'Zones', 'Warehouses'], loadAllStorageLocations).then((rows) => rows.slice());
 
 const STOCK_COLUMNS =
   'Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.weight, Cargo.length_cm, Cargo.width_cm, Cargo.height_cm, Cargo.qr_code, Cargo.status, Cargo.outer_package_no, Cargo.current_location_id, Cargo.reserved_location_id, Cargo.customer_id, Cargo.warehouse_id, Cargo.inbound_advice_id, Customers.name, InboundAdvice.inbound_reference, InboundAdvice.destination';

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import RecordTasks from '../../components/RecordTasks';
 import AuditTrail from '../../components/AuditTrail';
 import DocumentsSummary from '../../components/DocumentsSummary';
+import LazySection from '../../components/LazySection';
 
 // Plain read-only record view, used by OutboundMaster regardless of stage --
 // the buttons open whichever stage popup is next, they don't edit in place.
@@ -165,9 +166,9 @@ export default function OutboundDetailView({ request, pickTasks, dispatches, loc
         </table>
       </div>
 
-      <DocumentsSummary linkedModules={['Outbound Operations', 'Outbound Operations Photos']} recordId={request.ROWID} title="Documents" />
-      <RecordTasks moduleRef="Outbound Operations" recordRefId={request.ROWID} />
-      <AuditTrail modules={['Outbound Operations', 'Outbound Operations Photos']} recordId={request.ROWID} />
+      <LazySection><DocumentsSummary linkedModules={['Outbound Operations', 'Outbound Operations Photos']} recordId={request.ROWID} title="Documents" /></LazySection>
+      <LazySection><RecordTasks moduleRef="Outbound Operations" recordRefId={request.ROWID} /></LazySection>
+      <LazySection><AuditTrail modules={['Outbound Operations', 'Outbound Operations Photos']} recordId={request.ROWID} /></LazySection>
     </div>
   );
 }
