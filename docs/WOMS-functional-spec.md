@@ -1,17 +1,17 @@
-# WOMS: Functional Specification (as built)
+# WOMS: Functional Specification
 
 **Product:** Warehouse Operations Management System (WOMS), a multi-warehouse, multi-customer (3PL) warehouse management system.
-**Document status:** describes the application **as it exists in the code and the live Catalyst project on 2026-10-14**, not a wish list. Where something was specified but not built, or built but flawed, it is called out in §14.
-**Purpose:** a complete functional description (features, workflows, users, roles, data model, rules, notifications) that a team can use to rebuild WOMS on another platform.
-**Sources:** application source (`client-src/`, `functions/`), the exported Catalyst project configuration (`iac:export`, which is the authority for the data model in §11 and the authentication and security settings in §2 and §12), the seeded `RolePermissions` and `PackageTypes` table contents (Appendix A), and the product-definition documents *WOMS Product Definition – Development Master v1.0* and *WOMS Product Master v1.2*, which describe the vision, market and pricing and are not repeated here.
+**Document status:** platform-neutral functional specification, based on the behaviour of the working reference application as of 2026-10-14. Where something was specified but not built, or built but flawed, it is called out in §14.
+**Purpose:** a complete description of features, workflows, users, roles, data model, business rules and notifications that a team can use to build WOMS on any platform (for example Appwrite, or a conventional web API with a SQL database).
+**Sources:** the behaviour, data model and seed data of the working application, and the product-definition documents *WOMS Product Definition – Development Master v1.0* and *WOMS Product Master v1.2* (vision, market and pricing; not repeated here).
 
-Legend used throughout: **BUILT** (works as described), **PARTIAL** (built with limits), **NOT BUILT** (specified in the product documents, absent from the app). Rule identifiers (R-xx, §13) can be used to trace requirements into tests.
+Legend used throughout: **BUILT** (works as described), **PARTIAL** (built with limits), **NOT BUILT** (specified in the product documents, absent from the reference application). Rule identifiers (R-xx, §13) can be used to trace requirements into tests.
 
 
 ## Contents
 
 - [1. Product summary](#1-product-summary)
-- [2. Architecture as built (what a port must reproduce or replace)](#2-architecture-as-built-what-a-port-must-reproduce-or-replace)
+- [2. Platform and architecture requirements](#2-platform-and-architecture-requirements)
 - [3. Users, roles and access](#3-users-roles-and-access)
 - [4. Concepts, identifiers and formats](#4-concepts-identifiers-and-formats)
 - [5. Master data](#5-master-data)
@@ -21,13 +21,12 @@ Legend used throughout: **BUILT** (works as described), **PARTIAL** (built with 
 - [9. Notifications](#9-notifications)
 - [10. Printed documents, reports and dashboard](#10-printed-documents-reports-and-dashboard)
 - [11. Data model](#11-data-model)
-- [12. Services and function contracts](#12-services-and-function-contracts)
+- [12. Server operations required](#12-server-operations-required)
 - [13. Business rules catalogue](#13-business-rules-catalogue)
-- [14. Known gaps, defects and risks (as of 2026-10-14)](#14-known-gaps-defects-and-risks-as-of-2026-10-14)
-- [15. Guidance for rebuilding on another platform](#15-guidance-for-rebuilding-on-another-platform)
+- [14. Known gaps, defects and risks of the reference build](#14-known-gaps-defects-and-risks-of-the-reference-build)
+- [15. Guidance for building WOMS on another platform](#15-guidance-for-building-woms-on-another-platform)
 - [Appendix A: Seed data](#appendix-a-seed-data)
-- [Appendix B: Where each requirement lives in the code (for reference)](#appendix-b-where-each-requirement-lives-in-the-code-for-reference)
-
+- [Appendix B: Acceptance scenarios](#appendix-b-acceptance-scenarios)
 
 ---
 
@@ -54,52 +53,48 @@ A 3PL warehouse operator receives goods on behalf of customers, stores them in r
 
 ### 1.3 Design principles (these shaped the data model and should survive a port)
 1. **Plan vs. physical.** An inbound's *line items* are the plan ("40 cartons of T-shirts"). *Handling Units* are what physically exists after receiving. One line can spread over many HUs; one HU can hold several lines. The link is `HuLine`.
-2. **The HU is the unit of everything.** Storage, picking, dispatch, delivery, VAL, scans and reports all key off the HU (stored in the `Cargo` table). A `Cargo` row is an HU once its `qr_code` is set.
-3. **HU QR says WHAT.** QR payload is `WOMS-CARGO-<Cargo ROWID>`. (A matching "location QR" for WHERE is specified but not built.)
+2. **The HU is the unit of everything.** Storage, picking, dispatch, delivery, VAL, scans and reports all key off the HU (stored in the `Cargo` table). An HU record (entity `Cargo`) is an HU once its `qr_code` is set.
+3. **HU QR says WHAT.** QR payload is `WOMS-CARGO-<HU id>`. (A matching "location QR" for WHERE is specified but not built.)
 4. **Occupancy is derived, never stored.** A location is occupied if a non-gone HU has `current_location_id` pointing at it. Planned outbounds do not free space until dispatched.
 5. **Warehouse scoping everywhere.** Every operational record carries a `warehouse_id`; users only see their warehouses.
 6. **Everything auditable.** Status changes, scans and movements write history rows.
 
 ---
 
-## 2. Architecture as built (what a port must reproduce or replace)
+## 2. Platform and architecture requirements
 
-### 2.1 Technology
-- **Front end:** single-page React 18 app (Vite build, React Router 6). Responsive layout (sidebar on desktop, bottom bar on mobile). Self-hosted Inter font.
-- **Hosting:** Zoho Catalyst **Slate** (served at the site root, auto-built from Git) and the legacy Catalyst **Web Client** (served under `/app/`). Both builds come from the same source.
-- **Back end:** Catalyst **Data Store** (28 tables, relational with foreign keys), **Stratus** object storage (3 buckets), **Authentication** (Embedded sign-in, email-based, OTP/password via Zoho accounts), **Mail** (transactional email), and **8 Node 18 "Advanced I/O" functions** (§12).
-- **Important architectural fact:** most create/read/update/delete operations run **directly from the browser to the Data Store** (table API and a SQL-like query language, ZCQL), under the signed-in user's permissions. Business rules (status transitions, validations, warehouse scoping, capacity maths) are therefore enforced **in the client code**, not on a server. A replacement platform should move these rules to a server/API layer (see §15).
+This section states what any implementation must provide. It deliberately says nothing about a specific vendor.
 
-### 2.2 Authentication configuration (from the exported project)
-- Authentication type: **Embedded** (the sign-in form is embedded in the app's own login screen). Hosted login and third-party login are off.
-- Public sign-up: **off** (accounts are created only by invitation).
-- Native Catalyst roles: **App Administrator** (given to WOMS System Administrators) and **App User** (everyone else). These only gate console/API access; WOMS permissions are separate (§3).
-- Authorized domains: the Slate domain, with CORS allowed.
-- Invitation email template: "Welcome to %APP_NAME%… you have been invited… link… role %ROLE_NAME%". Password-reset email template present.
+### 2.1 Shape of the application
+- A **web application** with a responsive layout: persistent left navigation on desktop; a top bar and a bottom tab bar on phones/tablets (Dashboard, Inbounds, Storage, Outbounds, More).
+- **Camera access** in the browser for scanning QR codes and capturing photos; **printing** of documents and labels from the browser.
+- QR codes are generated and rendered on the client (any QR library); scanning uses the device camera.
+- Printed documents are ordinary pages printed or saved as PDF from the browser (§10.1).
 
-### 2.3 Storage buckets (Stratus)
-| Bucket | Purpose | Versioning | Encryption |
-|---|---|---|---|
-| `woms-documents` | Uploaded documents (CMR, PDFs, signatures, etc.) | on | on |
-| `woms-cargo-photos` | Photos | off | on |
-| `woms-qr-labels` | Pre-rendered QR images (used only by the unused server-side QR function) | off | off |
+### 2.2 Capabilities the platform must provide
+| Capability | Requirement |
+|---|---|
+| **Identity** | Email-based sign-in (password and/or one-time code), **invitation-only** accounts (no public sign-up), password reset, sessions. Invitation email: "You have been invited to join WOMS… link… you are assigned the role …". |
+| **Data storage** | Relational data with **referential integrity**: required fields, unique constraints, foreign keys with *cascade delete* or *set null* (§11), indexed lookups, and queries that join up to five levels (location → rack → aisle → zone → warehouse). If the platform is document-oriented, plan to compute joins and aggregates (capacity, derived statuses, lists with names) on the server. |
+| **File storage** | Private storage with three logical areas: **documents** (versioned, encrypted), **photos** (encrypted), optional pre-rendered **labels**. Files must never be publicly addressable; they are shown through short-lived signed links or streamed through the API. |
+| **Server-side API** | All business rules, authorization and warehouse scoping must be enforced on the server (§13, §15). |
+| **Email** | Transactional email from a verified sender address (configurable). |
+| **Auditing** | Append-only audit log (§6.10). |
 
-Files are served through the `getFileUrl` function (inline base64 up to 4 MB, otherwise a signed link valid 3600 s). Buckets stay private.
+### 2.3 Architecture principle
+The reference application enforced its rules mostly **in the browser**, with the browser reading and writing data directly. That was a prototype shortcut and **must not be copied**: a rebuild should expose a server API that enforces every rule in §13, checks the caller's role and warehouse on every request, and returns only the data the caller may see. The client then only renders.
 
-### 2.4 Platform constraints worth knowing (they explain odd code)
-- Row ids are 17-digit numbers that exceed JavaScript's safe integer range, so **all ids are handled as strings**.
-- The query language allows at most **4 joins** per query; some screens run two queries and merge client-side.
-- Empty strings are rejected for numeric/date columns (omit the field instead).
-- Datetime columns require the format `YYYY-MM-DD HH:mm:ss`.
-- Boolean values can come back as the string `"true"`.
-- Each round trip to the platform costs about 0.8 s from the main user location, which shaped the caching and loading design (§14.4).
-
----
+### 2.4 Data-handling conventions
+- Record ids are **opaque strings** (never assume numeric ordering or size).
+- Optional numeric and date fields are stored as *null* when empty (never as empty text).
+- Timestamps are stored in UTC and displayed in the viewer's local time. ETA, requested/pickup date and storage period are **calendar dates** (no time zone).
+- All lists are scoped to the viewer's warehouses by the server (§3.4).
+- Page loads should not depend on chains of sequential requests; prefer one request per screen (see §14.4).
 
 ## 3. Users, roles and access
 
 ### 3.1 Identity and sign-in
-- A user is a Catalyst project user (email + credentials) **plus** an `AppUsers` row (`email`, `catalyst_user_id`, `business_role`, `user_status`).
+- A user is an account (email + credentials) **plus** an application profile, `AppUsers` (`email`, `account_id`, `business_role`, `user_status`).
 - Sign-in: email, then OTP/password, inside the WOMS login card. After login the user returns to the app root.
 - The app resolves the signed-in user, loads their `AppUsers` row, their per-warehouse roles, and the `RolePermissions` table, then builds a *viewer* context. Without an active `AppUsers` row the user sees "Your account has no role yet". `user_status = Inactive` is treated as no role.
 - Sign-out clears local storage/cookies and returns to the app.
@@ -151,10 +146,10 @@ Route-to-module mapping (first matching prefix wins): `/customers`→Customer Ma
 | Edit a *Completed* inbound; reopen a *Rejected* inbound | System Administrator only |
 | Any Outbound action, Storage action, VAL, Tasks | Any user with the module and warehouse access (**no further role gating**: a documented gap) |
 | Warehouse / zone / aisle / rack / location / package-type setup | System Administrator |
-| Invite users, manage a user's warehouse access | System Administrator (also enforced by the `inviteUser` function, §12) |
+| Invite users, manage a user's warehouse access | System Administrator (enforced by the *Invite user* operation, §12) |
 
 ### 3.6 User administration (System Administration → Users)
-- **Invite User:** first name, last name (optional), email, access level (*Warehouse staff* or *System Administrator*). For staff: one or more rows of *warehouse + role* (at least one; each warehouse once). The `inviteUser` function registers the Catalyst user (role App Administrator for admins, App User otherwise), sends Catalyst's invitation email, creates the `AppUsers` row (status Active) and the `UserWarehouseRole` rows, and writes an audit entry.
+- **Invite User:** first name, last name (optional), email, access level (*Warehouse staff* or *System Administrator*). For staff: one or more rows of *warehouse + role* (at least one; each warehouse once). The *Invite user* operation (§12) creates the account and sends the invitation email, creates the profile (status Active) and one per-warehouse role row per assignment, and writes an audit entry.
 - **Users table:** email, access summary, status, "Manage access".
 - **Manage access** (per staff user): change role per warehouse, remove a warehouse, add another warehouse. No UI exists to deactivate a user or change the access level (data field `user_status` exists).
 - The page also shows the role × module permission matrix (read from `RolePermissions`) and the audit trail for the module "System Administration".
@@ -181,16 +176,16 @@ Route-to-module mapping (first matching prefix wins): `/customers`→Customer Ma
 ### 4.2 Reference formats
 | Item | Format | Example |
 |---|---|---|
-| Inbound reference | `IB-<year>-<last 6 digits of ROWID, zero-padded>` | `IB-2026-215006` |
-| Outbound (pickup) reference | `OB-<year>-<last 6 digits of ROWID>` | `OB-2026-207030` |
+| Inbound reference | `IB-<year>-<6-digit sequence>` | `IB-2026-215006` |
+| Outbound (pickup) reference | `OB-<year>-<6-digit sequence>` | `OB-2026-207030` |
 | HU number | sequential per inbound (1, 2, 3…) stored in `outer_package_no` | `3` |
 | HU label text | `<inbound reference>-<HU no. zero-padded to 3>` | `IB-2026-215006-003` |
-| HU QR payload | `WOMS-CARGO-<Cargo ROWID>` | `WOMS-CARGO-11648000001215013` |
-| Pickup Pass QR payload | `WOMS-OB-<OutboundRequest ROWID>` | `WOMS-OB-11648000001215042` |
+| HU QR payload | `WOMS-CARGO-<HU id>` | `WOMS-CARGO-<id>` |
+| Pickup Pass QR payload | `WOMS-OB-<outbound request id>` | `WOMS-OB-<id>` |
 | GRN number | `GRN-<inbound reference>` (fallback: advice id) | `GRN-IB-2026-215006` |
 | Line number | `1…n` per inbound (`InboundLine.line_no`) | |
 
-References are derived from the database-generated ROWID right after insert (no separate counter). A port should use a proper per-year sequence.
+References should come from a **per-year sequence** for each type (inbound, outbound), assigned when the record is created. (The reference build derived them from the record id.)
 
 ### 4.3 Standard value lists
 - **Transport type:** Sea/Ocean Freight, Air Freight, Road Freight, Rail Freight, Courier, Other.
@@ -342,7 +337,7 @@ It is not true 3-D bin packing. **Warehouse recommendation** runs the allocation
 ### 6.4 Storage operations and the scan model
 `Cargo.status` lifecycle: **Received → Stored ⇄ Retrieved → Picked → Dispatched → Delivered** (also *In VAL*, defined but not set by the current VAL screen).
 
-All movements go through one operation, `recordScan(cargo, user, context, [location])`:
+All movements go through one operation, *record scan* (cargo, user, context, optional location):
 
 | Scan context | New status | Location effect | Movement log type |
 |---|---|---|---|
@@ -396,10 +391,10 @@ HUs that have left (status Dispatched or Delivered) with their customer, outboun
 - Visibility: warehouse-scoped; operators see only tasks assigned to their email. Tasks created from the UI **do not set `warehouse_id`**, so non-administrators do not see them (§14).
 
 ### 6.9 Documents, photos and signatures
-- **Upload:** the browser reads a file as base64 and calls `uploadFile` with `bucketKey` (DOCUMENTS or CARGO_PHOTOS), file name, doc type, linked module, linked record id, uploader email (limit ≈ 15 MB request). The function stores the object under a safe unique name, inserts a `Documents` row (`linked_module`, `linked_record_id` as text, `doc_type`, `file_id` = object key, `uploaded_by`, `uploaded_date`) and audits.
+- **Upload:** the client sends the file (limit ≈ 15 MB) with storage area (documents or photos), file name, doc type, linked module, linked record id and uploader email (see *Upload file*, §12). The server stores it under a safe unique name, creates a `Documents` record (`linked_module`, `linked_record_id` as text, `doc_type`, `file_id` = storage key, `uploaded_by`, `uploaded_date`) and writes an audit entry.
 - **Tiles:** *CMR upload* (camera photo or file/PDF), *Additional photos* (multiple; camera or file), generic uploader with doc-type drop-down (CMR, Packing List, Delivery Note, Bill of Lading, Commercial Invoice, Photo, Operational Attachment).
 - **Signatures:** a 400×150 canvas (mouse or touch) saved as a PNG document of type *Driver Signature (Receiving)* or *(Handover)*; "Re-capture" replaces the view (older rows remain).
-- **Display:** images appear inline as thumbnails via `getFileUrl`; PDFs open in a viewer/link.
+- **Display:** images appear inline as thumbnails via the *Get file for display* operation (§12); PDFs open in a viewer/link.
 - `linked_module` values in use: `Inbound Operations`, `Inbound Operations Photos`, `Outbound Operations`, `Outbound Operations Photos`, `GRN`.
 
 ### 6.10 Audit trail
@@ -460,10 +455,10 @@ Sidebar groups (entries hidden if the role lacks the module): **Dashboard**; **M
 ## 9. Notifications
 
 ### 9.1 Mechanism
-`notifyEvent(eventType, recipientEmail, recordId, message, module)` → the `notifyEvent` function sends a plain-text email via the platform's mail service. **Sender** = environment variable `WOMS_NOTIFY_FROM_EMAIL` (fallback `no-reply@woms.example.com`; the sender domain must be configured/verified in the mail service). **Subject** = template text for the event type, or the raw event code if the type has no template. **Body** = the message supplied by the caller, else "<subject> (ref: <id>)". Each send is audited (`NOTIFY_EVENT`). Notifications are best-effort in the UI: a failure is reported but never blocks the workflow, except the inbound completion email, which offers *Send again* / *Continue without email*.
+Notifications are sent by the *Send notification* operation (§12): one plain-text email per event, with inputs *event type, recipient email, record id, message, module*. **Sender** = a configured address on a verified sender domain. **Subject** = template text for the event type, or the raw event code if the type has no template. **Body** = the message supplied by the caller, else "<subject> (ref: <id>)". Each send is audited (action type `NOTIFY_EVENT`). Notifications are best-effort in the UI: a failure is reported but never blocks the workflow, except the inbound completion email, which offers *Send again* / *Continue without email*.
 
 ### 9.2 Event catalogue
-The function defines 14 event templates. **Only three are actually triggered by the application.**
+Fourteen event templates are defined. **Only three are actually triggered by the application.**
 
 | Event code | Subject | Triggered? | Recipient | Body |
 |---|---|---|---|---|
@@ -472,7 +467,7 @@ The function defines 14 event templates. **Only three are actually triggered by 
 | `DISPATCH_CONFIRMATION` | Dispatch confirmation | **Yes**, at Confirm Dispatch, only if the customer has an email | customer email | "Your outbound request #<id> has been dispatched." |
 | `TASK_REMINDER`, `TASK_COMPLETION`, `INBOUND_ARRIVAL`, `PENDING_VERIFICATION`, `VAL_ASSIGNMENT`, `DISPATCH_READY`, `OPERATIONAL_EXCEPTION`, `GOODS_RECEIVED_CONFIRMATION`, `GRN_ISSUED`, `VAL_COMPLETION`, `CARGO_READY_FOR_DISPATCH`, `EXCEPTION_NOTIFICATION` | (as named in the function) | **No** (defined, never sent) | | |
 
-No in-app notifications, push, SMS or notification bell exist. Account invitation and password-reset emails are sent by the platform's authentication service using its own templates (§2.2).
+No in-app notifications, push, SMS or notification bell exist. Account invitation and password-reset emails are sent by the identity service (§2.2).
 
 ---
 
@@ -483,7 +478,7 @@ No in-app notifications, push, SMS or notification bell exist. Account invitatio
 - **Handling Unit Labels** (`/print/putaway/:id`): a cuttable label per HU: QR code, HU label text (`IB-…-001`) and description. Warns if some HUs lack a QR.
 - **Outbound Dispatch Note** (`/print/outbound/:id`): reference, request #, customer, transporter, requested date, status, **pick list** (description, qty, pick status, QR), two signature lines ("Handed over by (warehouse)", "Received by (driver / transporter)").
 - **Pickup Pass** (`/print/pickup/:id`): big pickup reference, **QR `WOMS-OB-<id>`**, instruction "Show this pass and photo ID at the gate", customer, customer reference, collect-from warehouse and address, pickup date, carrier, number of HUs, "Goods to collect" table (HU, description, type, from inbound), statement that the driver and vehicle are checked against the pass and goods are released only against the reference.
-- A server-side GRN PDF generator exists (`createGRN` function, pdfkit) but **the app does not use it**; the GRN is a database row plus the printable page.
+- In the reference build the GRN is a database record plus the printable page; no PDF is stored. A rebuild should generate and store a PDF per GRN (§12, §15).
 
 ### 10.2 Dashboard (every signed-in user)
 Greeting and role line; KPI cards (each links to its module and appears only if the user can open it): **Warehouse occupancy** (% of locations in use, "x of y locations"), Today's Inbound (inbounds created today), Today's Outbound (outbound requests created today), Cargo in Warehouse (HUs not Dispatched/Delivered), Pending Tasks (not Completed), Pending VAL (not Completed), Customers (total). Counts are warehouse-scoped except Customers and VAL.
@@ -496,7 +491,7 @@ Two tabs only: **Cargo Register** (customer, description, qty, status, location 
 
 ## 11. Data model
 
-The model has **28 tables**. The schema below is generated from the exported Catalyst project, so it is the exact production structure (names, types, required/unique flags, foreign keys and delete behaviour). Every table also has the system columns `ROWID` (primary key), `CREATORID`, `CREATEDTIME`, `MODIFIEDTIME`.
+The model has **28 entities** (tables or collections). Types are generic: `string(n)`, `text`, `integer`, `decimal`, `boolean`, `date`, `datetime`, and `reference → Entity` (a foreign key). Every entity also has an implicit primary key `id` plus `createdAt`, `updatedAt` and `createdBy`. "Cascade" means deleting the referenced record deletes this record too; "set null" means the reference is cleared. The definitions in §11.4 were generated from the working system, so they are exact.
 
 ### 11.1 Entity overview
 ```
@@ -517,6 +512,7 @@ Warehouses ─< Zones ─< Aisles ─< Racks ─< StorageLocations
 Documents (linked_module + linked_record_id → any record)      AuditLog (module + record_id → any record)
 AppUsers ─< UserWarehouseRole >─ Warehouses        RolePermissions (role × module)      PackageTypes (capacity master)
 ```
+The entity `Cargo` is the **Handling Unit**; a rebuild may name it `HandlingUnit`.
 
 ### 11.2 Status vocabularies stored in the data
 | Column | Allowed values |
@@ -527,7 +523,7 @@ AppUsers ─< UserWarehouseRole >─ Warehouses        RolePermissions (role × 
 | `PickTask.status` | Assigned, Picked |
 | `Dispatch.status` | Dispatched |
 | `GRN.status` | Generated, Verified |
-| `VALRequest.status` | Submitted → Assigned → In Progress → Completed (table default `Requested`; the screen creates `Submitted`) |
+| `VALRequest.status` | Submitted → Assigned → In Progress → Completed |
 | `VALTask.status`, `Tasks.status` | Assigned, In Progress, Completed |
 | `Customers / Suppliers / Transporters / PackageTypes.status`, `AppUsers.user_status` | Active, Inactive |
 | `StorageLocations.occupancy_status` | Available, Reserved, Blocked (a manual override; "occupied" is computed) |
@@ -537,442 +533,378 @@ AppUsers ─< UserWarehouseRole >─ Warehouses        RolePermissions (role × 
 | `UserWarehouseRole.business_role` | Warehouse Manager, Warehouse Supervisor, Warehouse Operator |
 
 ### 11.3 Notes on specific columns
-- `InboundAdvice`: `reference_number` = the customer's PO/reference; `reference_client` = a second client-side reference; `inbound_reference` = WOMS reference (`IB-…`); `expected_colli` = total packages announced; `received_piece_count` = pieces counted at the dock (a manual figure checked against received quantities); `storage_start_date/storage_end_date` = expected storage period; `adr_status` = dangerous-goods flag (Yes/No); `rejection_reason` is set on reject. `transport_details` and `destination` free-text fields are legacy/free text.
+- `InboundAdvice`: `reference_number` = the customer's PO/reference; `reference_client` = a second client-side reference; `inbound_reference` = WOMS reference (`IB-…`); `expected_colli` = total packages announced; `received_piece_count` = pieces counted at the dock (a manual figure checked against received quantities); `storage_start_date/storage_end_date` = expected storage period; `adr_status` = dangerous-goods flag (Yes/No); `rejection_reason` is set on reject. `transport_details` is a legacy free-text field.
 - `InboundLine.qty` = number of **packages** (not inner pieces); `received_qty` = packages actually received.
 - `Cargo` (HU): `outer_package_no` is the HU number within its inbound; `qty`/`received_qty` = packages packed in it; `unit` = HU type; `current_location_id` = where it is now (null when not in a rack); `reserved_location_id` exists but is **no longer written**; `dimensions` is a legacy display string; `description` is generated from contents.
-- `Documents.file_id` holds the **object key** in storage; which bucket it lives in is not recorded (the file service tries each).
+- `Documents.file_id` holds the **storage key**; the reference build did not record which storage area (documents or photos) held the file, so retrieval tried both. A rebuild should record the area.
 - `AuditLog.details` is a JSON string. `Tasks.assigned_to` is free text (an email by convention).
 - Unused or legacy columns: `AppUsers.warehouse_id` (superseded by `UserWarehouseRole`), `RolePermissions.function_name` and `.warehouse_id` (the matrix is module-level only), `GRN.document_id`, `VALTask.completion_notes`.
-- **Delete behaviour to preserve or reconsider:** deleting a **Customer** cascades to its contacts, inbounds, lines, HUs, outbounds, pick tasks and VAL requests (the UI asks only "Delete this customer?"). Deleting a **Warehouse** cascades to zones → aisles → racks → locations and to `UserWarehouseRole`, and sets `warehouse_id` to null on operational records. Deleting an HU cascades to its `HuLine` rows. Deleting a location nulls HU `current_location_id`.
+- **Delete behaviour to preserve or reconsider:** deleting a **Customer** cascades to its contacts, inbounds, lines, HUs, outbounds, pick tasks and VAL requests. Deleting a **Warehouse** cascades to zones → aisles → racks → locations and to `UserWarehouseRole`, and sets `warehouse_id` to null on operational records. Deleting an HU cascades to its `HuLine` rows. Deleting a location nulls HU `current_location_id`.
 
-### 11.4 Table definitions (generated)
-Permissions line: *App Administrator* / *App User* are the native Catalyst roles (C=insert, R=select, U=update, D=delete) applied to direct browser access to the table. Every WOMS user except invited System Administrators holds the *App User* database role, so these are the rights ordinary staff actually have when the browser writes to a table. **Note that `InboundLine`, `HuLine`, `GRN`, `AuditLog` (and the structural/master tables) are read-only for *App User*** (see §14.3, defect 1).
+### 11.4 Entity definitions (generated)
 
 #### `Aisles`
-Permissions - App Administrator: CRUD; App User: R  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `name` | varchar | yes |  | max 200 chars |
-| `zone_id` | foreign key | yes |  | FK -> `Zones.ROWID` (on delete cascade) |
+| `name` | string(200) | yes |  |  |
+| `zone_id` | reference → Zones | yes |  | cascade delete |
 
 #### `AppUsers`
-Permissions - App Administrator: CRUD; App User: R  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `business_role` | varchar | yes |  | max 50 chars |
-| `catalyst_user_id` | varchar | yes | yes | max 100 chars |
-| `email` | varchar | yes | yes | max 200 chars |
-| `user_status` | varchar | yes |  | max 30 chars; default `Active` |
-| `warehouse_id` | foreign key |  |  | FK -> `Warehouses.ROWID` (on delete set-null) |
+| `business_role` | string(50) | yes |  |  |
+| `account_id` | string(100) | yes | yes |  |
+| `email` | string(200) | yes | yes |  |
+| `user_status` | string(30) | yes |  | default `Active` |
+| `warehouse_id` | reference → Warehouses |  |  | set null on delete |
 
 #### `AuditLog`
-Permissions - App Administrator: CRUD; App User: R  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `action_type` | varchar | yes |  | max 100 chars |
+| `action_type` | string(100) | yes |  |  |
 | `details` | text |  |  |  |
 | `event_timestamp` | datetime |  |  |  |
-| `module` | varchar | yes |  | max 100 chars |
-| `record_id` | varchar |  |  | max 100 chars |
-| `user_id` | varchar |  |  | max 100 chars |
+| `module` | string(100) | yes |  |  |
+| `record_id` | string(100) |  |  |  |
+| `user_id` | string(100) |  |  |  |
 
 #### `Cargo`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `current_location_id` | foreign key |  |  | FK -> `StorageLocations.ROWID` (on delete set-null) |
-| `customer_id` | foreign key | yes |  | FK -> `Customers.ROWID` (on delete cascade) |
+| `current_location_id` | reference → StorageLocations |  |  | set null on delete |
+| `customer_id` | reference → Customers | yes |  | cascade delete |
 | `description` | text |  |  |  |
-| `dimensions` | varchar |  |  | max 100 chars |
-| `height_cm` | double |  |  | 4 decimals |
-| `inbound_advice_id` | foreign key |  |  | FK -> `InboundAdvice.ROWID` (on delete cascade) |
-| `length_cm` | double |  |  | 4 decimals |
-| `outer_package_no` | varchar |  |  | max 20 chars |
-| `qr_code` | varchar |  | yes | max 100 chars |
-| `qty` | int |  |  |  |
-| `received_qty` | double |  |  | 4 decimals |
-| `reserved_location_id` | foreign key |  |  | FK -> `StorageLocations.ROWID` (on delete set-null) |
-| `status` | varchar | yes |  | max 30 chars; default `Received` |
-| `unit` | varchar |  |  | max 30 chars |
-| `warehouse_id` | foreign key |  |  | FK -> `Warehouses.ROWID` (on delete set-null) |
-| `weight` | double |  |  | 4 decimals |
-| `width_cm` | double |  |  | 4 decimals |
+| `dimensions` | string(100) |  |  |  |
+| `height_cm` | decimal(4 places) |  |  |  |
+| `inbound_advice_id` | reference → InboundAdvice |  |  | cascade delete |
+| `length_cm` | decimal(4 places) |  |  |  |
+| `outer_package_no` | string(20) |  |  |  |
+| `qr_code` | string(100) |  | yes |  |
+| `qty` | integer |  |  |  |
+| `received_qty` | decimal(4 places) |  |  |  |
+| `reserved_location_id` | reference → StorageLocations |  |  | set null on delete |
+| `status` | string(30) | yes |  | default `Received` |
+| `unit` | string(30) |  |  |  |
+| `warehouse_id` | reference → Warehouses |  |  | set null on delete |
+| `weight` | decimal(4 places) |  |  |  |
+| `width_cm` | decimal(4 places) |  |  |  |
 
 #### `CargoMovementLog`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `cargo_id` | foreign key | yes |  | FK -> `Cargo.ROWID` (on delete cascade) |
-| `from_location_id` | foreign key |  |  | FK -> `StorageLocations.ROWID` (on delete set-null) |
-| `moved_by` | varchar |  |  | max 100 chars |
+| `cargo_id` | reference → Cargo | yes |  | cascade delete |
+| `from_location_id` | reference → StorageLocations |  |  | set null on delete |
+| `moved_by` | string(100) |  |  |  |
 | `movement_timestamp` | datetime |  |  |  |
-| `movement_type` | varchar | yes |  | max 30 chars |
-| `to_location_id` | foreign key |  |  | FK -> `StorageLocations.ROWID` (on delete set-null) |
+| `movement_type` | string(30) | yes |  |  |
+| `to_location_id` | reference → StorageLocations |  |  | set null on delete |
 
 #### `Contacts`
-Permissions - App Administrator: CRUD; App User: CRUD  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `customer_id` | foreign key | yes |  | FK -> `Customers.ROWID` (on delete cascade) |
-| `email` | varchar |  |  | max 200 chars |
-| `first_name` | varchar | yes |  | max 100 chars |
+| `customer_id` | reference → Customers | yes |  | cascade delete |
+| `email` | string(200) |  |  |  |
+| `first_name` | string(100) | yes |  |  |
 | `is_primary` | boolean | yes |  | default `false` |
-| `last_name` | varchar | yes |  | max 100 chars |
-| `phone` | varchar |  |  | max 50 chars |
-| `salutation` | varchar |  |  | max 10 chars |
+| `last_name` | string(100) | yes |  |  |
+| `phone` | string(50) |  |  |  |
+| `salutation` | string(10) |  |  |  |
 
 #### `Customers`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
 | `address` | text |  |  |  |
-| `contact_person` | varchar |  |  | max 200 chars |
-| `email` | varchar |  |  | max 200 chars |
-| `name` | varchar | yes | yes | max 200 chars |
+| `contact_person` | string(200) |  |  |  |
+| `email` | string(200) |  |  |  |
+| `name` | string(200) | yes | yes |  |
 | `operational_preferences` | text |  |  |  |
-| `phone` | varchar |  |  | max 50 chars |
-| `status` | varchar | yes |  | max 30 chars; default `Active` |
+| `phone` | string(50) |  |  |  |
+| `status` | string(30) | yes |  | default `Active` |
 
 #### `Dispatch`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `confirmation_document_id` | varchar |  |  | max 200 chars |
+| `confirmation_document_id` | string(200) |  |  |  |
 | `dispatch_date` | datetime |  |  |  |
-| `dispatched_by` | varchar |  |  | max 100 chars |
-| `outbound_request_id` | foreign key | yes |  | FK -> `OutboundRequest.ROWID` (on delete cascade) |
-| `status` | varchar | yes |  | max 30 chars; default `Pending` |
+| `dispatched_by` | string(100) |  |  |  |
+| `outbound_request_id` | reference → OutboundRequest | yes |  | cascade delete |
+| `status` | string(30) | yes |  | default `Pending` |
 | `vehicle_details` | text |  |  |  |
 
 #### `Documents`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `doc_type` | varchar | yes |  | max 100 chars |
-| `file_id` | varchar |  |  | max 200 chars |
-| `linked_module` | varchar | yes |  | max 100 chars |
-| `linked_record_id` | varchar | yes |  | max 100 chars |
-| `uploaded_by` | varchar |  |  | max 100 chars |
+| `doc_type` | string(100) | yes |  |  |
+| `file_id` | string(200) |  |  |  |
+| `linked_module` | string(100) | yes |  |  |
+| `linked_record_id` | string(100) | yes |  |  |
+| `uploaded_by` | string(100) |  |  |  |
 | `uploaded_date` | datetime |  |  |  |
 
 #### `GRN`
-Permissions - App Administrator: CRUD; App User: R  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `document_id` | varchar |  |  | max 200 chars |
+| `document_id` | string(200) |  |  |  |
 | `generated_date` | datetime |  |  |  |
-| `grn_number` | varchar | yes | yes | max 100 chars |
-| `inbound_advice_id` | foreign key | yes |  | FK -> `InboundAdvice.ROWID` (on delete cascade) |
-| `status` | varchar | yes |  | max 30 chars; default `Pending` |
-| `verified_by` | varchar |  |  | max 100 chars |
+| `grn_number` | string(100) | yes | yes |  |
+| `inbound_advice_id` | reference → InboundAdvice | yes |  | cascade delete |
+| `status` | string(30) | yes |  | default `Pending` |
+| `verified_by` | string(100) |  |  |  |
 
 #### `HuLine`
-Permissions - App Administrator: CRUD; App User: R  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `cargo_id` | foreign key | yes |  | FK -> `Cargo.ROWID` (on delete cascade) |
-| `inbound_line_id` | foreign key | yes |  | FK -> `InboundLine.ROWID` (on delete cascade) |
-| `qty` | double |  |  | 4 decimals |
+| `cargo_id` | reference → Cargo | yes |  | cascade delete |
+| `inbound_line_id` | reference → InboundLine | yes |  | cascade delete |
+| `qty` | decimal(4 places) |  |  |  |
 
 #### `InboundAdvice`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `adr_status` | varchar |  |  | max 10 chars |
-| `cmr_number` | varchar |  |  | max 50 chars |
-| `customer_id` | foreign key |  |  | FK -> `Customers.ROWID` (on delete cascade) |
-| `destination` | varchar |  |  | max 150 chars |
-| `driver_name` | varchar |  |  | max 100 chars |
-| `expected_colli` | int |  |  |  |
+| `adr_status` | string(10) |  |  |  |
+| `cmr_number` | string(50) |  |  |  |
+| `customer_id` | reference → Customers |  |  | cascade delete |
+| `destination` | string(150) |  |  |  |
+| `driver_name` | string(100) |  |  |  |
+| `expected_colli` | integer |  |  |  |
 | `expected_date` | date |  |  |  |
-| `inbound_reference` | varchar |  | yes | max 30 chars |
-| `license_plate` | varchar |  |  | max 30 chars |
-| `received_piece_count` | int |  |  |  |
-| `reference_client` | varchar |  |  | max 100 chars |
-| `reference_number` | varchar |  |  | max 100 chars |
+| `inbound_reference` | string(30) |  | yes |  |
+| `license_plate` | string(30) |  |  |  |
+| `received_piece_count` | integer |  |  |  |
+| `reference_client` | string(100) |  |  |  |
+| `reference_number` | string(100) |  |  |  |
 | `rejection_reason` | text |  |  |  |
 | `remarks` | text |  |  |  |
-| `status` | varchar | yes |  | max 30 chars; default `Submitted` |
+| `status` | string(30) | yes |  | default `Submitted` |
 | `storage_end_date` | date |  |  |  |
 | `storage_start_date` | date |  |  |  |
-| `supplier_id` | foreign key |  |  | FK -> `Suppliers.ROWID` (on delete set-null) |
+| `supplier_id` | reference → Suppliers |  |  | set null on delete |
 | `transport_details` | text |  |  |  |
-| `transport_type` | varchar |  |  | max 50 chars |
-| `transporter_id` | foreign key |  |  | FK -> `Transporters.ROWID` (on delete set-null) |
-| `warehouse_id` | foreign key |  |  | FK -> `Warehouses.ROWID` (on delete set-null) |
+| `transport_type` | string(50) |  |  |  |
+| `transporter_id` | reference → Transporters |  |  | set null on delete |
+| `warehouse_id` | reference → Warehouses |  |  | set null on delete |
 | `warehouse_unloading_date` | date |  |  |  |
-| `warehouse_unloading_time` | varchar |  |  | max 10 chars |
+| `warehouse_unloading_time` | string(10) |  |  |  |
 
 #### `InboundLine`
-Permissions - App Administrator: CRUD; App User: R  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `customer_id` | foreign key |  |  | FK -> `Customers.ROWID` (on delete cascade) |
+| `customer_id` | reference → Customers |  |  | cascade delete |
 | `description` | text |  |  |  |
-| `height_cm` | double |  |  | 4 decimals |
-| `inbound_advice_id` | foreign key | yes |  | FK -> `InboundAdvice.ROWID` (on delete cascade) |
-| `length_cm` | double |  |  | 4 decimals |
-| `line_no` | varchar |  |  | max 20 chars |
-| `qty` | double |  |  | 4 decimals |
-| `received_qty` | double |  |  | 4 decimals |
-| `unit` | varchar |  |  | max 30 chars |
-| `warehouse_id` | foreign key |  |  | FK -> `Warehouses.ROWID` (on delete set-null) |
-| `weight` | double |  |  | 4 decimals |
-| `width_cm` | double |  |  | 4 decimals |
+| `height_cm` | decimal(4 places) |  |  |  |
+| `inbound_advice_id` | reference → InboundAdvice | yes |  | cascade delete |
+| `length_cm` | decimal(4 places) |  |  |  |
+| `line_no` | string(20) |  |  |  |
+| `qty` | decimal(4 places) |  |  |  |
+| `received_qty` | decimal(4 places) |  |  |  |
+| `unit` | string(30) |  |  |  |
+| `warehouse_id` | reference → Warehouses |  |  | set null on delete |
+| `weight` | decimal(4 places) |  |  |  |
+| `width_cm` | decimal(4 places) |  |  |  |
 
 #### `OutboundRequest`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
 | `arrived_at` | datetime |  |  |  |
-| `checked_in_by` | varchar |  |  | max 150 chars |
-| `customer_id` | foreign key | yes |  | FK -> `Customers.ROWID` (on delete cascade) |
-| `driver_id_number` | varchar |  |  | max 60 chars |
-| `driver_name` | varchar |  |  | max 100 chars |
-| `driver_phone` | varchar |  |  | max 40 chars |
-| `outbound_reference` | varchar |  | yes | max 30 chars |
-| `reference_number` | varchar |  |  | max 100 chars |
+| `checked_in_by` | string(150) |  |  |  |
+| `customer_id` | reference → Customers | yes |  | cascade delete |
+| `driver_id_number` | string(60) |  |  |  |
+| `driver_name` | string(100) |  |  |  |
+| `driver_phone` | string(40) |  |  |  |
+| `outbound_reference` | string(30) |  | yes |  |
+| `reference_number` | string(100) |  |  |  |
 | `requested_date` | date |  |  |  |
-| `status` | varchar | yes |  | max 30 chars; default `Submitted` |
-| `trailer_plate` | varchar |  |  | max 30 chars |
-| `transporter_id` | foreign key |  |  | FK -> `Transporters.ROWID` (on delete set-null) |
-| `vehicle_plate` | varchar |  |  | max 30 chars |
-| `warehouse_id` | foreign key |  |  | FK -> `Warehouses.ROWID` (on delete set-null) |
+| `status` | string(30) | yes |  | default `Submitted` |
+| `trailer_plate` | string(30) |  |  |  |
+| `transporter_id` | reference → Transporters |  |  | set null on delete |
+| `vehicle_plate` | string(30) |  |  |  |
+| `warehouse_id` | reference → Warehouses |  |  | set null on delete |
 
 #### `PackageTypes`
-Permissions - App Administrator: CRUD; App User: R  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `capacity_unit` | varchar |  |  | max 50 chars |
-| `compatible_location_types` | varchar |  |  | max 255 chars |
-| `name` | varchar | yes | yes | max 100 chars |
-| `standard_height_cm` | double |  |  | 4 decimals |
-| `standard_length_cm` | double |  |  | 4 decimals |
-| `standard_weight_kg` | double |  |  | 4 decimals |
-| `standard_width_cm` | double |  |  | 4 decimals |
-| `status` | varchar | yes |  | max 30 chars; default `Active` |
-| `units_per_item` | double |  |  | 4 decimals; default `1.0000` |
+| `capacity_unit` | string(50) |  |  |  |
+| `compatible_location_types` | string(255) |  |  |  |
+| `name` | string(100) | yes | yes |  |
+| `standard_height_cm` | decimal(4 places) |  |  |  |
+| `standard_length_cm` | decimal(4 places) |  |  |  |
+| `standard_weight_kg` | decimal(4 places) |  |  |  |
+| `standard_width_cm` | decimal(4 places) |  |  |  |
+| `status` | string(30) | yes |  | default `Active` |
+| `units_per_item` | decimal(4 places) |  |  | default `1.0000` |
 
 #### `PickTask`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `assigned_to` | varchar |  |  | max 100 chars |
-| `cargo_id` | foreign key | yes |  | FK -> `Cargo.ROWID` (on delete cascade) |
-| `outbound_request_id` | foreign key | yes |  | FK -> `OutboundRequest.ROWID` (on delete cascade) |
-| `status` | varchar | yes |  | max 30 chars; default `Assigned` |
+| `assigned_to` | string(100) |  |  |  |
+| `cargo_id` | reference → Cargo | yes |  | cascade delete |
+| `outbound_request_id` | reference → OutboundRequest | yes |  | cascade delete |
+| `status` | string(30) | yes |  | default `Assigned` |
 
 #### `Racks`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `aisle_id` | foreign key |  |  | FK -> `Aisles.ROWID` (on delete cascade) |
-| `code` | varchar | yes |  | max 100 chars |
+| `aisle_id` | reference → Aisles |  |  | cascade delete |
+| `code` | string(100) | yes |  |  |
 
 #### `RolePermissions`
-Permissions - App Administrator: CRUD; App User: R  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `function_name` | varchar |  |  | max 100 chars |
-| `module` | varchar | yes |  | max 100 chars |
-| `role` | varchar | yes |  | max 100 chars |
-| `warehouse_id` | foreign key |  |  | FK -> `Warehouses.ROWID` (on delete cascade) |
+| `function_name` | string(100) |  |  |  |
+| `module` | string(100) | yes |  |  |
+| `role` | string(100) | yes |  |  |
+| `warehouse_id` | reference → Warehouses |  |  | cascade delete |
 
 #### `ScanHistory`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `cargo_id` | foreign key | yes |  | FK -> `Cargo.ROWID` (on delete cascade) |
-| `scan_context` | varchar | yes |  | max 30 chars |
+| `cargo_id` | reference → Cargo | yes |  | cascade delete |
+| `scan_context` | string(30) | yes |  |  |
 | `scan_timestamp` | datetime |  |  |  |
-| `scanned_by` | varchar |  |  | max 100 chars |
+| `scanned_by` | string(100) |  |  |  |
 
 #### `StorageLocations`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `bay` | int |  |  |  |
-| `capacity` | int |  |  |  |
-| `capacity_unit` | varchar |  |  | max 50 chars; default `Pallet Positions` |
-| `height_cm` | double |  |  | 4 decimals |
-| `length_cm` | double |  |  | 4 decimals |
-| `location_code` | varchar | yes | yes | max 100 chars |
-| `location_type` | varchar |  |  | max 100 chars |
-| `max_weight_kg` | double |  |  | 4 decimals |
-| `occupancy_status` | varchar | yes |  | max 30 chars; default `Empty` |
-| `rack_id` | foreign key | yes |  | FK -> `Racks.ROWID` (on delete cascade) |
-| `rack_level` | int |  |  |  |
-| `width_cm` | double |  |  | 4 decimals |
+| `bay` | integer |  |  |  |
+| `capacity` | integer |  |  |  |
+| `capacity_unit` | string(50) |  |  | default `Pallet Positions` |
+| `height_cm` | decimal(4 places) |  |  |  |
+| `length_cm` | decimal(4 places) |  |  |  |
+| `location_code` | string(100) | yes | yes |  |
+| `location_type` | string(100) |  |  |  |
+| `max_weight_kg` | decimal(4 places) |  |  |  |
+| `occupancy_status` | string(30) | yes |  | default `Empty` |
+| `rack_id` | reference → Racks | yes |  | cascade delete |
+| `rack_level` | integer |  |  |  |
+| `width_cm` | decimal(4 places) |  |  |  |
 
 #### `Suppliers`
-Permissions - App Administrator: CRUD; App User: CRUD  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
 | `address` | text |  |  |  |
-| `email` | varchar |  |  | max 200 chars |
-| `name` | varchar | yes | yes | max 200 chars |
-| `phone` | varchar |  |  | max 50 chars |
-| `status` | varchar | yes |  | max 30 chars; default `Active` |
+| `email` | string(200) |  |  |  |
+| `name` | string(200) | yes | yes |  |
+| `phone` | string(50) |  |  |  |
+| `status` | string(30) | yes |  | default `Active` |
 
 #### `Tasks`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `assigned_to` | varchar |  |  | max 100 chars |
+| `assigned_to` | string(100) |  |  |  |
 | `due_date` | datetime |  |  |  |
-| `module_ref` | varchar |  |  | max 100 chars |
-| `record_ref_id` | varchar |  |  | max 100 chars |
-| `status` | varchar | yes |  | max 30 chars; default `Assigned` |
-| `task_priority` | varchar |  |  | max 30 chars |
-| `task_type` | varchar | yes |  | max 100 chars |
-| `warehouse_id` | foreign key |  |  | FK -> `Warehouses.ROWID` (on delete set-null) |
+| `module_ref` | string(100) |  |  |  |
+| `record_ref_id` | string(100) |  |  |  |
+| `status` | string(30) | yes |  | default `Assigned` |
+| `task_priority` | string(30) |  |  |  |
+| `task_type` | string(100) | yes |  |  |
+| `warehouse_id` | reference → Warehouses |  |  | set null on delete |
 
 #### `Transporters`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `contact_person` | varchar |  |  | max 150 chars |
-| `name` | varchar | yes | yes | max 200 chars |
-| `phone` | varchar |  |  | max 40 chars |
-| `status` | varchar | yes |  | max 30 chars; default `Active` |
-| `vehicle_registration` | varchar |  |  | max 40 chars |
+| `contact_person` | string(150) |  |  |  |
+| `name` | string(200) | yes | yes |  |
+| `phone` | string(40) |  |  |  |
+| `status` | string(30) | yes |  | default `Active` |
+| `vehicle_registration` | string(40) |  |  |  |
 
 #### `UserWarehouseRole`
-Permissions - App Administrator: CRUD; App User: R  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `app_user_id` | foreign key | yes |  | FK -> `AppUsers.ROWID` (on delete cascade) |
-| `business_role` | varchar | yes |  | max 50 chars |
-| `warehouse_id` | foreign key | yes |  | FK -> `Warehouses.ROWID` (on delete cascade) |
+| `app_user_id` | reference → AppUsers | yes |  | cascade delete |
+| `business_role` | string(50) | yes |  |  |
+| `warehouse_id` | reference → Warehouses | yes |  | cascade delete |
 
 #### `VALRequest`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `cargo_id` | foreign key | yes |  | FK -> `Cargo.ROWID` (on delete cascade) |
-| `customer_id` | foreign key | yes |  | FK -> `Customers.ROWID` (on delete cascade) |
+| `cargo_id` | reference → Cargo | yes |  | cascade delete |
+| `customer_id` | reference → Customers | yes |  | cascade delete |
 | `requested_date` | date |  |  |  |
-| `service_type` | varchar | yes |  | max 30 chars |
-| `status` | varchar | yes |  | max 30 chars; default `Requested` |
+| `service_type` | string(30) | yes |  |  |
+| `status` | string(30) | yes |  | default `Requested` |
 
 #### `VALTask`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `assigned_to` | varchar |  |  | max 100 chars |
+| `assigned_to` | string(100) |  |  |  |
 | `completion_notes` | text |  |  |  |
-| `status` | varchar | yes |  | max 30 chars; default `Assigned` |
-| `val_request_id` | foreign key | yes |  | FK -> `VALRequest.ROWID` (on delete cascade) |
+| `status` | string(30) | yes |  | default `Assigned` |
+| `val_request_id` | reference → VALRequest | yes |  | cascade delete |
 
 #### `Warehouses`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
 | `address` | text |  |  |  |
-| `name` | varchar | yes | yes | max 200 chars |
-| `status` | varchar | yes |  | max 30 chars; default `Active` |
-| `timezone` | varchar |  |  | max 50 chars |
+| `name` | string(200) | yes | yes |  |
+| `status` | string(30) | yes |  | default `Active` |
+| `timezone` | string(50) |  |  |  |
 
 #### `Zones`
-Permissions - App Administrator: CRUD; App User: CRU  (C=insert R=select U=update D=delete)
 
-| Column | Type | Required | Unique | Notes |
+| Field | Type | Required | Unique | Notes |
 |---|---|---|---|---|
-| `ROWID` | bigint (system) | yes | yes | Primary key, auto-generated |
-| `name` | varchar | yes |  | max 200 chars |
-| `warehouse_id` | foreign key | yes |  | FK -> `Warehouses.ROWID` (on delete cascade) |
-| `zone_type` | varchar |  |  | max 100 chars |
+| `name` | string(200) | yes |  |  |
+| `warehouse_id` | reference → Warehouses | yes |  | cascade delete |
+| `zone_type` | string(100) |  |  |  |
 
 
----
+## 12. Server operations required
 
-## 12. Services and function contracts
+Every operation below must **require an authenticated user** and check that user's role and warehouse. Business operations not listed here (create/read/update/delete of the entities in §11, scans, GRN creation and verification, accept/reject, dispatch, delivery) are ordinary API endpoints whose behaviour is fully described by the workflows in §6 and the rules in §13; in the reference application they were performed directly from the browser, which a rebuild should replace with server endpoints.
 
-All functions are Node 18 Advanced-I/O (Express) endpoints called from the browser with a JSON body; every one returns JSON (`{ error }` with HTTP 4xx/5xx on failure). **All eight are configured with authentication "optional"** (anonymous callers are accepted: see §14.2). Calls from the Slate site must carry the user's token (`generateAuthToken()`) in the `Authorization` header and use the functions' absolute URL; the Slate domain must be whitelisted for CORS.
-
-| Function | Request body | Behaviour | Response |
+| Operation | Inputs | Behaviour | Result |
 |---|---|---|---|
-| **uploadFile** | `fileBase64`, `fileName`, `bucketKey` (`DOCUMENTS` \| `CARGO_PHOTOS`), `docType`, `linkedModule`, `linkedRecordId`, `uploadedBy` (JSON limit 15 MB) | Writes the object `<module>-<recordId>-<timestamp>-<fileName>` to the bucket with **admin scope**, inserts a `Documents` row, audits `UPLOAD_DOCUMENT` | `{ fileName, bucket, documentId }`; 400 on missing field/bad bucket |
-| **getFileUrl** | `fileId`, optional `bucketKey` | Reads the object (tries the named bucket, then the other); ≤ 4 MB → `{ contentType, base64 }`, larger → `{ url }` signed for 3,600 s; 404 if absent | as left |
-| **notifyEvent** | `eventType`, `recipientEmail`, optional `recordId`, `message`, `module` | Sends one plain-text email (§9) and audits | `{ eventType, recipientEmail, subject }` |
-| **inviteUser** | `firstName`, `lastName?`, `email`, `businessRole` (System Administrator \| Warehouse Staff), `redirectUrl`, `assignments[{warehouseId, role}]` | **Caller must be an active System Administrator** (identity from the authenticated request, looked up in `AppUsers`; unidentifiable callers rejected with 403). Staff need ≥ 1 assignment, one per warehouse. Registers the Catalyst user (App Administrator for admins, App User otherwise; sends the invitation email), creates `AppUsers` and `UserWarehouseRole` rows, audits `INVITE_USER` | `{ email, businessRole, catalystUserId }` |
-| **logAudit** | `actionType`, `module`, `recordId?`, `details?` | Inserts an `AuditLog` row | `{ status: 'logged' }` |
-| **recordScan** *(server version, not used by the UI)* | `cargoId`, `scanContext` (receiving, storage, relocation, val, dispatch), `scannedBy`, `locationId?` | Same scan semantics as §6.4 but fewer contexts | `{ cargoId, scanContext, status }` |
-| **createGRN** *(not used by the UI)* | `inboundAdviceId`, `verifiedBy?` | Builds a PDF with pdfkit, stores it in `woms-documents`, inserts a `GRN` row and a `Documents` row | `{ grnNumber, fileName, … }` |
-| **generateQRCode** *(not used by the UI)* | `cargoId` | Renders `WOMS-CARGO-<id>` to PNG in `woms-qr-labels`, sets `Cargo.qr_code` | `{ cargoId, qrPayload, fileName }` |
+| **Upload file** | file content, file name, storage area (*documents* or *photos*), doc type, linked module, linked record id | Reject files over the size limit (reference: 15 MB). Store the file under a unique name (`<module>-<record id>-<timestamp>-<file name>`) in private storage, create a `Documents` record (linked module, linked record id as text, doc type, storage key, uploader email, upload time) and write an audit entry. | storage key, document id |
+| **Get file for display** | storage key (and, ideally, the storage area) | Return the file inline when small (reference: ≤ 4 MB) so it can be shown directly, otherwise a **signed link** valid for a short time (reference: 1 hour). 404 if not found. | content type + data, or link |
+| **Send notification** | event type, recipient email, optional record id, message, module | Send one plain-text email from the configured sender using the event's subject (§9), then write an audit entry. | event, recipient, subject |
+| **Invite user** | first name, last name (optional), email, access level (*System Administrator* or *Warehouse Staff*), assignments `[ {warehouse, role} ]` | Caller must be an **active System Administrator**. Staff need at least one assignment, one per warehouse. Create the account and send the invitation email; create the application profile (`AppUsers`, status Active) and one `UserWarehouseRole` per assignment; write an audit entry. | email, access level, account id |
+| **Write audit entry** | action type, module, record id, details | Append to the audit log; the user comes from the session, never from the request body. | – |
+| **Generate GRN document** *(recommended; not in the reference build)* | inbound id | Produce and store a PDF of the Goods Receipt Note, link it from the GRN and Documents records. | file reference |
 
-**Environment:** `WOMS_NOTIFY_FROM_EMAIL` (sender address for notifications).
-**Client-side equivalents** (authoritative in the running app): QR payload generation, GRN creation/verification, scans, audit writes are all performed directly by the browser against the Data Store (`generateQRCode`, `createGRN`, `recordScan`, `logAudit` in `lib/api.js`). Only uploads, file retrieval, email and user invitation go through functions, because they need server privileges.
-
-**Hosting configuration (Slate):** every unknown path serves `index.html` (SPA fallback: `/* /index.html 200`); a static `/app/index.html` forwards to `/` (Catalyst's default post-login address on the legacy path); `client-package.json` declares `homepage` and `login_redirect` `/` for Slate. The page HTML is served with a one-year cache header, so the app checks for a newer build on load and reloads at most once per ten minutes (§14.4).
+**Configuration values:** sender email address for notifications; upload size limit; inline-file size limit; signed-link lifetime.
 
 ---
 
 ## 13. Business rules catalogue
-Numbered so tests and tickets can reference them. "Enforced" says where the current build enforces the rule (**UI** = browser only; **DB** = database constraint).
+Numbered so tests and tickets can reference them. **All rules must be enforced on the server**; the reference build enforced most of them only in the browser.
 
 ### Access
-- **R-A1** A user without an active `AppUsers` row (or with `user_status = Inactive`, or a staff user with no warehouse assignment) has no access. *UI.*
-- **R-A2** Module access is the union of the modules granted to the user's roles (§3.3). Pages outside it show "No access". *UI.*
-- **R-A3** Non-administrators see only records of their assigned warehouses; records without a warehouse are administrator-only; opening another warehouse's record is refused. *UI (query filter).*
-- **R-A4** Approvers (admin, manager, supervisor of the record's warehouse) may create/edit/accept/reject inbound requests, mark received and verify GRNs. *UI.*
-- **R-A5** Only a System Administrator may edit a Completed inbound, reopen a Rejected one, configure warehouses, invite users or change access. *UI; invitation also enforced in the function.*
-- **R-A6** Operators see only tasks assigned to their email. *UI.*
-- **R-A7** The working-warehouse selection decides where new inbounds/outbounds are created and narrows lists; "All" disables creation. *UI.*
+- **R-A1** A user without an active application profile (or with status Inactive, or a staff user with no warehouse assignment) has no access.
+- **R-A2** Module access is the union of the modules granted to the user's roles (§3.3). Anything outside it is refused.
+- **R-A3** Non-administrators see only records of their assigned warehouses; records without a warehouse are administrator-only; opening another warehouse's record is refused.
+- **R-A4** Approvers (administrator, manager, supervisor of the record's warehouse) may create/edit/accept/reject inbound requests, mark received and verify GRNs.
+- **R-A5** Only a System Administrator may edit a Completed inbound, reopen a Rejected one, configure warehouses, invite users or change access.
+- **R-A6** Operators see only tasks assigned to their email.
+- **R-A7** The working-warehouse selection decides where new inbounds/outbounds are created and narrows lists; "All" disables creation.
 
 ### Inbound
 - **R-I1** Expected arrival cannot be in the past while the inbound is Requested (historical dates are preserved afterwards).
@@ -983,7 +915,7 @@ Numbered so tests and tickets can reference them. "Enforced" says where the curr
 - **R-I6** Accept or Reject needs an approver; Reject needs a non-empty reason; an availability shortage never blocks accepting.
 - **R-I7** Editing a Confirmed inbound returns it to Requested (after confirmation); editing Requested/Confirmed is allowed only for approvers.
 - **R-I8** Mark as Received requires unloading date, time, piece count, plate, driver and a driver signature. A piece count different from Σ received quantities warns but does not block.
-- **R-I9** Handling Units: cannot pack more than "left to pack" per line; HU type must be a Package Type (defaults exist); each HU gets a unique QR at creation; a failed content write removes the HU; deletable only while without a location.
+- **R-I9** Handling Units: cannot pack more than "left to pack" per line; HU type must be a Package Type; each HU gets a unique QR at creation; if its contents cannot be saved the HU is removed; deletable only while it has no location.
 - **R-I10** Moving to Put-away needs ≥ 1 HU and no packages left to pack.
 - **R-I11** The inbound moves to Put Away only when every HU has a location.
 - **R-I12** One GRN per inbound (creation is idempotent); the inbound cannot be Completed until the GRN is Verified by an approver and a recipient email is entered.
@@ -1000,16 +932,15 @@ Numbered so tests and tickets can reference them. "Enforced" says where the curr
 ### Outbound
 - **R-O1** Only a customer's own HUs that are not Dispatched, Delivered or already Picked can be added to a request.
 - **R-O2** Dispatch requires every line Picked **and** the driver checked in (name and vehicle plate mandatory).
-- **R-O3** Confirming dispatch sets every HU Dispatched, creates the `Dispatch` record, sets the request Dispatched and notifies the customer if an email exists; a notification failure never blocks dispatch.
+- **R-O3** Confirming dispatch sets every HU Dispatched, creates the dispatch record, sets the request Dispatched and notifies the customer if an email exists; a notification failure never blocks dispatch.
 - **R-O4** Delivery can only be confirmed after dispatch and sets the HUs Delivered.
 - **R-O5** A picked line cannot be removed from a request; check-in cannot be edited after dispatch.
 - **R-O6** Outbound requests are looked up by pickup reference, customer reference, customer name, id, or by scanning the Pickup Pass QR (the date filter is ignored while searching).
 
-### Data and platform
-- **R-D1** References (`IB-`, `OB-`) and GRN numbers are derived from the record id; HU numbers are sequential per inbound.
-- **R-D2** Numeric/date fields are omitted, never sent as empty strings; datetimes use `YYYY-MM-DD HH:mm:ss`; ids are strings.
-- **R-D3** Every status transition that matters writes an audit row; audit failures never block the action.
-- **R-D4** Row-level changes to master data (customers, suppliers, transporters, warehouses, package types, role permissions, storage layout) are visible to other users within five minutes (client-side cache), and immediately to the editing user.
+### Data
+- **R-D1** References (`IB-`, `OB-`) and GRN numbers follow the formats in §4.2; HU numbers are sequential per inbound.
+- **R-D2** Optional numeric/date fields are null when empty; timestamps are UTC.
+- **R-D3** Every status transition that matters writes an audit row; an audit failure never blocks the business action.
 
 ### Notifications
 - **R-N1** Notifications are best-effort and never roll back the operation that caused them (§9).
@@ -1017,77 +948,83 @@ Numbered so tests and tickets can reference them. "Enforced" says where the curr
 
 ---
 
-## 14. Known gaps, defects and risks (as of 2026-10-14)
+## 14. Known gaps, defects and risks of the reference build
+Use this section to decide what to build better, not to copy.
 
 ### 14.1 Specified in the product documents but not built
 1. **Multiple physical receipts per inbound**, each with its own GRN, driver, condition and photos; running received/remaining totals; a real *Partially Received* state; "close short". Today one inbound = one receipt = one GRN.
 2. **Permanent location QR labels** and the "scan HU → scan location → confirm" put-away; only HU QR exists.
-3. **PDA/handheld screens** (6-step inbound flow etc.); the app is merely responsive.
+3. **Handheld (PDA) screens** (6-step inbound flow etc.); the app is merely responsive.
 4. **Reports:** 2 of the 9 planned (inbound, occupancy, HUs, tasks, VAL are missing); no exports.
 5. **Notifications:** 11 of the 14 defined events are never sent; no in-app notifications.
 6. **Customs** status/MRN, per-line hazardous class and UN number, Excel import of lines, receipt condition/damage capture, exception handling.
 7. **Dashboards** as in the design mockups (status tiles per stage, quick actions, notification bell).
-8. **Customer portal**, SKU/batch/serial inventory, billing, transport planning, SaaS multi-tenancy (excluded or future).
+8. **Customer portal**, SKU/batch/serial inventory, billing, transport planning, multi-tenancy (excluded or future).
 9. An HU occupying **several locations**; **partial dispatch inside one outbound request** (an inbound's HUs *can* leave across several outbounds; a single request dispatches all its lines at once).
 10. Role gating for **Outbound, Storage, VAL and Tasks** beyond module/warehouse access; deactivating users from the UI.
 
-### 14.2 Security and integrity risks (to fix when porting)
-1. **All functions accept anonymous calls** (authentication "optional"). `uploadFile` and `getFileUrl` run with *admin scope* on the buckets, `notifyEvent` can email any address, `logAudit` can write arbitrary audit rows. They should require a signed-in user and check ownership/warehouse.
-2. **Business rules are enforced in the browser** (§2.1). A direct API caller bypasses role checks, status transitions and warehouse scoping. Move them server-side.
-3. Ordinary staff hold the *App User* database role, which can write most operational tables directly from the browser (`Cargo`, `Documents`, `Tasks`, `OutboundRequest`, `PickTask`, `Dispatch`, `ScanHistory`, `CargoMovementLog`, `InboundAdvice`, …) with no server-side check of the business rules.
-4. **Deleting a customer or warehouse cascades** to all dependent history with only a generic confirmation.
+### 14.2 Security and integrity risks to avoid
+1. **Rules enforced in the browser** (§2.3): a direct API caller could bypass role checks, status transitions and warehouse scoping.
+2. **Server operations that accepted anonymous callers**: file upload/retrieval (with elevated storage rights), email sending and audit writing must all require a signed-in user and check ownership/warehouse.
+3. **Permissions not matched to the workflow.** In the reference build, ordinary staff roles lacked write access to some records the workflow needs (line items, Handling Unit contents, GRN, audit entries), so the inbound flow only worked for administrators. In a rebuild, grant each role exactly the writes its workflow steps need and **test every workflow as a non-administrator** (acceptance scenario H, Appendix B).
+4. **Deleting a customer or warehouse cascades** to all dependent history with only a generic confirmation; prefer soft delete or block deletion of records with history.
 5. A single HU can be added to more than one outbound request (no uniqueness rule); the capacity "expected release" can then over-count.
-6. Cached reference data can be up to five minutes stale for other users.
 
 ### 14.3 Functional defects found while documenting
-1. **Ordinary staff cannot complete the inbound workflow.** In the database, the *App User* role has **read-only** access to `InboundLine`, `HuLine`, `GRN` and `AuditLog`. Since the browser writes these tables directly, a Warehouse Manager, Supervisor or Operator (who are all *App Users*) would be refused when adding line items, creating Handling Units, generating/verifying the GRN, or writing audit entries (audit writes fail silently). Only System Administrators (native *App Administrator* role) have been able to run the flow end to end. Fix: grant *App User* insert/update (and delete for /) on those tables, or, preferably, move these writes behind a server API (§15.2).
-2. **Tasks created in the UI have no `warehouse_id`**, so non-administrators (whose lists are warehouse-filtered) never see them; only administrators do.
-3. **VAL** requests are not warehouse-scoped; completing VAL does not change the HU's status (the `In VAL` scan context is never used) and sends no notification. *(Fixed in this build: opening "New VAL Request" used to crash because the cargo lookup referenced an undefined variable.)*
-4. The Finish screen says the confirmation email carries *Signed CMR, Photos, Inbound Summary and Label Overview*; **the email is a single line of text with no attachments**.
-5. The `INBOUND_COMPLETED` email has no subject template, so its subject is the literal event code. The dispatch email quotes the internal request id, not the pickup reference, and omits driver, vehicle, time and goods.
-6. The GRN is only a database row plus a printable page; no PDF is stored (the PDF function is unused). The same page serves as both inbound summary and GRN.
-7. Accepted-but-not-arrived inbounds reduce availability on **every** day of the projection, not from their arrival date; dashboard totals add different capacity units together (the per-unit table is reliable); the "Other" capacity unit has no locations; package types are global (not per customer) and their standard dimensions are unused.
-8. Reference numbers use the last six digits of the record id, not a true per-year sequence.
-9. `Cargo.reserved_location_id`, `GRN.document_id`, `RolePermissions.function_name/warehouse_id` and the legacy `AppUsers.warehouse_id` are unused.
+1. **Tasks created in the app have no warehouse**, so non-administrators (whose lists are warehouse-filtered) never see them; only administrators do.
+2. **VAL** requests are not warehouse-scoped; completing VAL does not change the HU's status (the `In VAL` scan context is never used) and sends no notification.
+3. The Finish screen says the confirmation email carries *Signed CMR, Photos, Inbound Summary and Label Overview*; **the email is a single line of text with no attachments**.
+4. The inbound-completion email has no subject (its subject is the raw event code). The dispatch email quotes an internal id, not the pickup reference, and omits driver, vehicle, time and goods.
+5. The GRN is only a record plus a printable page; no PDF is stored. The same page serves as both inbound summary and GRN.
+6. Accepted-but-not-arrived inbounds reduce availability on **every** day of the projection, not from their arrival date; dashboard totals add different capacity units together (the per-unit table is reliable); the "Other" capacity unit has no locations; package types are global (not per customer) and their standard dimensions are unused.
+7. Reference numbers were derived from the record id, not a true per-year sequence.
+8. Unused or legacy fields: `Cargo.reserved_location_id`, `GRN.document_id`, `RolePermissions.function_name/warehouse_id`, the legacy `AppUsers.warehouse_id`, `InboundAdvice.transport_details`.
 
-### 14.4 Operational notes learned in production
-- **Latency:** every platform round trip costs ≈ 0.8 s from the main user location (project in the US data center, users in India; warehouses in Europe), so pages feel slow regardless of code. Mitigations in the build: in-memory caching of reference lists, lazy-loaded below-the-fold sections, optimistic saves, fewer queries per page. A port should place the back end near the users.
-- **Stale builds:** the static host caches HTML for a year; the app self-checks for a newer build (once per ten minutes) and, if a page chunk fails, refreshes its cached copy and reloads once.
-- **Sign-in:** the embedded sign-in form only forwards a *path* (`/`) as the post-login target; a full URL is silently ignored and Catalyst falls back to the legacy `/app/index.html` (404 on Slate). The login screen detects repeated reload loops, stops embedding the form, and shows a session diagnostic. The app also refuses to run inside another page's frame.
-- **Function calls from Slate** need an access token generated by the SDK (`generateAuthToken`, SDK ≥ 4.6.1) and an absolute function URL; the Slate domain must be an authorized, CORS-enabled domain.
+### 14.4 Design lessons from operating the reference build
+- **Latency compounds.** Screens that issued many sequential or parallel round trips felt slow. Aim for one request per screen, cache reference lists (customers, warehouses, locations, package types, permissions) briefly, load below-the-fold sections (documents, tasks, audit) only when scrolled into view, and update the screen optimistically after a save.
+- **Stale front-end builds.** If the host serves the app's HTML with a long cache lifetime, users keep running old code after a release. Use short/no-cache HTML with hashed assets, or have the app check for a newer build and reload at most once per several minutes.
+- **Sign-in redirects.** Make the post-login destination explicit and absolute-path based; never let the app load inside another page's frame; detect repeated login-page loads and stop with an on-screen explanation instead of looping.
 
 ---
 
-## 15. Guidance for rebuilding on another platform
+## 15. Guidance for building WOMS on another platform
 
 ### 15.1 What to keep
 - The **plan/physical split** (`InboundLine` ↔ `HuLine` ↔ HU) and HU-level tracking of everything.
-- The **status vocabularies** (§11.2) and the derived fulfillment statuses (§7), including the Master-page "one contextual action" pattern for both inbound and outbound.
-- The **capacity maths** (§6.2) and the **allocation rules** (§6.3), including customer-dedicated locations, and the **scan model** (§6.4) with `ScanHistory` + `CargoMovementLog`.
-- The **role model**: global System Administrator, per-warehouse Manager/Supervisor/Operator, module-level permission matrix, "approver" concept.
+- The **status vocabularies** (§11.2) and the derived fulfillment statuses (§7), including the record-page pattern "one contextual action opens one stage popup" for both inbound and outbound.
+- The **capacity maths** (§6.2), the **allocation rules** (§6.3) including customer-dedicated locations, and the **scan model** (§6.4) with `ScanHistory` + `CargoMovementLog`.
+- The **role model**: global System Administrator, per-warehouse Manager/Supervisor/Operator, module-level permission matrix, the "approver" concept.
 
-### 15.2 What to change
-1. Put all business rules (§13) in a **server API**; the client only renders. Add authorization to every endpoint.
-2. Use a **real relational database** with the schema in §11, a per-year **sequence** for references, and enforce uniqueness of an HU on an open outbound.
+### 15.2 What to improve
+1. Put all business rules (§13) in a **server API**; add authorization to every endpoint.
+2. Use a **per-year sequence** for references, and enforce that an HU can be on at most one open outbound.
 3. Implement **multiple receipts per inbound**, a **GRN per receipt** (with generated PDF), a *Partially Received* state, receiving exceptions (damage/condition/photos), and **location QR** put-away.
 4. Complete the **notification set** (14 events) with proper templates, attachments and recipients (customer contacts), and an in-app notification centre.
 5. Add the missing **reports** and exports, role-gating for outbound/storage/VAL, task warehouse assignment, VAL ↔ HU status linkage, user deactivation.
 6. Soft-delete (or block deletion of) customers and warehouses that have history.
 
-### 15.3 Capability map (Catalyst → generic)
-| Needed capability | Used here | Generic equivalent |
+### 15.3 Platform checklist
+| Need | Requirement | Examples of how it can be met |
 |---|---|---|
-| Relational data + queries | Data Store + ZCQL, browser-direct | PostgreSQL/MySQL behind an API |
-| File storage (private, signed links) | Stratus buckets | S3/GCS/Azure Blob with presigned URLs |
-| Authentication, invitation, password reset | Catalyst Authentication (embedded form) | OIDC provider (Auth0, Cognito, Keycloak) or Zoho/Okta |
-| Transactional email | Catalyst Mail | SES, SendGrid, SMTP |
-| Server logic | 8 Advanced-I/O functions | REST/GraphQL API (Node, .NET, Java…) |
-| Static hosting + SPA routing | Slate / Web Client | Netlify, Vercel, CloudFront, any static host |
-| QR generation / scanning | `qrcode` + `html5-qrcode` in the browser | same libraries |
-| PDF output | browser print of HTML pages | server-side PDF (Puppeteer, pdfkit) |
+| Accounts, invitations, password reset, sessions | §2.2 Identity | Any identity service (OIDC provider, or the platform's built-in users) |
+| Relational data with cascade/set-null, unique constraints | §2.2, §11 | PostgreSQL/MySQL, or a platform database with relationships |
+| Private files with signed access | §2.2 | S3-compatible bucket, or the platform's storage with file permissions |
+| Server endpoints / functions | §2.3, §12 | REST/GraphQL service, or serverless functions |
+| Transactional email | §9 | SMTP/SES/SendGrid or the platform's messaging |
+| QR create/scan, print | §2.1 | Browser libraries (no server needed) |
+| Hosting of the web app | §2.1 | Any static or server host |
 
-### 15.4 Suggested build order
-1. Auth, users, roles, warehouses, masters. 2. Warehouse structure and package types. 3. Inbound request + availability check (capacity engine). 4. Receiving, HU creation, labels, put-away (scan model). 5. GRN, completion, notifications. 6. Storage operations. 7. Outbound with pickup pass, pick, check-in, dispatch, delivery. 8. VAL and tasks. 9. Reports, dashboard, audit views. 10. Then the "not built" items in §14.1.
+### 15.4 Notes if the target is Appwrite (verify against its current documentation)
+- **Users and roles:** Auth users with *labels* for the global level (System Administrator vs Warehouse Staff) and one **Team per warehouse** with team roles (Manager/Supervisor/Operator) – this maps the per-warehouse role model directly and lets document permissions use team roles.
+- **Data:** one **collection per entity** in §11 with the listed attributes, *relationship* attributes for the references (choose cascade for "on delete cascade" and set-null for "on delete set-null"), unique indexes for the unique fields, and a `warehouse` attribute on every operational record so permissions/queries can scope by warehouse.
+- **Permissions:** set document-level permissions from the warehouse team (read for the team; write per role) *and* enforce the rules in functions; do not rely on client-side checks.
+- **Computed data:** document databases offer limited joins/aggregation, so compute **capacity/availability, allocation suggestions, derived fulfillment statuses and dashboard counts in Functions** (or maintain counters), and return ready-to-display results.
+- **Files:** two Storage buckets (documents, photos) with encryption, private by default; serve through short-lived URLs from a function that checks the caller's warehouse.
+- **Email:** Messaging with an email provider; invitation via Teams membership invitations or the *Invite user* function (§12).
+- **Order of work:** identity and teams → masters and warehouse structure → inbound request and availability check → receiving, HU creation, labels, put-away → GRN, completion, notifications → storage operations → outbound → VAL and tasks → reports/dashboard → items in §14.1.
+
+### 15.5 Suggested build order (any platform)
+1. Auth, users, roles, warehouses, masters. 2. Warehouse structure and package types. 3. Inbound request + availability check (capacity engine). 4. Receiving, HU creation, labels, put-away (scan model). 5. GRN, completion, notifications. 6. Storage operations. 7. Outbound with pickup pass, pick, check-in, dispatch, delivery. 8. VAL and tasks. 9. Reports, dashboard, audit views. 10. The "not built" items in §14.1.
 
 ---
 
@@ -1106,21 +1043,26 @@ Numbered so tests and tickets can reference them. "Enforced" says where the curr
 | Other | Other | 1.0 | | | |
 
 ### A.2 Role permissions
-See the matrix in §3.3 (34 rows in `RolePermissions`: role × module, `function_name` and `warehouse_id` empty).
+The 34-row matrix is in §3.3 (role × module; the `function_name` and `warehouse_id` columns of the permissions table are unused).
 
-### A.3 Existing end-to-end test script
-`docs/TEST_JOURNEY.md` in the repository walks the complete Inbound → Storage → Outbound journey with sample data (3 line items: 40 cartons of T-shirts, 20 cartons of jeans, 10 boxes of spare parts), including date-rule checks, the availability check, partial receiving quantities, splitting/combining HUs, put-away, complete/finish, outbound pick/dispatch/deliver, and access checks with a second user. It is a ready-made acceptance suite for a port.
+## Appendix B: Acceptance scenarios
+Use these as the acceptance suite for a rebuild. Sample data: warehouse "Rotterdam DC2"; any customer, supplier and carrier; three line items – (1) 40 Cartons "Cotton T-shirts", 12 kg, 60×40×40 cm; (2) 20 Cartons "Denim jeans", 15 kg, 60×40×40; (3) 10 Boxes "Spare parts", 8 kg, 40×30×30.
 
-## Appendix B: Where each requirement lives in the code (for reference)
-| Area | Files |
-|---|---|
-| Access, roles, module map | `lib/access.js`, `lib/permissions.js`, `lib/roles.js`, `context/AuthContext.jsx` |
-| Data layer and queries | `lib/api.js`, `lib/catalystClient.js` |
-| Inbound | `pages/inbound/*` (list, record, 7 popups), `lib/inboundValidation.js`, `lib/inboundSummary.js`, `lib/fulfillmentStatus.js` |
-| Capacity and allocation | `lib/capacity.js`, `lib/allocation.js`, `pages/warehouse/WarehouseConfig.jsx` |
-| Storage, deliveries | `pages/storage/StoragePage.jsx`, `pages/delivery/DeliveryPage.jsx` |
-| Outbound | `pages/outbound/*` (list, record, 5 popups), `lib/outboundStatus.js` |
-| VAL, tasks | `pages/val/ValPage.jsx`, `pages/tasks/TasksPage.jsx`, `components/RecordTasks.jsx` |
-| Documents, signature, QR | `components/DocumentSlot.jsx`, `DocumentUploader.jsx`, `SignaturePad.jsx`, `StoredFile.jsx`, `QrCodeImage.jsx`, `QrScannerModal.jsx` |
-| Printed outputs | `pages/print/*` |
-| Functions | `functions/*` |
+**A. Request.** (1) "+ New Inbound" opens the Request form by itself. (2) Fill customer, supplier, carrier, destination, transport type Road Freight, CMR number. (3) ETA = yesterday → error and not saved; ETA = tomorrow → accepted; storage-from earlier than ETA → error; storage-to before storage-from → error; then set a valid period (tomorrow → about a month later). (4) Add the 3 lines; Expected Colli 60 → message "line items add up to 70", fix with "Set to 70". (5) After Done: record shows 3 lines, status Requested, buttons *Availability Check* and *Edit Request*. (6) Edit a line quantity and back; the page reflects it.
+
+**B. Availability check.** (1) One row per day, dates increasing, a "Required" row on top, no red cells. (2) Changing the warehouse updates the table; the comparison lists other warehouses. (3) Accept → status Confirmed, button *Mark as Received*. (4) Edit Request on a Confirmed inbound prompts that it returns to Requested; confirm; accept again.
+
+**C. Receive.** (1) *Mark as Received* disabled until unloading date/time, piece count, plate, driver and signature are done. (2) Upload a CMR photo, an extra photo and draw a signature; each appears as a thumbnail. (3) Receive 38 of line 1; piece count 70 shows a warning vs 68; set 68. (4) Mark as Received → status Received; lines show received 38/20/10. (5) Documents card shows previews.
+
+**D. Handling Units.** (1) Lines show *Received* and *Left to pack*. (2) Split line 1 (19 on 2 identical Pallets). (3) Combine lines 2 and 3 on one Pallet. "Left to pack" is 0 everywhere. (4) Over-packing is blocked with a message; deleting and recreating an HU works. (5) Continue → status HU Created; the record shows 3 HUs with contents; Print Labels shows QR labels.
+
+**E. Put-away.** (1) Each HU gets a suggested location in the right zone. (2) Store 3 of 3 → status Put Away; locations shown on the record. (3) Availability shows occupied pallet positions up by 3.
+
+**F. Complete.** (1) Complete Inbound → GRN generated, status Ready. (2) Finish: verify GRN, enter an email, complete (or continue without email) → status Completed. (3) A Completed inbound can be edited by an administrator only.
+
+**G. Outbound.** (1) New request: same customer and warehouse, requested date tomorrow, a PO reference. (2) Add two stored HUs. (3) Dispatch is disabled until every line is picked and the driver is checked in; pick each line by scan. (4) Enter vehicle details, confirm dispatch → request Dispatched, HUs leave their locations. (5) Availability shows occupied down by 2. (6) Mark Delivered; Deliveries lists them under Delivered.
+
+**H. Access (needs a second account).** (1) Invite a staff user: Manager in warehouse A, Operator in warehouse B. (2) Signed in as that user, only those two warehouses appear; approve actions show for A's inbounds, not B's. (3) Opening a third warehouse's record is refused. (4) **Repeat scenarios A–G as this non-administrator user** wherever the role allows (manager in A: all inbound steps incl. GRN verify; operator in B: receive-side steps from HU creation onward) and confirm no step fails for lack of write permission. (5) As administrator, change and remove that user's warehouses.
+
+**I. Regression.** (1) An inbound created under older status names (Pending/Submitted) appears as Requested and offers its actions. (2) Reloading mid-flow keeps status, lines, HUs and documents.
+
