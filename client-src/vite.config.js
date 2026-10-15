@@ -10,6 +10,8 @@ const isWebClientBuild = process.env.BUILD_TARGET === 'webclient';
 export default defineConfig({
   base: isWebClientBuild ? '/app/' : '/',
   plugins: [react()],
+  // Unit tests live in src; the browser tests in e2e/ are run by Playwright, not Vitest.
+  test: { include: ['src/**/*.test.js'] },
   build: isWebClientBuild
     ? { outDir: '../client', emptyOutDir: true }
     : {},

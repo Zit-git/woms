@@ -4,3 +4,10 @@ node_modules/
 *.log
 client-src/dist/
 client/.catalyst/
+
+# browser tests: saved sign-in session, reports, traces
+client-src/e2e/.auth/
+client-src/e2e/report/
+client-src/e2e/results/
+client-src/test-results/
+client-src/playwright-report/
