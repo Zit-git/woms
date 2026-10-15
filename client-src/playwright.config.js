@@ -2,8 +2,8 @@ import { defineConfig } from '@playwright/test';
 
 // Browser tests run against a deployed copy of the app, signed in through a saved
 // session file (see e2e/save-session.mjs) so no password is ever typed by a script.
-//   WOMS_URL  where to test; defaults to the legacy /app/ site (always has the latest deploy)
-export const BASE_URL = (process.env.WOMS_URL || 'https://woms-775318997.development.catalystserverless.com/app/').replace(/\/?$/, '/');
+//   WOMS_URL  where to test; defaults to the Slate site (the canonical one)
+export const BASE_URL = (process.env.WOMS_URL || 'https://woms-kyhn-xhefjbmk.onslate.com/').replace(/\/?$/, '/');
 export const SESSION_FILE = 'e2e/.auth/state.json';
 
 export default defineConfig({
