@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { getInboundAdviceById, editInboundAdvice, listCargoByAdvice, listLinesByAdvice, listHuContentsByAdvice, listCustomers, listTransporters, listSuppliers, listAllStorageLocations, listWarehouses, getGrnForAdvice, listOutboundLinksByAdvice } from '../../lib/api';
 import InboundDetailView from './InboundDetailView';
@@ -95,22 +95,36 @@ export default function InboundMaster() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, advice, location, navigate]);
 
+  // Saves to the same record go through a queue, one at a time and in the order they were made.
+  // Fired together (two quick edits, or an edit plus a button that sets the same field) they used
+  // to race, and whichever reached the server last won, e.g. an old Expected Colli overwriting the
+  // value the user had just set. The re-read of the record runs only after the last queued save.
+  const patchQueue = useRef(Promise.resolve());
+  const patchesWaiting = useRef(0);
   const patchAdvice = (fields) => {
     setSaving(true);
     setError('');
-    return editInboundAdvice({ ROWID: adviceId, ...fields })
-      .then(() => {
-        // Show the saved values at once; the re-read (which also refreshes joined
-        // names) runs behind it instead of adding a second round trip to every save.
-        setAdvice((a) => ({ ...a, ...fields }));
-        loadAdvice().catch(() => {});
-      })
-      .catch((err) => {
-        setError(err.message || String(err));
-        loadAdvice().catch(() => {});
-        throw err;
-      })
-      .finally(() => setSaving(false));
+    patchesWaiting.current += 1;
+    const run = () =>
+      editInboundAdvice({ ROWID: adviceId, ...fields })
+        .then(() => {
+          // Show the saved values at once; the re-read (which also refreshes joined names) follows.
+          setAdvice((a) => ({ ...a, ...fields }));
+        })
+        .catch((err) => {
+          setError(err.message || String(err));
+          throw err;
+        })
+        .finally(() => {
+          patchesWaiting.current -= 1;
+          if (patchesWaiting.current === 0) {
+            setSaving(false);
+            loadAdvice().catch(() => {});
+          }
+        });
+    const result = patchQueue.current.then(run, run);
+    patchQueue.current = result.catch(() => {});
+    return result;
   };
 
   // Popups edit records directly, so refresh everything on the page when one closes.

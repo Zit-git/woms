@@ -1,4 +1,5 @@
 const catalystSDK = require('zcatalyst-sdk-node');
+const { currentUser } = require('./auth');
 const express = require('express');
 const { BUCKETS } = require('./constants');
 
@@ -40,6 +41,8 @@ async function readAll(stream) {
 // private; only signed-in callers can call this function. The Documents table
 // doesn't record which bucket a file went to, so unless told, each bucket is tried.
 app.post('/', async (req, res) => {
+  // Only signed-in users may use this (the admin-scope client below acts on their behalf).
+  if (!(await currentUser(req))) return res.status(401).send({ error: 'Sign in to use this.' });
   const catalystApp = catalystSDK.initialize(req, { scope: 'admin' });
   try {
     const { fileId, bucketKey } = req.body || {};

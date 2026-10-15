@@ -1,4 +1,5 @@
 const catalystSDK = require('zcatalyst-sdk-node');
+const { currentUser } = require('./auth');
 const express = require('express');
 const { TABLES, BUCKETS } = require('./constants');
 const { logAudit } = require('./audit');
@@ -16,6 +17,8 @@ const BUCKET_KEYS = { DOCUMENTS: BUCKETS.DOCUMENTS, CARGO_PHOTOS: BUCKETS.CARGO_
 // Uploads a document/photo to the right Stratus bucket and records it in
 // the Documents table against whatever module/record it belongs to.
 app.post('/', async (req, res) => {
+  // Only signed-in users may use this (the admin-scope client below acts on their behalf).
+  if (!(await currentUser(req))) return res.status(401).send({ error: 'Sign in to use this.' });
   // Admin scope: with the default (end-user) scope Stratus rejected the write
   // with 403 "request denied by resource access policy" for app users, so no
   // document or signature could ever be saved.

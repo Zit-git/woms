@@ -47,6 +47,12 @@ export async function chooseWorkingWarehouse(page, name) {
 // so a "the server did not respond" message in a test points at the request behind it.
 export function watchSlowRequests(page, slowMs = 5000) {
   const started = new Map();
+  const t0 = Date.now();
+  page.on('console', (m) => m.text().startsWith('[woms]') && console.log(`APP ${m.text()}`));
+  if (process.env.DEBUG_REQ) {
+    page.on('request', (r) => /\/baas\/|\/server\//.test(r.url()) && console.log(`${((Date.now() - t0) / 1000).toFixed(1)}s > ${r.method()} ${r.url().replace(/.*\/(baas|server)\//, '$1/').slice(0, 100)} ${(r.postData() || '').slice(0, 110)}`));
+    page.on('requestfinished', async (r) => /\/baas\/|\/server\//.test(r.url()) && console.log(`${((Date.now() - t0) / 1000).toFixed(1)}s < ${(await r.response())?.status()} ${r.url().replace(/.*\/(baas|server)\//, '$1/').slice(0, 80)}`));
+  }
   page.on('request', (r) => {
     if (/\/baas\/|\/server\//.test(r.url())) started.set(r, Date.now());
   });

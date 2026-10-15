@@ -155,16 +155,18 @@ export function signOut(redirectUrl) {
 // for good, so every data call gets a deadline and fails with a readable
 // message instead.
 const DATA_TIMEOUT_MS = 25000;
-function withDeadline(promise, label) {
+function withDeadline(promise, label, detail = '') {
   let timer;
   const deadline = new Promise((_, reject) => {
     timer = setTimeout(
-      () =>
+      () => {
+        console.warn(`[woms] no reply within ${DATA_TIMEOUT_MS / 1000}s while ${label}`, detail);
         reject(
           new Error(
             `The server did not respond while ${label}. Check your connection, then reload; if it keeps happening, sign out and back in.`
           )
-        ),
+        );
+      },
       DATA_TIMEOUT_MS
     );
   });
@@ -253,12 +255,29 @@ export function getAllRows(tableName, maxRows = 200) {
         }),
       `loading ${tableName}`
     );
-  if (!CACHED_TABLES.has(tableName)) return load();
+  if (!CACHED_TABLES.has(tableName)) return shareWhileInFlight(`rows:${tableName}:${maxRows}`, load);
   // Callers get their own array so sorting/filtering it can't corrupt the cache.
   return cachedFetch(`rows:${tableName}:${maxRows}`, [tableName], load).then((rows) => rows.slice());
 }
 
+// Several components often ask for the very same thing at the same moment (the Receive popup asks
+// for the inbound's documents four times). The Catalyst client leaves some of such simultaneous
+// identical requests unanswered, so identical in-flight queries share one request instead.
+const inFlight = new Map();
+function shareWhileInFlight(key, start) {
+  if (inFlight.has(key)) return inFlight.get(key).then((rows) => rows.slice());
+  const promise = start();
+  inFlight.set(key, promise);
+  const done = () => inFlight.delete(key);
+  promise.then(done, done);
+  return promise.then((rows) => rows.slice());
+}
+
 export function zcql(query) {
+  return shareWhileInFlight(`q:${query}`, () => zcqlOnce(query));
+}
+
+function zcqlOnce(query) {
   return withDeadline(
     sdk()
       .ZCatalystQL.executeQuery(query)
@@ -270,7 +289,8 @@ export function zcql(query) {
         }
         return res.content || [];
       }),
-    'loading data'
+    'loading data',
+    query.slice(0, 160)
   );
 }
 
@@ -282,33 +302,52 @@ const FUNCTIONS_BASE_URL = 'https://woms-775318997.development.catalystserverles
 // chain we hold, so without a deadline a call could hang the screen forever.
 const FUNCTION_TIMEOUT_MS = 12000;
 
+// Calling a function with the SDK's token (generateAuthToken) BREAKS the page: from then on every
+// data request made through the SDK hangs forever, which showed up as uploads and "Saving..." that
+// never finished. So functions are called with the session cookie instead, on this site's own
+// address (the legacy /app/ host serves /server/... itself; Slate does when functions are mapped
+// to it). Only when this site cannot serve /server/... does it fall back to the token, because
+// the call then has to cross to the Catalyst domain.
+let functionsServedHere = typeof window !== 'undefined' && window.location.origin === FUNCTIONS_BASE_URL ? true : null; // null = not known yet
+
+async function readResult(res) {
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message = body?.error || `The server returned an error (${res.status}).`;
+    throw Object.assign(new Error(message), { error: message });
+  }
+  return body;
+}
+
 export function callFunction(functionName, args = {}, method = 'POST') {
-  // The SDK's own function.execute() never attaches a valid auth header for
-  // an authenticated function (401 even same-origin on localhost, not just
-  // cross-domain on Slate) -- Catalyst's documented fix is generateAuthToken()
-  // plus a manual fetch carrying that token, bypassing execute() entirely.
-  const call = sdk()
-    .auth.generateAuthToken()
-    .then(({ access_token }) =>
-      fetch(`${FUNCTIONS_BASE_URL}/server/${functionName}/`, {
+  const call = (async () => {
+    if (functionsServedHere !== false) {
+      const res = await fetch(`/server/${functionName}/`, {
         method,
-        headers: { Authorization: access_token, 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(args),
-      })
-    )
-    .then(async (res) => {
-      const body = await res.json().catch(() => null);
-      if (!res.ok) {
-        const message = body?.error || `The server returned an error (${res.status}).`;
-        throw Object.assign(new Error(message), { error: message });
+      });
+      const json = (res.headers.get('content-type') || '').includes('json');
+      if (json && res.status !== 405) {
+        functionsServedHere = true;
+        return readResult(res);
       }
-      return body;
+      functionsServedHere = false; // this site does not serve functions: use the token route below
+    }
+    const { access_token } = await sdk().auth.generateAuthToken();
+    const res = await fetch(`${FUNCTIONS_BASE_URL}/server/${functionName}/`, {
+      method,
+      headers: { Authorization: access_token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(args),
     });
+    return readResult(res);
+  })();
 
   let timer;
   const deadline = new Promise((_, reject) => {
     timer = setTimeout(() => {
-      const message = 'The server did not respond (the sign-in token could not be obtained). Try again, or sign out and back in.';
+      const message = 'The server did not respond. Try again, or sign out and back in.';
       reject(Object.assign(new Error(message), { error: message }));
     }, FUNCTION_TIMEOUT_MS);
   });

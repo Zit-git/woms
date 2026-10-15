@@ -17,7 +17,20 @@ export default function ReceivePopup({ advice, lines, patchAdvice, reloadLines, 
   const [localError, setLocalError] = useState('');
 
   useEffect(() => setForm(advice), [advice]);
-  useEffect(() => setRows(lines.map((r) => ({ ...r, received_qty: r.received_qty ?? r.qty ?? '' }))), [lines]);
+  // Rows are rebuilt only when the set of line items changes, never because the page refreshed its
+  // data in the background: that used to wipe quantities the user had already typed.
+  const lineKey = lines.map((l) => l.ROWID).join(',');
+  useEffect(
+    () =>
+      setRows((prev) =>
+        lines.map((r) => {
+          const typed = prev.find((p) => String(p.ROWID) === String(r.ROWID));
+          return { ...r, received_qty: typed ? typed.received_qty : (r.received_qty ?? r.qty ?? '') };
+        })
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lineKey]
+  );
 
   useEffect(() => {
     listDocumentsForRecord('Inbound Operations', advice.ROWID).then((docs) =>

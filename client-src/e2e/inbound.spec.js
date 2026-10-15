@@ -39,7 +39,7 @@ const CUSTOMER = 'TEST Alpha Pallets Ltd';
 
 // A, B of docs/TEST_JOURNEY.md: request with validation, then the availability check.
 test('inbound: request to GRN (validation, availability, receive, handling units, put-away)', async ({ page }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(240_000);
   reportPending = watchSlowRequests(page);
 
   await test.step('open Inbounds for the working warehouse and start a new request', async () => {
@@ -177,13 +177,23 @@ test('inbound: request to GRN (validation, availability, receive, handling units
     await expect(receive).toBeEnabled();
     await receive.click();
     await expect(page.getByRole('button', { name: /Create Handling Units/ })).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByAltText('Captured signature')).toBeVisible(); // documents shown on the inbound page
+    // received 38 + 20 + 10 = 68 (the quantity typed in the popup was once silently reset to the planned 70)
+    await expect(page.getByText('68 pcs').first()).toBeVisible();
+    // the Documents card on the inbound page loads when scrolled into view: scroll like a person
+    await page.mouse.move(700, 400); // over the page content, so the wheel scrolls it
+    for (let i = 0; i < 6; i++) {
+      await page.mouse.wheel(0, 1500);
+      await page.waitForTimeout(400);
+    }
+    await expect(page.getByAltText('Driver Signature (Receiving)')).toBeVisible({ timeout: 60_000 });
     await expectNoErrors(page);
   });
 
   await test.step('handling units: split one line, combine two, over-pack refused (D1-D5)', async () => {
     await page.getByRole('button', { name: /Create Handling Units/ }).click();
-    const put = page.locator('table').first().locator('input[type="number"]'); // "Put on new HU" per line
+    const modal = page.locator('.modal-card');
+    const put = modal.locator('table').first().locator('input[type="number"]'); // "Put on new HU" per line
+    const huRows = modal.locator('table').nth(1).locator('tbody tr'); // the Handling Units built so far
     // over-pack: 30 x 2 copies = 60 of the 38 received
     await put.nth(0).fill('30');
     await field(page, 'Create this many identical HUs').fill('2');
@@ -192,13 +202,13 @@ test('inbound: request to GRN (validation, availability, receive, handling units
     // split: line 1 = 19 on each of 2 pallets
     await put.nth(0).fill('19');
     await page.getByRole('button', { name: 'Add Handling Unit' }).click();
-    await expect(page.locator('table').nth(1).locator('tbody tr')).toHaveCount(2, { timeout: 60_000 });
+    await expect(huRows).toHaveCount(2, { timeout: 60_000 });
     // combine: lines 2 and 3 on one pallet
     await field(page, 'Create this many identical HUs').fill('1');
     await put.nth(1).fill('20');
     await put.nth(2).fill('10');
     await page.getByRole('button', { name: 'Add Handling Unit' }).click();
-    await expect(page.locator('table').nth(1).locator('tbody tr')).toHaveCount(3, { timeout: 60_000 });
+    await expect(huRows).toHaveCount(3, { timeout: 60_000 });
     const cont = page.getByRole('button', { name: /Continue to Put-away/ });
     await expect(cont).toBeEnabled();
     await cont.click();

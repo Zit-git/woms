@@ -97,3 +97,18 @@ describe('getAllRows (sign-in loads the role list with 500 rows; Catalyst allows
     expect(await getAllRows('Suppliers', 200)).toEqual([]);
   });
 });
+
+describe('identical simultaneous queries share one request', () => {
+  it('sends one request for N identical zcql calls made at the same time', async () => {
+    const { zcql } = await import('../catalystClient');
+    let sent = 0;
+    globalThis.window = {
+      catalyst: { ZCatalystQL: { executeQuery: () => { sent += 1; return new Promise((r) => setTimeout(() => r({ status: 200, content: [{ T: { a: 1 } }] }), 20)); } } },
+    };
+    const results = await Promise.all([zcql('SELECT a FROM T'), zcql('SELECT a FROM T'), zcql('SELECT a FROM T'), zcql('SELECT b FROM T')]);
+    expect(sent).toBe(2); // the three identical ones shared one request
+    results.forEach((r) => expect(r).toEqual([{ T: { a: 1 } }]));
+    results[0].push('mutated'); // each caller gets its own array
+    expect(results[1]).toHaveLength(1);
+  });
+});

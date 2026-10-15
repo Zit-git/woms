@@ -2,6 +2,7 @@ const catalystSDK = require('zcatalyst-sdk-node');
 const express = require('express');
 const { TABLES } = require('./constants');
 const { logAudit } = require('./audit');
+const { currentUser } = require('./auth');
 
 const app = express();
 app.use(express.json());
@@ -23,11 +24,9 @@ const CATALYST_ROLE_ID = {
 // Identity comes from the authenticated request, never from the body, and an
 // unidentifiable caller is rejected (fails closed).
 async function isSystemAdministrator(catalystApp, req) {
-  let callerId = req.headers['x-catalyst-user-id'];
-  if (!callerId) {
-    const current = await catalystApp.userManagement().getCurrentUser().catch(() => null);
-    callerId = current && current.user_id;
-  }
+  // The caller is identified by their verified session, never by a request header.
+  const current = await currentUser(req);
+  const callerId = current && current.user_id;
   if (!callerId || !/^\d+$/.test(String(callerId))) return false;
   const rows = await catalystApp
     .zcql()
