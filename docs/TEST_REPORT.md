@@ -13,7 +13,8 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | Inbound journey (request → availability → accept → receive → Handling Units → put-away → GRN) | **Pass**, 38 s |
 | Outbound journey (request → goods → check-in → scan-pick → dispatch → delivered) | **Pass**, 27 s |
 | Pickup pass page (rendered) | Skipped here: needs the Slate site (the legacy `/app/` host has no deep links) |
-| Whole suite, in order (4 smoke, inbound, outbound) | **6 passed, 1 skipped**, 1.5 min |
+| Double allocation (O5): a Handling Unit on one request is not offered to another | **Pass**, 15 s |
+| Whole suite, in order (4 smoke, inbound, outbound, double allocation) | **7 passed, 1 skipped**, 1.7 min |
 | Security probes of the three functions | **Fixed**, re-verified from outside |
 | Not yet run | role/warehouse access with a second user, concurrency between two people, performance with volume data, browsers other than Chrome, phones, backup/restore, client trial |
 
@@ -48,7 +49,7 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 
 | ID | Severity | Item | Next step |
 |---|---|---|---|
-| O-1 | High | The same Handling Unit can be added to two open outbound requests | Hide HUs already on another open request (not yet fixed) |
+| O-1 | High | The same Handling Unit can be added to two open outbound requests | **Fixed** (hidden from other requests and refused again at add time); test O5 passes |
 | O-2 | High | The Slate site does not serve `/server/…`, so uploads and previews there use the token route, which can hang later requests (D-03) | Map the functions to the Slate app in the Catalyst console (one-time setting, needs you) |
 | O-3 | High | Warehouse separation and business rules are enforced in the browser's queries, not on the server | Server-side enforcement (planned) |
 | O-4 | Medium | The functions are not marked "authenticated" in the console (the code-level check now protects them) | Switch it on in the console (defence in depth) |

@@ -690,9 +690,32 @@ export const getOutboundRequestById = (id) =>
 export const listAvailableCargoForCustomer = (customerId) =>
   zcql(
     `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.status, Cargo.qr_code, Cargo.outer_package_no, StorageLocations.location_code, InboundAdvice.inbound_reference FROM Cargo LEFT JOIN StorageLocations ON Cargo.current_location_id = StorageLocations.ROWID LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID WHERE Cargo.customer_id = ${customerId} AND ${goneSql('Cargo')} AND Cargo.status != 'Picked' ORDER BY Cargo.CREATEDTIME DESC`
-  ).then((rows) =>
-    rows.map((r) => ({ ...r.Cargo, location_code: r.StorageLocations?.location_code, inbound_reference: r.InboundAdvice?.inbound_reference }))
+  ).then(async (rows) => {
+    // A Handling Unit that is already on any outbound's pick lines belongs to that outbound, so it
+    // is not offered to another one (two requests used to be able to claim the same pallet).
+    const claimed = new Set((await listClaimedCargoIds(customerId)).map(String));
+    return rows
+      .filter((r) => !claimed.has(String(r.Cargo.ROWID)))
+      .map((r) => ({ ...r.Cargo, location_code: r.StorageLocations?.location_code, inbound_reference: r.InboundAdvice?.inbound_reference }));
+  });
+
+// Handling Units of a customer that already sit on some outbound request's pick lines.
+const listClaimedCargoIds = (customerId) =>
+  zcql(`SELECT PickTask.cargo_id FROM PickTask LEFT JOIN Cargo ON PickTask.cargo_id = Cargo.ROWID WHERE Cargo.customer_id = ${idOnly(customerId)}`).then((rows) =>
+    rows.map((r) => r.PickTask.cargo_id)
   );
+
+// Adds a Handling Unit to an outbound's pick lines, refusing one that another outbound already has
+// (checked again here, because the list on screen may be a few seconds old).
+export const addPickLine = async (row) => {
+  const holders = await zcql(
+    `SELECT OutboundRequest.outbound_reference, OutboundRequest.ROWID FROM PickTask LEFT JOIN OutboundRequest ON PickTask.outbound_request_id = OutboundRequest.ROWID WHERE PickTask.cargo_id = ${idOnly(row.cargo_id)}`
+  );
+  const other = holders.map((h) => h.OutboundRequest).find((o) => String(o?.ROWID) !== String(row.outbound_request_id));
+  if (other) throw new Error(`This Handling Unit is already on outbound ${other.outbound_reference || `#${other.ROWID}`}.`);
+  if (holders.length) throw new Error('This Handling Unit is already on this outbound.');
+  return createPickTask(row);
+};
 
 export const listPickTasksByRequest = (outboundRequestId) =>
   zcql(

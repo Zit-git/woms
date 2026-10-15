@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Modal from '../../../components/Modal';
-import { createPickTask, removePickTask } from '../../../lib/api';
+import { addPickLine, removePickTask } from '../../../lib/api';
 import { useAuth } from '../../../context/AuthContext';
 
 // Stage: choose which of the customer's Handling Units leave on this outbound.
@@ -13,7 +13,7 @@ export default function GoodsPopup({ request, pickTasks, availableCargo, locatio
     e.preventDefault();
     if (!cargoId) return;
     setBusy(true);
-    createPickTask({ outbound_request_id: request.ROWID, cargo_id: cargoId, assigned_to: user?.email_id || '', status: 'Assigned' })
+    addPickLine({ outbound_request_id: request.ROWID, cargo_id: cargoId, assigned_to: user?.email_id || '', status: 'Assigned' })
       .then(() => {
         setCargoId('');
         return reload();

@@ -98,7 +98,9 @@ test('outbound: request to delivery (pass, check-in, scan-pick, dispatch)', asyn
     await page.getByRole('button', { name: /Mark Delivered/ }).first().click();
     await page.locator('.modal-card').getByRole('button', { name: 'Mark Delivered' }).click();
     await expect(page.getByText('Delivered').first()).toBeVisible({ timeout: 60_000 });
-    await expectNoErrors(page);
+    // The test customer's address (...@woms-test.example) cannot receive mail, so the app correctly says
+    // the dispatch email was not sent; any other error is a failure.
+    await expect(page.locator('.error-text').filter({ hasNotText: /customer email could not be sent/ })).toHaveCount(0);
   });
 
   await test.step('the pass is found by its reference at the gate (O8)', async () => {
@@ -120,4 +122,46 @@ test('pickup pass page shows the reference and a QR code (Slate site only)', asy
   await expect(pass.getByRole('heading', { name: 'Pickup Pass' })).toBeVisible({ timeout: 30_000 });
   await expect(pass.getByText(/OB-\d{4}-\d{6}/).first()).toBeVisible();
   await expect(pass.locator('img').first()).toBeVisible();
+});
+
+// A Handling Unit that sits on one outbound's pick lines must not be offered to another outbound.
+async function createRequest(page, label) {
+  const customerRef = `AUTOTEST ${label} ${new Date().toISOString().slice(0, 19)}`;
+  await openMenu(page, 'Outbounds');
+  await page.getByRole('button', { name: '+ New Outbound Request' }).click();
+  await field(page, 'Customer').selectOption({ label: CUSTOMER });
+  await field(page, 'Reference number').fill(customerRef);
+  await field(page, 'Requested date').fill(inDays(0));
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  const row = page.locator('tr', { hasText: customerRef });
+  await expect(row).toBeVisible({ timeout: 60_000 });
+  await row.click();
+  await expect(page.getByRole('button', { name: /Select Goods/ })).toBeVisible({ timeout: 30_000 });
+}
+
+test('outbound: a Handling Unit already on one request is not offered to a second request (O5)', async ({ page }) => {
+  test.setTimeout(180_000);
+  await openHome(page);
+  await chooseWorkingWarehouse(page, WAREHOUSE);
+
+  // request A takes the first available Handling Unit
+  await createRequest(page, 'OB-A');
+  await page.getByRole('button', { name: /Select Goods/ }).click();
+  let modal = page.locator('.modal-card');
+  const select = modal.locator('select').first();
+  const options = async () => (await select.locator('option').allTextContents()).slice(1);
+  await expect.poll(async () => (await options()).length, { timeout: 30_000 }).toBeGreaterThan(1);
+  const taken = (await options())[0];
+  await select.selectOption({ index: 1 });
+  await modal.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(modal.getByText('On this outbound (1)')).toBeVisible({ timeout: 30_000 });
+  await modal.getByRole('button', { name: 'Done' }).click();
+
+  // request B must not see it
+  await createRequest(page, 'OB-B');
+  await page.getByRole('button', { name: /Select Goods/ }).click();
+  modal = page.locator('.modal-card');
+  await expect.poll(async () => (await modal.locator('select').first().locator('option').count()), { timeout: 30_000 }).toBeGreaterThan(1);
+  const offeredToB = await modal.locator('select').first().locator('option').allTextContents();
+  expect(offeredToB).not.toContain(taken);
 });
