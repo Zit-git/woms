@@ -846,8 +846,11 @@ function todayStart() {
 // COQL's COUNT(...) response nests the value under whatever field name was
 // counted (COUNT(ROWID) -> {ROWID: n}, COUNT(DISTINCT x) -> {x: n}), so pull
 // the first value out rather than assuming a fixed key.
+// Each count carries a harmless always-true condition with a unique number. Without it, a page
+// reloaded while its counts were still running re-sent byte-identical queries, and Catalyst left
+// those waiting on the abandoned originals for half a minute or more.
 const countOf = (table, expr, where = '') =>
-  zcql(`SELECT COUNT(${expr}) FROM ${table}${where ? ` WHERE ${where}` : ''}`).then((rows) => {
+  zcql(`SELECT COUNT(${expr}) FROM ${table} WHERE ${where ? `${where} AND ` : ''}ROWID != ${Date.now()}${Math.floor(Math.random() * 1000)}`).then((rows) => {
     const row = rows[0]?.[table];
     return row ? Object.values(row)[0] : 0;
   });

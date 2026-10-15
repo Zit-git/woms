@@ -20,7 +20,7 @@ function blankLine(inboundAdviceId, customerId, warehouseId, index) {
 
 // embedded: used inline inside RequestPopup (no wizard chrome, no Back/Next
 // footer -- every field already autosaves on blur/add/remove).
-export default function StepGoods({ advice, lines, reloadLines, patchAdvice, goNext, goBack, saving, setError: setParentError, embedded = false, onRowsChange }) {
+export default function StepGoods({ advice, lines, reloadLines, patchAdvice, goNext, goBack, saving, setError: setParentError, embedded = false, onRowsChange, customerId }) {
   const [rows, setRows] = useState(lines);
   // Lets the parent popup (Expected Colli check) see edits as they happen.
   useEffect(() => {
@@ -55,11 +55,13 @@ export default function StepGoods({ advice, lines, reloadLines, patchAdvice, goN
 
   const addLine = () => {
     setLineError('');
-    if (!advice.customer_id) {
+    // The customer picked in the form counts immediately; saving it to the record can lag a moment behind.
+    const customer = customerId || advice.customer_id;
+    if (!customer) {
       setError('Select a customer on this request before adding line items.');
       return;
     }
-    const line = blankLine(advice.ROWID, advice.customer_id, advice.warehouse_id, rows.length);
+    const line = blankLine(advice.ROWID, customer, advice.warehouse_id, rows.length);
     createLine(line)
       .then((saved) => {
         if (!saved?.ROWID) throw new Error('Could not add the line item.');

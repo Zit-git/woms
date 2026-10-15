@@ -284,6 +284,7 @@ export default function RequestPopup({
         lines={lines}
         reloadLines={reloadLines}
         onRowsChange={setLiveLines}
+        customerId={form.customer_id}
         patchAdvice={patchAdvice}
         saving={saving}
         setError={setError}

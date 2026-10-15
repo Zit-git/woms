@@ -146,11 +146,7 @@ export default function AppShell() {
               <IconWarehouse width={16} height={16} />
               <select
                 value={activeWarehouseId}
-                onChange={(e) => {
-                  setActiveWarehouseId(e.target.value);
-                  // Lists read the selection when they load, so reload the current page with it applied.
-                  window.location.reload();
-                }}
+                onChange={(e) => setActiveWarehouseId(e.target.value)}
                 aria-label="Working warehouse"
               >
                 <option value="">All my warehouses (view only)</option>
@@ -180,7 +176,8 @@ export default function AppShell() {
         {pageAllowed ? (
           <ChunkErrorBoundary>
             <Suspense fallback={null}>
-              <Outlet />
+              {/* Keyed by the working warehouse: pages reload their data for a new choice without a page reload. */}
+              <Outlet key={activeWarehouseId || 'all'} />
             </Suspense>
           </ChunkErrorBoundary>
         ) : (
