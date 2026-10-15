@@ -26,9 +26,11 @@ export function inDays(n) {
 
 // A form field found by its visible label text (the app's labels are not linked to the inputs).
 export function field(scope, label) {
+  // the label locator must not be rooted inside `scope`, or it would be searched for inside each row
+  const root = typeof scope.page === 'function' ? scope.page() : scope;
   return scope
     .locator('.form-row')
-    .filter({ has: scope.locator('label', { hasText: label }) })
+    .filter({ has: root.locator('label', { hasText: label }) })
     .locator('input, select, textarea')
     .first();
 }
