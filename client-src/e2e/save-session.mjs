@@ -4,7 +4,7 @@
 import { chromium } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 
-const BASE_URL = (process.env.WOMS_URL || 'https://woms-kyhn-xhefjbmk.onslate.com/').replace(/\/?$/, '/');
+const BASE_URL = (process.env.WOMS_URL || 'https://woms-775318997.development.catalystserverless.com/app/').replace(/\/?$/, '/');
 const SESSION = 'e2e/.auth/state.json';
 const WAIT_MS = 10 * 60 * 1000;
 mkdirSync('e2e/.auth', { recursive: true });
