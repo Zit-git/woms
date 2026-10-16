@@ -5,7 +5,8 @@ import { chromium } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 
 const BASE_URL = (process.env.WOMS_URL || 'https://woms-775318997.development.catalystserverless.com/app/').replace(/\/?$/, '/');
-const SESSION = 'e2e/.auth/state.json';
+// WOMS_SESSION chooses the file, so a second user (e.g. a warehouse-limited one) gets a session of their own.
+const SESSION = process.env.WOMS_SESSION || 'e2e/.auth/state.json';
 const WAIT_MS = 10 * 60 * 1000;
 mkdirSync('e2e/.auth', { recursive: true });
 

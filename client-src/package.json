@@ -10,6 +10,7 @@
     "test": "vitest run",
     "verify": "vitest run && vite build",
     "e2e:login": "node e2e/save-session.mjs",
+    "e2e:login:staff": "WOMS_SESSION=e2e/.auth/staff.json node e2e/save-session.mjs",
     "e2e": "playwright test"
   },
   "dependencies": {

@@ -16,7 +16,8 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | Double allocation (O5): a Handling Unit on one request is not offered to another | **Pass**, 15 s |
 | Whole suite, in order (4 smoke, inbound, outbound, double allocation) | **7 passed, 1 skipped**, 1.7 min |
 | Security probes of the three functions | **Fixed**, re-verified from outside |
-| Not yet run | role/warehouse access with a second user, concurrency between two people, performance with volume data, browsers other than Chrome, phones, backup/restore, client trial |
+| Access tests (A1 to A5, second user) | **Written (`e2e/access.spec.js`), not yet run**: waiting for the test user, see `ACCESS_TEST_SETUP.md` |
+| Not yet run | A2/A6/A7 by hand, concurrency between two people, performance with volume data, browsers other than Chrome, phones, backup/restore, client trial |
 
 ## 2. What each automated test proves
 
