@@ -142,7 +142,7 @@ export function computeCapacity({ locations, cargoRows, outboundCommitments, pac
 
   const byUnit = new Map();
   const unitEntry = (unit) => {
-    if (!byUnit.has(unit)) byUnit.set(unit, { capacityUnit: unit, total: 0, occupied: 0, committed: 0, available: 0, unclaimedTotal: 0, unclaimedAvailable: 0 });
+    if (!byUnit.has(unit)) byUnit.set(unit, { capacityUnit: unit, total: 0, occupied: 0, committed: 0, pending: 0, available: 0, unclaimedTotal: 0, unclaimedAvailable: 0 });
     return byUnit.get(unit);
   };
 
@@ -164,8 +164,16 @@ export function computeCapacity({ locations, cargoRows, outboundCommitments, pac
     unitEntry(unitFor(c.unit, packageTypesByName)).committed += unitsPerItemFor(c.unit, packageTypesByName);
   });
 
+  // Goods that have arrived but are not shelved yet (the dock backlog) still need a position:
+  // when an accepted inbound is received it stops being "committed", and without this its
+  // space would show as free again until the put-away is done.
+  const dockCargo = classified.filter((x) => !x.isOccupied && !x.isCommitted && isPendingPutaway(x.c));
+  dockCargo.forEach(({ c }) => {
+    unitEntry(unitFor(c.unit, packageTypesByName)).pending += unitsPerItemFor(c.unit, packageTypesByName);
+  });
+
   byUnit.forEach((entry) => {
-    entry.available = entry.total - entry.occupied - entry.committed;
+    entry.available = entry.total - entry.occupied - entry.committed - entry.pending;
   });
 
   // Weight and Space are tracked independently of the capacity_unit/
@@ -188,8 +196,8 @@ export function computeCapacity({ locations, cargoRows, outboundCommitments, pac
     .filter((x) => spaceLocationIds.has(String(x.effectiveLocationId)))
     .reduce((sum, x) => sum + volumeM3(x.c), 0);
 
-  const weightCommitted = committedCargo.reduce((sum, x) => sum + (Number(x.c.weight) || 0), 0);
-  const spaceCommitted = committedCargo.reduce((sum, x) => sum + volumeM3(x.c), 0);
+  const weightCommitted = [...committedCargo, ...dockCargo].reduce((sum, x) => sum + (Number(x.c.weight) || 0), 0);
+  const spaceCommitted = [...committedCargo, ...dockCargo].reduce((sum, x) => sum + volumeM3(x.c), 0);
 
   const weight = { total: weightTotal, occupied: weightOccupied, committed: weightCommitted, available: weightTotal - weightOccupied - weightCommitted };
   const space = { total: spaceTotal, occupied: spaceOccupied, committed: spaceCommitted, available: spaceTotal - spaceOccupied - spaceCommitted };
@@ -219,11 +227,12 @@ export function computeCapacity({ locations, cargoRows, outboundCommitments, pac
         total: acc.total + e.total,
         occupied: acc.occupied + e.occupied,
         committed: acc.committed + e.committed,
+        pending: acc.pending + e.pending,
         available: acc.available + e.available,
         unclaimedTotal: acc.unclaimedTotal + e.unclaimedTotal,
         unclaimedAvailable: acc.unclaimedAvailable + e.unclaimedAvailable,
       }),
-      { total: 0, occupied: 0, committed: 0, available: 0, unclaimedTotal: 0, unclaimedAvailable: 0 }
+      { total: 0, occupied: 0, committed: 0, pending: 0, available: 0, unclaimedTotal: 0, unclaimedAvailable: 0 }
     ),
   };
 }

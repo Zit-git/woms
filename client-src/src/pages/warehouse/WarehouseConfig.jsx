@@ -371,7 +371,7 @@ function AvailabilityTab() {
             <div className="card kpi-card">
               <h3>Available</h3>
               <div className="kpi-value">{overallSnapshot.totals.available}</div>
-              <p className="muted small">total − occupied − committed</p>
+              <p className="muted small">total − occupied − committed − on dock</p>
             </div>
             <div className="card kpi-card">
               <h3>Unclaimed</h3>
@@ -469,7 +469,7 @@ function AvailabilityTab() {
             <div className="card kpi-card">
               <h3>Available</h3>
               <div className="kpi-value">{snapshot.totals.available}</div>
-              <p className="muted small">total − occupied − committed</p>
+              <p className="muted small">total − occupied − committed − on dock</p>
             </div>
             <div className="card kpi-card">
               <h3>Unclaimed</h3>
