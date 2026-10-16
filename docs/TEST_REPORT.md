@@ -9,6 +9,7 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | Area | Result |
 |---|---|
 | Unit tests (dates, validation, warehouse access, visibility rules, row loader, query sharing) | **16 of 16 pass** |
+| Capacity and allocation rules (plan C1 to C9: exact fit, overlapping inbounds, dispatch dates, weight and size limits, one customer per location, dock backlog, warehouses) | **36 of 36 pass** (`capacity.test.js`) |
 | Smoke tests (home, Inbounds, Outbounds, Availability) | **4 of 4 pass** |
 | Inbound journey (request → availability → accept → receive → Handling Units → put-away → GRN) | **Pass**, 38 s |
 | Outbound journey (request → goods → check-in → scan-pick → dispatch → delivered) | **Pass**, 27 s |
@@ -44,6 +45,7 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | D-07 | Medium | Two quick saves to one inbound could finish out of order (an old Expected Colli overwrote the new one) | **Fixed.** Saves to one record now queue in order |
 | D-08 | Medium | A received quantity typed in the Receive popup was reset to the planned number by a background refresh | **Fixed** |
 | D-09 | Medium | Availability rows all showed the same date in timezones ahead of UTC | **Fixed**, with a unit test |
+| D-11 | High | Goods received but not yet put away stopped counting as reserved, so their space showed as free again on the Availability screen and could be promised to other requests | **Fixed** (the dock backlog keeps its capacity, weight and space reserved); found by the new capacity tests |
 | D-10 | Low | Uploaded files could not be previewed (file names with special spaces) | **Fixed** (files fetched inline; new names kept to plain characters) |
 
 ## 4. Open items
