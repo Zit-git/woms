@@ -17,8 +17,8 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | Double allocation (O5): a Handling Unit on one request is not offered to another | **Pass**, 15 s |
 | Whole suite, in order (4 smoke, inbound, outbound, double allocation) | **7 passed, 1 skipped**, 1.7 min |
 | Security probes of the three functions | **Fixed**, re-verified from outside |
-| Access tests (A1 to A5, second user) | **Written (`e2e/access.spec.js`), not yet run**: waiting for the test user, see `ACCESS_TEST_SETUP.md` |
-| Not yet run | A2/A6/A7 by hand, concurrency between two people, performance with volume data, browsers other than Chrome, phones, backup/restore, client trial |
+| Access tests (second user: Supervisor in Hamburg DC, Operator in Rotterdam DC2, nothing in Antwerp DC) | **5 of 5 pass** on `/app/`; the direct-link test (A3) is Slate-only and skipped here |
+| Not yet run | A2/A6/A7 by hand, A3 direct link on Slate, concurrency between two people, performance with volume data, browsers other than Chrome, phones, backup/restore, client trial |
 
 ## 2. What each automated test proves
 
@@ -46,6 +46,7 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | D-08 | Medium | A received quantity typed in the Receive popup was reset to the planned number by a background refresh | **Fixed** |
 | D-09 | Medium | Availability rows all showed the same date in timezones ahead of UTC | **Fixed**, with a unit test |
 | D-11 | High | Goods received but not yet put away stopped counting as reserved, so their space showed as free again on the Availability screen and could be promised to other requests | **Fixed** (the dock backlog keeps its capacity, weight and space reserved); found by the new capacity tests |
+| D-12 | Medium | In a warehouse where the user may not create inbounds, **+ New Inbound** stayed enabled and would have created the inbound in a different warehouse (the user's only approving one) without saying so | **Fixed** (button disabled with a message); found by the access tests |
 | D-10 | Low | Uploaded files could not be previewed (file names with special spaces) | **Fixed** (files fetched inline; new names kept to plain characters) |
 
 ## 4. Open items
@@ -61,7 +62,7 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 
 ## 5. Test data left behind
 
-The tests create records labelled `AUTOTEST` (inbounds, outbounds, documents, Handling Units) and use the seeded `TEST …` customers and carriers (`docs/acceptance/seed/README.md`). Remove them with a filter on `AUTOTEST` / `TEST` when no longer needed.
+The access tests leave three empty `Requested` inbounds per run (one per warehouse, no customer, so they cannot be labelled). The tests create records labelled `AUTOTEST` (inbounds, outbounds, documents, Handling Units) and use the seeded `TEST …` customers and carriers (`docs/acceptance/seed/README.md`). Remove them with a filter on `AUTOTEST` / `TEST` when no longer needed.
 
 ## 6. How to rerun
 

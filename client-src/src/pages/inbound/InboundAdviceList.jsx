@@ -83,8 +83,13 @@ export default function InboundAdviceList() {
 
   const canCreate = creatableWarehouses.length > 0;
   // A new inbound belongs to the warehouse chosen in the sidebar (or the user's only one).
-  const chosenWarehouse =
-    creatableWarehouses.find((w) => String(w.ROWID) === String(activeWarehouseId))?.ROWID || (creatableWarehouses.length === 1 ? creatableWarehouses[0].ROWID : '');
+  // With a warehouse selected it must be one the user can create in: never quietly use another one.
+  const chosenWarehouse = activeWarehouseId
+    ? creatableWarehouses.find((w) => String(w.ROWID) === String(activeWarehouseId))?.ROWID || ''
+    : creatableWarehouses.length === 1
+      ? creatableWarehouses[0].ROWID
+      : '';
+  const activeNotCreatable = Boolean(activeWarehouseId) && !chosenWarehouse;
 
   const startNew = () => {
     setCreating(true);
@@ -110,7 +115,11 @@ export default function InboundAdviceList() {
         <h2>Inbound Operations</h2>
         {canCreate && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {!chosenWarehouse && <span className="muted small">Choose a warehouse at the bottom left first</span>}
+            {!chosenWarehouse && (
+              <span className="muted small">
+                {activeNotCreatable ? "Your role in this warehouse can't create inbounds. Choose another warehouse at the bottom left." : 'Choose a warehouse at the bottom left first'}
+              </span>
+            )}
             <button className="btn" onClick={startNew} disabled={creating || !chosenWarehouse}>
               {creating ? 'Creating...' : '+ New Inbound'}
             </button>

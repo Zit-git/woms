@@ -47,3 +47,7 @@ Each run leaves three empty `Requested` inbounds (one per warehouse); delete the
 ## Not covered by this file
 
 A2 (an operator sees only the rows assigned to them), A6 and A7 (removing a warehouse from the user takes effect at the next load) are done by hand: Administration -> Manage access, change the user's warehouses, reload as the user.
+
+## Verified configuration
+
+Run on 2026-10-20 with `zitraar.tech@gmail.com`: Warehouse Supervisor in Hamburg DC, Warehouse Operator in Rotterdam DC2, no access to Antwerp DC (run with `WOMS_MANAGER_WH="Hamburg DC" WOMS_OPERATOR_WH="Rotterdam DC2"`). Catalyst refuses `+` in email addresses; a dotted Gmail address works, but mind the dot position (`zitraa.artech` is a different mailbox from `zitraar.tech`).

@@ -39,9 +39,11 @@ export function field(scope, label) {
 export async function chooseWorkingWarehouse(page, name) {
   const select = page.getByLabel('Working warehouse');
   if (await select.count()) {
+    // switching is done without a page reload; the home heading only exists when we start on the home screen
+    const onHome = await page.getByRole('heading', { name: /^Welcome/ }).isVisible();
     await select.selectOption({ label: name });
     await page.waitForLoadState('load');
-    await expect(page.getByRole('heading', { name: /^Welcome/ })).toBeVisible();
+    if (onHome) await expect(page.getByRole('heading', { name: /^Welcome/ })).toBeVisible();
   }
 }
 

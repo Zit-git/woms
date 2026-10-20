@@ -37,7 +37,11 @@ test.describe('access by warehouse and role', () => {
     const ctx = await browser.newContext({ storageState: STAFF_SESSION, baseURL });
     const page = await ctx.newPage();
     await openHome(page);
-    await expect(page.getByText('Role: Warehouse Staff')).toBeVisible();
+    // the home screen lists the role per warehouse, e.g. "Role: Supervisor · Hamburg DC, Operator · Rotterdam DC2"
+    const roleLine = page.getByText(/^Role: /);
+    await expect(roleLine).toContainText(MANAGER_WH);
+    await expect(roleLine).toContainText(OPERATOR_WH);
+    await expect(roleLine).not.toContainText(OTHER_WH);
     await expect(page.getByRole('link', { name: 'Administration', exact: true })).toHaveCount(0);
     const options = await page.getByLabel('Working warehouse').locator('option').allInnerTexts();
     expect(options.join('|')).toContain(MANAGER_WH);
