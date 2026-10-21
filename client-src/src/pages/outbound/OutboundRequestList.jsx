@@ -6,7 +6,7 @@ import { useSortableData } from '../../lib/useSortableData';
 import { useAuth } from '../../context/AuthContext';
 import { accessibleWarehouses as scopeWarehouses } from '../../lib/access';
 import { todayStr, addDays } from '../../lib/dates';
-import { PICKUP_QR_PREFIX } from '../../lib/reference';
+import { pickupRequestIdFromPass } from '../../lib/scanning';
 import { OUTBOUND_FULFILLMENT_STATUSES, computeOutboundFulfillment, outboundStatusClass } from '../../lib/outboundStatus';
 
 const QrScannerModal = lazy(() => import('../../components/QrScannerModal'));
@@ -57,7 +57,8 @@ export default function OutboundRequestList() {
   });
   const onScanned = (text) => {
     setScanning(false);
-    if (String(text).startsWith(PICKUP_QR_PREFIX)) navigate(`/outbound/${String(text).slice(PICKUP_QR_PREFIX.length)}`);
+    const id = pickupRequestIdFromPass(text);
+    if (id) navigate(`/outbound/${id}`);
     else setError(`"${text}" is not a Pickup Pass code.`);
   };
   const { sorted, toggleSort, arrowFor } = useSortableData(shown);

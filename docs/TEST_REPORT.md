@@ -9,14 +9,17 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | Area | Result |
 |---|---|
 | Unit tests (dates, validation, warehouse access, visibility rules, row loader, query sharing) | **16 of 16 pass** |
+| Outbound rules (dispatch only after pick and check-in, status follows the goods, scanning accepts only the right passes and labels) | **12 of 12 pass** (`outbound.test.js`) |
 | Capacity and allocation rules (plan C1 to C9: exact fit, overlapping inbounds, dispatch dates, weight and size limits, one customer per location, dock backlog, warehouses) | **36 of 36 pass** (`capacity.test.js`) |
 | Smoke tests (home, Inbounds, Outbounds, Availability) | **4 of 4 pass** |
 | Inbound journey (request → availability → accept → receive → Handling Units → put-away → GRN) | **Pass**, 38 s |
 | Outbound journey (request → goods → check-in → scan-pick → dispatch → delivered) | **Pass**, 27 s |
 | Pickup pass page (rendered) | Skipped here: needs the Slate site (the legacy `/app/` host has no deep links) |
 | Double allocation (O5): a Handling Unit on one request is not offered to another | **Pass**, 15 s |
-| Whole suite, in order (4 smoke, inbound, outbound, double allocation) | **7 passed, 1 skipped**, 1.7 min |
+| Whole browser suite (access 5, inbound, outbound, double allocation, two new rule tests, 4 smoke) | **14 passed, 2 skipped (Slate-only)**, 3.0 min |
 | Security probes of the three functions | **Fixed**, re-verified from outside |
+| Inbound rules: reject needs a reason, reopen, accept, editing an accepted request returns it for a new check (I6, I8, D6) | **Pass**, 17.5 s |
+| Two pickups, one customer, one day: own driver, vehicle and reference (O4) | **Pass**, 20.7 s |
 | Access tests (second user: Supervisor in Hamburg DC, Operator in Rotterdam DC2, nothing in Antwerp DC) | **5 of 5 pass** on `/app/`; the direct-link test (A3) is Slate-only and skipped here |
 | Not yet run | A2/A6/A7 by hand, A3 direct link on Slate, concurrency between two people, performance with volume data, browsers other than Chrome, phones, backup/restore, client trial |
 
@@ -47,6 +50,7 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | D-09 | Medium | Availability rows all showed the same date in timezones ahead of UTC | **Fixed**, with a unit test |
 | D-11 | High | Goods received but not yet put away stopped counting as reserved, so their space showed as free again on the Availability screen and could be promised to other requests | **Fixed** (the dock backlog keeps its capacity, weight and space reserved); found by the new capacity tests |
 | D-12 | Medium | In a warehouse where the user may not create inbounds, **+ New Inbound** stayed enabled and would have created the inbound in a different warehouse (the user's only approving one) without saying so | **Fixed** (button disabled with a message); found by the access tests |
+| D-13 | Low | A scanned Pickup Pass with a garbled id (`WOMS-OB-abc`) would open a broken page instead of being refused | **Fixed** (only a numeric id is accepted); found while writing the scanning tests |
 | D-10 | Low | Uploaded files could not be previewed (file names with special spaces) | **Fixed** (files fetched inline; new names kept to plain characters) |
 
 ## 4. Open items

@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useState } from 'react';
 import Modal from '../../../components/Modal';
 import { editPickTask, recordScan } from '../../../lib/api';
 import { useAuth } from '../../../context/AuthContext';
+import { findPendingPickByCode } from '../../../lib/scanning';
 
 const QrScannerModal = lazy(() => import('../../../components/QrScannerModal'));
 
@@ -32,7 +33,7 @@ export default function PickPopup({ request, pickTasks, locations, reload, setEr
   const onScanned = useCallback(
     (decodedText) => {
       setShowScanner(false);
-      const match = pickTasks.find((t) => t.cargo_qr_code === decodedText && t.status !== 'Picked');
+      const match = findPendingPickByCode(pickTasks, decodedText);
       if (match) pick(match);
       else setError(`No pending pick line matches scanned code "${decodedText}"`);
     },
