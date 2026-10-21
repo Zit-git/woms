@@ -58,7 +58,7 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | ID | Severity | Item | Next step |
 |---|---|---|---|
 | O-1 | High | The same Handling Unit can be added to two open outbound requests | **Fixed** (hidden from other requests and refused again at add time); test O5 passes |
-| O-2 | High | The Slate site does not serve `/server/…`, so uploads and previews there use the token route, which can hang later requests (D-03) | Map the functions to the Slate app in the Catalyst console (one-time setting, needs you) |
+| O-2 | High | The Slate site does not serve `/server/…`, so uploads and previews there use the token route, which can hang later requests (D-03) | There is no console setting that serves functions on the Slate address (Catalyst keeps them on a separate domain by design). Check the Slate domain is whitelisted with CORS on (Console, Authentication, Whitelisting), then run the browser suite on Slate to see whether uploads still stall later requests; if they do, engineer around it or use `/app/` for the client |
 | O-3 | High | Warehouse separation and business rules are enforced in the browser's queries, not on the server | Server-side enforcement (planned) |
 | O-4 | Medium | The functions are not marked "authenticated" in the console (the code-level check now protects them) | Switch it on in the console (defence in depth) |
 | O-5 | Low | `npm audit`: two moderate advisories in `react-router` (open redirect, server rendering) | One-line upgrade |
