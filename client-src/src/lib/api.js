@@ -255,7 +255,10 @@ export const listCapacityCargo = async () => {
     zcql(
       `SELECT InboundLine.ROWID, InboundLine.unit, InboundLine.qty, InboundLine.received_qty, InboundLine.weight, InboundLine.length_cm, InboundLine.width_cm, InboundLine.height_cm, InboundLine.customer_id, InboundLine.warehouse_id, InboundLine.inbound_advice_id, InboundAdvice.status, InboundAdvice.expected_date, InboundAdvice.storage_start_date, InboundAdvice.storage_end_date, InboundAdvice.warehouse_id FROM InboundLine LEFT JOIN InboundAdvice ON InboundLine.inbound_advice_id = InboundAdvice.ROWID WHERE InboundAdvice.status = 'Confirmed' OR InboundAdvice.status = 'Received'`
     ),
-    zcql(`SELECT HuLine.inbound_line_id, HuLine.qty FROM HuLine`),
+    // Only a received inbound's remainder is worked out from what is packed, so only its lines are summed.
+    zcql(
+      `SELECT HuLine.inbound_line_id, SUM(HuLine.qty) FROM HuLine LEFT JOIN InboundLine ON HuLine.inbound_line_id = InboundLine.ROWID LEFT JOIN InboundAdvice ON InboundLine.inbound_advice_id = InboundAdvice.ROWID WHERE InboundAdvice.status = 'Received' GROUP BY HuLine.inbound_line_id`
+    ),
   ]);
 
   const hus = huRows.map((r) => ({
@@ -336,15 +339,19 @@ export const listInboundAdvice = (viewer) =>
 
 // Cargo status per inbound, for computing each row's Fulfillment Status in
 // the Inbounds list without a per-advice round trip (see fulfillmentStatus.js).
+// Counted by the database instead of downloading every Handling Unit (10,000 pallets made this list take 12 s):
+// one row per inbound and status, expanded back to one entry per unit for the status calculation.
+const expandCounts = (rows, table, build) =>
+  rows.flatMap((r) => Array.from({ length: Math.min(Number(r[table].ROWID) || 0, 5000) }, () => build(r)));
 export const listCargoStatusForAllAdvices = () =>
-  zcql(`SELECT Cargo.inbound_advice_id, Cargo.status FROM Cargo WHERE Cargo.inbound_advice_id IS NOT NULL AND Cargo.qr_code IS NOT NULL`).then(
-    (rows) => rows.map((r) => r.Cargo)
-  );
-// Planned vs. received package totals per inbound, for the same list.
+  zcql(
+    `SELECT Cargo.inbound_advice_id, Cargo.status, COUNT(Cargo.ROWID) FROM Cargo WHERE Cargo.inbound_advice_id IS NOT NULL AND Cargo.qr_code IS NOT NULL GROUP BY Cargo.inbound_advice_id, Cargo.status`
+  ).then((rows) => expandCounts(rows, 'Cargo', (r) => ({ inbound_advice_id: r.Cargo.inbound_advice_id, status: r.Cargo.status })));
+// Planned vs. received package totals per inbound, for the same list (summed by the database: one row per inbound).
 export const listLineTotalsForAllAdvices = () =>
-  zcql(`SELECT InboundLine.inbound_advice_id, InboundLine.qty, InboundLine.received_qty FROM InboundLine`).then((rows) =>
-    rows.map((r) => r.InboundLine)
-  );
+  zcql(
+    `SELECT InboundLine.inbound_advice_id, SUM(InboundLine.qty), SUM(InboundLine.received_qty) FROM InboundLine GROUP BY InboundLine.inbound_advice_id`
+  ).then((rows) => rows.map((r) => r.InboundLine));
 export const createInboundAdvice = (row) => addRow(TABLES.INBOUND_ADVICE, row);
 export const editInboundAdvice = (row) => updateRow(TABLES.INBOUND_ADVICE, row);
 
@@ -577,27 +584,63 @@ export const listStoredCargo = (viewer) =>
 
 // -- Delivery: cargo that has left the warehouse (Dispatched = in transit,
 // Delivered = handed over), with the outbound order and dispatch it left on. --
-// ZCQL allows at most 4 joins per query, so the inbound reference is looked up
-// separately rather than joined.
-export const listDeliveryGoods = (viewer) =>
-  Promise.all([
-    zcql(
-      `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.weight, Cargo.qr_code, Cargo.status, Cargo.outer_package_no, Cargo.inbound_advice_id, Cargo.MODIFIEDTIME, Customers.name, OutboundRequest.ROWID, OutboundRequest.reference_number, Dispatch.vehicle_details, Dispatch.dispatch_date, Dispatch.dispatched_by FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID LEFT JOIN PickTask ON PickTask.cargo_id = Cargo.ROWID LEFT JOIN OutboundRequest ON PickTask.outbound_request_id = OutboundRequest.ROWID LEFT JOIN Dispatch ON Dispatch.outbound_request_id = OutboundRequest.ROWID WHERE (Cargo.status = 'Dispatched' OR Cargo.status = 'Delivered')${visibilityClause(viewer, { warehouseCol: 'Cargo.warehouse_id' })} ORDER BY Cargo.MODIFIEDTIME DESC`
+// One query joining five tables with many columns is refused by the service once there is real
+// volume ("Error occurred during query processing"), so the goods come first and the outbound
+// order, dispatch and inbound reference are looked up for just those goods, in small chunks.
+// In transit is always complete; delivered history only grows, so it is loaded newest first,
+// `deliveredMax` at a time (300 per query is the service's limit).
+const chunksOf = (list, size) => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, (i + 1) * size));
+const DELIVERY_PAGE = 300;
+
+export const listDeliveryGoods = async (viewer, { deliveredMax = DELIVERY_PAGE } = {}) => {
+  const goods = (status) =>
+    `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.weight, Cargo.qr_code, Cargo.status, Cargo.outer_package_no, Cargo.inbound_advice_id, Cargo.MODIFIEDTIME, Customers.name FROM Cargo LEFT JOIN Customers ON Cargo.customer_id = Customers.ROWID WHERE Cargo.status = '${status}'${visibilityClause(viewer, { warehouseCol: 'Cargo.warehouse_id' })} ORDER BY Cargo.MODIFIEDTIME DESC`;
+
+  const inTransit = await zcql(goods('Dispatched'));
+  const delivered = [];
+  for (let offset = 0; offset < deliveredMax; offset += DELIVERY_PAGE) {
+    const page = await zcql(`${goods('Delivered')} LIMIT ${offset + 1}, ${DELIVERY_PAGE}`);
+    delivered.push(...page);
+    if (page.length < DELIVERY_PAGE) break;
+  }
+  const moreDelivered = delivered.length >= deliveredMax; // a full last page: there may be older ones
+  const cargo = [...inTransit, ...delivered];
+
+  const cargoIds = cargo.map((r) => r.Cargo.ROWID).filter((id) => /^\d+$/.test(String(id)));
+  const adviceIds = [...new Set(cargo.map((r) => r.Cargo.inbound_advice_id).filter((id) => /^\d+$/.test(String(id))))];
+  const [orderChunks, adviceChunks] = await Promise.all([
+    Promise.all(
+      chunksOf(cargoIds, 100).map((ids) =>
+        zcql(
+          `SELECT PickTask.cargo_id, OutboundRequest.ROWID, OutboundRequest.reference_number, Dispatch.vehicle_details, Dispatch.dispatch_date, Dispatch.dispatched_by FROM PickTask LEFT JOIN OutboundRequest ON PickTask.outbound_request_id = OutboundRequest.ROWID LEFT JOIN Dispatch ON Dispatch.outbound_request_id = OutboundRequest.ROWID WHERE PickTask.cargo_id IN (${ids.join(', ')})`
+        )
+      )
     ),
-    zcql('SELECT ROWID, inbound_reference FROM InboundAdvice'),
-  ]).then(([rows, adviceRows]) => {
-    const refById = new Map(adviceRows.map((r) => [String(r.InboundAdvice.ROWID), r.InboundAdvice.inbound_reference]));
-    return rows.map((r) => ({
+    Promise.all(chunksOf(adviceIds, 100).map((ids) => zcql(`SELECT ROWID, inbound_reference FROM InboundAdvice WHERE ROWID IN (${ids.join(', ')})`))),
+  ]);
+
+  const orderByCargo = new Map();
+  orderChunks.flat().forEach((r) => {
+    const key = String(r.PickTask.cargo_id);
+    if (!orderByCargo.has(key)) orderByCargo.set(key, r); // a pallet with more than one pick record shows its first
+  });
+  const refById = new Map(adviceChunks.flat().map((r) => [String(r.InboundAdvice.ROWID), r.InboundAdvice.inbound_reference]));
+
+  const rows = cargo.map((r) => {
+    const o = orderByCargo.get(String(r.Cargo.ROWID));
+    return {
       ...r.Cargo,
       customer_name: r.Customers?.name,
       inbound_reference: refById.get(String(r.Cargo.inbound_advice_id)),
-      outbound_request_id: r.OutboundRequest?.ROWID,
-      outbound_reference: r.OutboundRequest?.reference_number,
-      vehicle_details: r.Dispatch?.vehicle_details,
-      dispatch_date: r.Dispatch?.dispatch_date,
-      dispatched_by: r.Dispatch?.dispatched_by,
-    }));
+      outbound_request_id: o?.OutboundRequest?.ROWID,
+      outbound_reference: o?.OutboundRequest?.reference_number,
+      vehicle_details: o?.Dispatch?.vehicle_details,
+      dispatch_date: o?.Dispatch?.dispatch_date,
+      dispatched_by: o?.Dispatch?.dispatched_by,
+    };
   });
+  return { rows, moreDelivered };
+};
 
 // -- Operational Task Management --
 export const listTasks = (viewer) =>
@@ -751,9 +794,9 @@ export const listOutboundLinksByAdvice = (inboundAdviceId) =>
 // each request's Fulfillment Status without a round trip per row.
 export const listPickStatusForAllRequests = () =>
   zcql(
-    `SELECT PickTask.outbound_request_id, PickTask.status, Cargo.status FROM PickTask LEFT JOIN Cargo ON PickTask.cargo_id = Cargo.ROWID WHERE PickTask.outbound_request_id IS NOT NULL`
+    `SELECT PickTask.outbound_request_id, PickTask.status, Cargo.status, COUNT(PickTask.ROWID) FROM PickTask LEFT JOIN Cargo ON PickTask.cargo_id = Cargo.ROWID WHERE PickTask.outbound_request_id IS NOT NULL GROUP BY PickTask.outbound_request_id, PickTask.status, Cargo.status`
   ).then((rows) =>
-    rows.map((r) => ({ outbound_request_id: r.PickTask.outbound_request_id, status: r.PickTask.status, cargo_status: r.Cargo?.status }))
+    expandCounts(rows, 'PickTask', (r) => ({ outbound_request_id: r.PickTask.outbound_request_id, status: r.PickTask.status, cargo_status: r.Cargo?.status }))
   );
 export const createPickTask = (row) => addRow(TABLES.PICK_TASK, row);
 export const editPickTask = (row) => updateRow(TABLES.PICK_TASK, row);

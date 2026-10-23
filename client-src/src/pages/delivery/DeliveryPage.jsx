@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listDeliveryGoods, markCargoDelivered } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
@@ -20,6 +20,9 @@ export default function DeliveryPage() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
 
+  const [moreDelivered, setMoreDelivered] = useState(false);
+  const deliveredMax = useRef(300); // delivered history is loaded newest first, 300 more on request
+
   const [tab, setTab] = useState('Dispatched');
   const [search, setSearch] = useState('');
   const [customerFilter, setCustomerFilter] = useState('');
@@ -30,8 +33,9 @@ export default function DeliveryPage() {
 
   const reload = useCallback(
     () =>
-      listDeliveryGoods(viewer)
-        .then((list) => {
+      listDeliveryGoods(viewer, { deliveredMax: deliveredMax.current })
+        .then(({ rows: list, moreDelivered: more }) => {
+          setMoreDelivered(more);
           // One row per package even if its order has more than one dispatch record.
           const byId = new Map();
           list.forEach((r) => {
@@ -98,6 +102,13 @@ export default function DeliveryPage() {
   const canSelect = tab === 'Dispatched';
   const allSelected = canSelect && filtered.length > 0 && filtered.every((r) => selected.has(String(r.ROWID)));
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(filtered.map((r) => String(r.ROWID))));
+
+  const loadOlder = () => {
+    deliveredMax.current += 300;
+    setBusy(true);
+    setError('');
+    reload().finally(() => setBusy(false));
+  };
 
   const markDelivered = async (ids) => {
     setBusy(true);
@@ -182,7 +193,10 @@ export default function DeliveryPage() {
         </div>
         <div>
           <div className="muted small">Delivered</div>
-          <div className="summary-value">{delivered.length}</div>
+          <div className="summary-value">
+            {delivered.length}
+            {moreDelivered ? '+' : ''}
+          </div>
         </div>
         <div>
           <div className="muted small">Customers</div>
@@ -197,7 +211,7 @@ export default function DeliveryPage() {
       <div className="tabs">
         {TABS.map((t) => (
           <div key={t.key} className={`tab ${tab === t.key ? 'active' : ''}`} onClick={() => switchTab(t.key)}>
-            {t.label} ({t.key === 'Dispatched' ? inTransit.length : delivered.length})
+            {t.label} ({t.key === 'Dispatched' ? inTransit.length : `${delivered.length}${moreDelivered ? '+' : ''}`})
           </div>
         ))}
       </div>
@@ -283,6 +297,15 @@ export default function DeliveryPage() {
           )}
         </tbody>
       </table>
+
+      {tab === 'Delivered' && moreDelivered && (
+        <p className="muted small" style={{ marginTop: 12 }}>
+          Showing the {delivered.length} most recently delivered packages.{' '}
+          <button className="link-btn" onClick={loadOlder} disabled={busy}>
+            {busy ? 'Loading...' : 'Load 300 older'}
+          </button>
+        </p>
+      )}
     </div>
   );
 }

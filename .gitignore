@@ -11,3 +11,4 @@ client-src/e2e/report/
 client-src/e2e/results/
 client-src/test-results/
 client-src/playwright-report/
+client-src/e2e/.volume/

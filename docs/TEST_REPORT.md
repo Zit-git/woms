@@ -8,7 +8,7 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 
 | Area | Result |
 |---|---|
-| Unit tests (dates, validation, warehouse access, visibility rules, row loader, query sharing) | **16 of 16 pass** |
+| Unit tests (dates, validation, warehouse access, visibility rules, row loader, query sharing) | **20 of 20 pass** (`core.test.js`: now also every-row paging) |
 | Outbound rules (dispatch only after pick and check-in, status follows the goods, scanning accepts only the right passes and labels) | **12 of 12 pass** (`outbound.test.js`) |
 | Capacity and allocation rules (plan C1 to C9: exact fit, overlapping inbounds, dispatch dates, weight and size limits, one customer per location, dock backlog, warehouses) | **45 of 45 pass** (`capacity.test.js`, includes the put-away checks) |
 | Smoke tests (home, Inbounds, Outbounds, Availability) | **4 of 4 pass** |
@@ -16,12 +16,13 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | Outbound journey (request → goods → check-in → scan-pick → dispatch → delivered) | **Pass**, 27 s |
 | Pickup pass page (rendered) | Skipped here: needs the Slate site (the legacy `/app/` host has no deep links) |
 | Double allocation (O5): a Handling Unit on one request is not offered to another | **Pass**, 15 s |
-| Whole browser suite (access 5, inbound, outbound, double allocation, two rule tests, 4 smoke) | **14 passed, 2 skipped (Slate-only)**, 2.9 min |
+| Whole browser suite (access 5, inbound, outbound, double allocation, two rule tests, 5 smoke) | **15 passed, 3 skipped (2 Slate-only, 1 on-request volume timing)**, 3.1 min |
 | Data integrity (orphans, packed vs received, positions over capacity, double pick lists; `INTEGRITY_CHECKS.md`) | **Checked 2026-10-23**: no orphans, packing reconciles; one defect found (D-14, fixed); leftover test data only |
 | Security probes of the three functions | **Fixed**, re-verified from outside |
 | Inbound rules: reject needs a reason, reopen, accept, editing an accepted request returns it for a new check (I6, I8, D6) | **Pass**, 17.5 s |
 | Two pickups, one customer, one day: own driver, vehicle and reference (O4) | **Pass**, 20.7 s |
 | Access tests (second user: Supervisor in Hamburg DC, Operator in Rotterdam DC2, nothing in Antwerp DC) | **5 of 5 pass** on `/app/`; the direct-link test (A3) is Slate-only and skipped here |
+| Volume (84, 384 and 1,084 inbounds; 10,000 pallets; see section 7) | **Done 2026-10-23**: three defects found and fixed; test data removed |
 | Not yet run | A2/A6/A7 by hand, A3 direct link on Slate, concurrency between two people, performance with volume data, browsers other than Chrome, phones, backup/restore, client trial |
 
 ## 2. What each automated test proves
@@ -53,6 +54,9 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | D-12 | Medium | In a warehouse where the user may not create inbounds, **+ New Inbound** stayed enabled and would have created the inbound in a different warehouse (the user's only approving one) without saying so | **Fixed** (button disabled with a message); found by the access tests |
 | D-13 | Low | A scanned Pickup Pass with a garbled id (`WOMS-OB-abc`) would open a broken page instead of being refused | **Fixed** (only a numeric id is accepted); found while writing the scanning tests |
 | D-14 | High | Put-away could place a second pallet in a one-pallet position: it assumed a pallet planned to leave today had already left, and nothing checked a manual choice. 3 positions held 2 pallets each | **Fixed**: what is physically in a position occupies it, and storing is refused when the position is full, blocked or another customer's (re-read at the moment of storing). Re-verified live: a new inbound's pallet went to an empty position, nothing added to the 3 full ones |
+| D-15 | **High** | Every list silently stopped at 300 rows: with 384 inbounds the Inbounds list showed "300 of 300" (older records invisible; stock-based figures could be incomplete). Found by the volume test | **Fixed**: queries are fetched page by page until complete (tested with 384, 300 and 12 rows) |
+| D-16 | High | Deliveries failed ("Error occurred during query processing") once there were about 3,000 delivered pallets: the one query joining five tables was refused | **Fixed**: goods first, orders/dispatches/references looked up in small chunks; delivered history loads newest first, 300 at a time ("Load 300 older") |
+| D-17 | Medium | Lists, Storage and Availability slowed in step with the data (12 to 15 s at 1,084 inbounds / 10,000 pallets) because they downloaded every pallet and pick line to compute a status | **Fixed**: the database now counts and sums; 2 to 6 s at the same volume |
 | D-10 | Low | Uploaded files could not be previewed (file names with special spaces) | **Fixed** (files fetched inline; new names kept to plain characters) |
 
 ## 4. Open items
@@ -70,6 +74,22 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 
 The access tests leave three empty `Requested` inbounds per run (one per warehouse, no customer, so they cannot be labelled). The tests create records labelled `AUTOTEST` (inbounds, outbounds, documents, Handling Units) and use the seeded `TEST …` customers and carriers (`docs/acceptance/seed/README.md`). Remove them with a filter on `AUTOTEST` / `TEST` when no longer needed.
 
+## 7. Volume results
+
+Data added by `e2e/volume/seed.mjs` (tagged `VOLTEST`, removed again by `cleanup.mjs`; ids recorded in a manifest so only those rows go). Seconds until a screen has settled (no "Loading", no request in flight), measured with `VOLUME=1 npx playwright test volume`.
+
+| Screen | 84 inbounds | 384 inbounds, 3,000 pallets | 1,084 inbounds, 10,000 pallets, before the fix | same, after the fix |
+|---|---|---|---|---|
+| Dashboard | 4.2 | 4.1 | 4.2 | 4.1 |
+| Inbounds list | 3.4 | 5.2 | 12.5 | **6.0** |
+| Outbounds list | 1.7 | 5.5 | 14.7 | **4.9** |
+| Storage | 2.5 | 5.2 | 12.8 | **2.2** |
+| Availability | 2.2 | 5.6 | 12.9 | **2.0** |
+| Deliveries | 1.6 | failed, then 3.4 | 3.5 | 5.3 |
+| Inbound detail | 3.2 | 6.3 | 14.7 | **6.3** |
+
+Reading: every screen now settles within about 6 s at 1,000 inbounds. The Inbounds and Outbounds lists still load every record (13 and 9 requests), so they grow with the data; beyond a few thousand inbounds they need server-side filtering (for example a default date window). The Dashboard has a fixed cost.
+
 ## 6. How to rerun
 
 ```
@@ -77,4 +97,5 @@ cd client-src
 npm run verify        # unit tests + build
 npm run e2e:login     # once, sign in yourself
 npm run e2e           # all browser tests (set WOMS_URL to test another site)
+VOLUME=1 npx playwright test volume   # screen timings; add data first with: N=300 node e2e/volume/seed.mjs, remove with: node e2e/volume/cleanup.mjs
 ```

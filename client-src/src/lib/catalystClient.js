@@ -277,7 +277,12 @@ export function zcql(query) {
   return shareWhileInFlight(`q:${query}`, () => zcqlOnce(query));
 }
 
-function zcqlOnce(query) {
+// One ZCQL statement can return at most 300 rows; anything beyond is silently left out (a list of 384
+// inbounds showed "300 of 300"). So a query without its own LIMIT is fetched page by page until a page
+// comes back short. The offset in "LIMIT offset, count" starts at 1.
+const ZCQL_PAGE = 300;
+const ZCQL_MAX_PAGES = 60; // 18,000 rows: beyond this a screen should filter, not load everything
+function zcqlPage(query) {
   return withDeadline(
     sdk()
       .ZCatalystQL.executeQuery(query)
@@ -292,6 +297,20 @@ function zcqlOnce(query) {
     'loading data',
     query.slice(0, 160)
   );
+}
+
+async function zcqlOnce(query) {
+  if (/\blimit\b/i.test(query)) return zcqlPage(query);
+  const first = await zcqlPage(`${query} LIMIT 1, ${ZCQL_PAGE}`);
+  if (first.length < ZCQL_PAGE) return first;
+  const all = [...first];
+  for (let page = 1; page < ZCQL_MAX_PAGES; page++) {
+    const rows = await zcqlPage(`${query} LIMIT ${page * ZCQL_PAGE + 1}, ${ZCQL_PAGE}`);
+    all.push(...rows);
+    if (rows.length < ZCQL_PAGE) return all;
+  }
+  console.warn(`[woms] query returned more than ${ZCQL_MAX_PAGES * ZCQL_PAGE} rows; the rest was left out: ${query.slice(0, 120)}`);
+  return all;
 }
 
 // This project's function domain -- stable per Catalyst project/environment,

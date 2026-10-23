@@ -26,6 +26,16 @@ test.describe('smoke', () => {
     await expectNoErrors(page);
   });
 
+  test('deliveries opens with its in-transit and delivered tabs', async ({ page }) => {
+    await openHome(page);
+    await openMenu(page, 'Deliveries');
+    await expect(page.getByRole('heading', { name: 'Deliveries' })).toBeVisible();
+    await expect(page.locator('.tab', { hasText: 'In Transit' })).toBeVisible();
+    await expect(page.locator('.tab', { hasText: 'Delivered' })).toBeVisible();
+    await expect(page.getByText(/^Loading/)).toHaveCount(0, { timeout: 60_000 });
+    await expectNoErrors(page);
+  });
+
   test('warehouse availability opens without errors', async ({ page }) => {
     await openHome(page);
     await openMenu(page, 'Warehouses');

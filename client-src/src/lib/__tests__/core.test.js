@@ -112,3 +112,50 @@ describe('identical simultaneous queries share one request', () => {
     expect(results[1]).toHaveLength(1);
   });
 });
+
+describe('queries return every row, not just the first 300', () => {
+  const fakeData = (total) => {
+    const asked = [];
+    globalThis.window = {
+      catalyst: {
+        ZCatalystQL: {
+          executeQuery: (q) => {
+            asked.push(q);
+            const m = /LIMIT (\d+), (\d+)$/.exec(q);
+            const from = m ? Number(m[1]) - 1 : 0;
+            const count = m ? Number(m[2]) : 300;
+            const rows = Array.from({ length: Math.max(0, Math.min(count, total - from)) }, (_, i) => ({ T: { n: from + i + 1 } }));
+            return Promise.resolve({ status: 200, content: rows });
+          },
+        },
+      },
+    };
+    return asked;
+  };
+  it('a short result is one request', async () => {
+    const { zcql } = await import('../catalystClient');
+    const asked = fakeData(12);
+    expect(await zcql('SELECT n FROM T ORDER BY n')).toHaveLength(12);
+    expect(asked).toEqual(['SELECT n FROM T ORDER BY n LIMIT 1, 300']);
+  });
+  it('384 rows come back as 300 + 84, in order, none missing or repeated', async () => {
+    const { zcql } = await import('../catalystClient');
+    const asked = fakeData(384);
+    const rows = await zcql('SELECT n FROM T2 ORDER BY n');
+    expect(rows).toHaveLength(384);
+    expect(rows.map((r) => r.T.n)).toEqual(Array.from({ length: 384 }, (_, i) => i + 1));
+    expect(asked).toEqual(['SELECT n FROM T2 ORDER BY n LIMIT 1, 300', 'SELECT n FROM T2 ORDER BY n LIMIT 301, 300']);
+  });
+  it('exactly 300 rows asks once more to be sure there is no 301st', async () => {
+    const { zcql } = await import('../catalystClient');
+    const asked = fakeData(300);
+    expect(await zcql('SELECT n FROM T3 ORDER BY n')).toHaveLength(300);
+    expect(asked).toHaveLength(2);
+  });
+  it('a query with its own LIMIT is left alone', async () => {
+    const { zcql } = await import('../catalystClient');
+    const asked = fakeData(1000);
+    await zcql('SELECT n FROM T4 ORDER BY n LIMIT 1, 5');
+    expect(asked).toEqual(['SELECT n FROM T4 ORDER BY n LIMIT 1, 5']);
+  });
+});
