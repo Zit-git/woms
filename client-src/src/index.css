@@ -120,7 +120,7 @@ h1, h2, h3 { margin: 0 0 12px; letter-spacing: -0.01em; }
 .sidebar-footer .link-btn { color: #7dd3d8; }
 .sign-out-btn { display: inline-flex; align-items: center; gap: 6px; }
 
-.main-content { flex: 1; padding: 36px 40px; max-width: 1180px; }
+.main-content { flex: 1; min-width: 0; padding: 36px 40px; max-width: 1180px; }
 
 .bottom-nav { display: none; }
 
@@ -477,6 +477,36 @@ tr.clickable-row:hover td { background: var(--surface-soft); }
   /* Generic fallback so any data table too wide for a phone scrolls inside
      itself rather than blowing out the page -- printed documents keep their
      normal table layout since they're not meant to be read on a phone. */
+  table:not(.print-meta):not(.print-table):not(.line-items-table):not(.stack-on-phone) {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Work lists used on a phone (put-away, picking, packing): each row becomes a small card with its
+     label beside every value, so the choice that matters (location, count) is never off-screen. */
+  table.stack-on-phone, table.stack-on-phone tbody { display: block; }
+  table.stack-on-phone thead { display: none; }
+  table.stack-on-phone tr { display: block; padding: 10px 2px; border-bottom: 1px solid var(--border-soft); }
+  table.stack-on-phone td { display: block; border: 0; padding: 3px 0; white-space: normal; }
+  table.stack-on-phone td[data-label]::before {
+    content: attr(data-label) ": ";
+    display: inline-block;
+    min-width: 92px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  table.stack-on-phone select, table.stack-on-phone input[type="number"] { width: 100% !important; max-width: 100%; margin-top: 4px; }
+  table.stack-on-phone td:last-child .link-btn { display: block; width: 100%; text-align: center; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+}
+
+/* Tablets in landscape and small laptops: the sidebar takes a quarter of the screen, so a wide data table
+   scrolls inside itself instead of making the whole page scroll sideways. */
+@media (min-width: 769px) and (max-width: 1100px) {
   table:not(.print-meta):not(.print-table):not(.line-items-table) {
     display: block;
     overflow-x: auto;
@@ -631,6 +661,7 @@ tr.clickable-row:hover td { background: var(--surface-soft); }
 
 .filter-bar {
   display: flex;
+  flex-wrap: wrap; /* five filters do not fit in one row beside the sidebar on a tablet */
   align-items: flex-end;
   gap: 16px;
   margin-bottom: 16px;

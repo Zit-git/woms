@@ -155,7 +155,7 @@ export default function CreateHUPopup({ advice, lines, cargoRows, huContents, re
 
       <div className="form-section-title" style={{ marginTop: 0 }}>Line items</div>
       <div style={{ overflowX: 'auto' }}>
-        <table>
+        <table className="stack-on-phone">
           <thead>
             <tr>
               <th>#</th>
@@ -172,13 +172,13 @@ export default function CreateHUPopup({ advice, lines, cargoRows, huContents, re
               const left = remainingOf(l);
               return (
                 <tr key={l.ROWID}>
-                  <td>{l.line_no}</td>
-                  <td>{l.description || '—'}</td>
-                  <td>{l.unit}</td>
-                  <td>{Number(l.received_qty) || 0}</td>
-                  <td>{packedByLine.get(String(l.ROWID)) || 0}</td>
-                  <td style={left > 0 ? { fontWeight: 600 } : undefined}>{left}</td>
-                  <td>
+                  <td data-label="Line">{l.line_no}</td>
+                  <td data-label="Description">{l.description || '—'}</td>
+                  <td data-label="Unit">{l.unit}</td>
+                  <td data-label="Received">{Number(l.received_qty) || 0}</td>
+                  <td data-label="On HUs">{packedByLine.get(String(l.ROWID)) || 0}</td>
+                  <td data-label="Left to pack" style={left > 0 ? { fontWeight: 600 } : undefined}>{left}</td>
+                  <td data-label="Put on new HU">
                     <input
                       type="number"
                       min="0"

@@ -171,7 +171,7 @@ export default function PutawayPopup({ advice, cargoRows, reloadCargo, patchAdvi
         Suggested by size, weight and customer (locations are customer-dedicated). Change any of them before storing.
       </p>
       <div style={{ overflowX: 'auto' }}>
-        <table>
+        <table className="stack-on-phone">
           <thead>
             <tr>
               <th>#</th>
@@ -183,10 +183,10 @@ export default function PutawayPopup({ advice, cargoRows, reloadCargo, patchAdvi
           <tbody>
             {placed.map((c) => (
               <tr key={c.ROWID}>
-                <td>{c.outer_package_no}</td>
-                <td>{c.description}</td>
-                <td>{c.unit}</td>
-                <td>
+                <td data-label="HU">{c.outer_package_no}</td>
+                <td data-label="Description">{c.description}</td>
+                <td data-label="Unit">{c.unit}</td>
+                <td data-label="Location">
                   <span className="status-badge status-stored">Stored</span> {pathById.get(String(c.current_location_id)) || ''}
                 </td>
               </tr>
@@ -195,10 +195,10 @@ export default function PutawayPopup({ advice, cargoRows, reloadCargo, patchAdvi
               const suggested = suggestions.get(String(c.ROWID));
               return (
                 <tr key={c.ROWID}>
-                  <td>{c.outer_package_no}</td>
-                  <td>{c.description}</td>
-                  <td>{c.unit}</td>
-                  <td>
+                  <td data-label="HU">{c.outer_package_no}</td>
+                  <td data-label="Description">{c.description}</td>
+                  <td data-label="Unit">{c.unit}</td>
+                  <td data-label="Location">
                     <select value={chosenFor(c)} onChange={(e) => setChoices((m) => ({ ...m, [c.ROWID]: e.target.value }))} disabled={busy}>
                       <option value="">{data ? 'Select location...' : 'Loading...'}</option>
                       {(data?.labelled || [])

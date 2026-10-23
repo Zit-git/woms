@@ -59,7 +59,7 @@ export default function PickPopup({ request, pickTasks, locations, reload, setEr
         </Suspense>
       )}
 
-      <table>
+      <table className="stack-on-phone">
         <thead>
           <tr>
             <th>Fetch from</th>
@@ -75,7 +75,7 @@ export default function PickPopup({ request, pickTasks, locations, reload, setEr
             const loc = locations.get(String(t.cargo_location_id));
             return (
               <tr key={t.ROWID}>
-                <td>
+                <td data-label="Fetch from">
                   {t.status === 'Picked' ? (
                     <span className="muted small">Picked</span>
                   ) : loc ? (
@@ -87,14 +87,14 @@ export default function PickPopup({ request, pickTasks, locations, reload, setEr
                     <span className="muted small">Not in a rack: at the dock</span>
                   )}
                 </td>
-                <td>
+                <td data-label="Cargo">
                   {t.cargo_hu_no ? <strong>HU {t.cargo_hu_no}</strong> : null} {t.cargo_description}
                 </td>
-                <td>
+                <td data-label="Qty">
                   {t.cargo_qty} {t.cargo_unit}
                 </td>
-                <td>{t.cargo_qr_code || <span className="muted">Not generated</span>}</td>
-                <td>
+                <td data-label="QR">{t.cargo_qr_code || <span className="muted">Not generated</span>}</td>
+                <td data-label="Status">
                   <span className="status-badge">{t.status}</span>
                 </td>
                 <td>

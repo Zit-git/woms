@@ -18,14 +18,15 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | Outbound journey (request → goods → check-in → scan-pick → dispatch → delivered) | **Pass**, 27 s |
 | Pickup pass page (rendered) | Skipped here: needs the Slate site (the legacy `/app/` host has no deep links) |
 | Double allocation (O5): a Handling Unit on one request is not offered to another | **Pass**, 15 s |
-| Whole browser suite (access 5, concurrency 3, inbound, outbound, double allocation, two rule tests, 5 smoke) | **18 passed, 3 skipped (2 Slate-only, 1 on-request volume timing)**, 4.4 min |
+| Whole browser suite (access, concurrency, inbound, outbound, double allocation, rules, smoke, phone/tablet/laptop audit) | **33 passed, 3 skipped (2 Slate-only, 1 on-request volume timing)**, 12.4 min |
 | Data integrity (orphans, packed vs received, positions over capacity, double pick lists; `INTEGRITY_CHECKS.md`) | **Checked 2026-10-23**: no orphans, packing reconciles; one defect found (D-14, fixed); leftover test data only |
 | Security probes of the three functions | **Fixed**, re-verified from outside |
 | Inbound rules: reject needs a reason, reopen, accept, editing an accepted request returns it for a new check (I6, I8, D6) | **Pass**, 17.5 s |
 | Two pickups, one customer, one day: own driver, vehicle and reference (O4) | **Pass**, 20.7 s |
 | Access tests (second user: Supervisor in Hamburg DC, Operator in Rotterdam DC2, nothing in Antwerp DC) | **5 of 5 pass** on `/app/`; the direct-link test (A3) is Slate-only and skipped here |
 | Volume (84, 384 and 1,084 inbounds; 10,000 pallets; see section 7) | **Done 2026-10-23**: three defects found and fixed; test data removed |
-| Not yet run | A2/A6/A7 by hand, A3 direct link on Slate, concurrency between two people, performance with volume data, browsers other than Chrome, phones, backup/restore, client trial |
+| Phones and tablets: every menu screen and the key popups at 390x844, 360x640, 768x1024, 1024x768 and 1280x720 (`devices.spec.js`; screenshots in `e2e/results/devices/`) | **15 of 15 pass** (Chromium emulation of screen size, touch and mobile mode) |
+| Not yet run | Firefox and Safari engines (this machine has only Chromium; real devices by hand), A2/A6/A7 by hand, A3 direct link on Slate, concurrency between two people, performance with volume data, browsers other than Chrome, phones, backup/restore, client trial |
 
 ## 2. What each automated test proves
 
@@ -61,6 +62,8 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | D-17 | Medium | Lists, Storage and Availability slowed in step with the data (12 to 15 s at 1,084 inbounds / 10,000 pallets) because they downloaded every pallet and pick line to compute a status | **Fixed**: the database now counts and sums; 2 to 6 s at the same volume |
 | D-18 | **High** | Two people storing into the last free position in the same second both succeeded: a one-pallet position held 2 pallets (the check before storing passes for both) | **Fixed**: after writing, everyone in the position is listed in order of arrival and the later arrival undoes its placement and is told ("just filled by someone else"); the same rule for relocation. Found by `concurrency.spec.js` |
 | D-19 | **High** | Two outbounds adding the same pallet in the same second both got it (the earlier double-allocation fix only covered people acting one after the other) | **Fixed**: same write-then-verify rule; the second adder's line is removed and they are told ("just added to outbound OB-…") |
+| D-20 | Medium | On a tablet held sideways (1024 px) and similar widths, the Customers table and the Deliveries filter bar were wider than the space beside the sidebar and made the whole page scroll sideways | **Fixed**: wide tables scroll inside themselves at 769 to 1100 px, the filter bar wraps |
+| D-21 | Medium | On a phone, the work lists were awkward: the put-away location dropdown was cut off at the right edge, the pick list's "Fetch from" location had scrolled off the left, and the handling-unit counts needed sideways scrolling | **Fixed**: put-away, picking and packing lists show each row as a card with labelled values (location first, full-width dropdown, full-width Scan & Pick) |
 | D-10 | Low | Uploaded files could not be previewed (file names with special spaces) | **Fixed** (files fetched inline; new names kept to plain characters) |
 
 ## 4. Open items
