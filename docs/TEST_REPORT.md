@@ -9,6 +9,8 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | Area | Result |
 |---|---|
 | Unit tests (dates, validation, warehouse access, visibility rules, row loader, query sharing) | **20 of 20 pass** (`core.test.js`: now also every-row paging) |
+| Concurrency rules (who keeps the last position or pallet when two people act in the same second) | **8 of 8 pass** (`claimOutcome` in `capacity.test.js`) |
+| Two real users at the same moment (administrator + staff): last free position, same pallet on two outbounds, two edits to one request (`concurrency.spec.js`) | **3 of 3 pass**, stable over 3 runs; the loser is told |
 | Outbound rules (dispatch only after pick and check-in, status follows the goods, scanning accepts only the right passes and labels) | **12 of 12 pass** (`outbound.test.js`) |
 | Capacity and allocation rules (plan C1 to C9: exact fit, overlapping inbounds, dispatch dates, weight and size limits, one customer per location, dock backlog, warehouses) | **45 of 45 pass** (`capacity.test.js`, includes the put-away checks) |
 | Smoke tests (home, Inbounds, Outbounds, Availability) | **4 of 4 pass** |
@@ -16,7 +18,7 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | Outbound journey (request → goods → check-in → scan-pick → dispatch → delivered) | **Pass**, 27 s |
 | Pickup pass page (rendered) | Skipped here: needs the Slate site (the legacy `/app/` host has no deep links) |
 | Double allocation (O5): a Handling Unit on one request is not offered to another | **Pass**, 15 s |
-| Whole browser suite (access 5, inbound, outbound, double allocation, two rule tests, 5 smoke) | **15 passed, 3 skipped (2 Slate-only, 1 on-request volume timing)**, 3.1 min |
+| Whole browser suite (access 5, concurrency 3, inbound, outbound, double allocation, two rule tests, 5 smoke) | **18 passed, 3 skipped (2 Slate-only, 1 on-request volume timing)**, 4.4 min |
 | Data integrity (orphans, packed vs received, positions over capacity, double pick lists; `INTEGRITY_CHECKS.md`) | **Checked 2026-10-23**: no orphans, packing reconciles; one defect found (D-14, fixed); leftover test data only |
 | Security probes of the three functions | **Fixed**, re-verified from outside |
 | Inbound rules: reject needs a reason, reopen, accept, editing an accepted request returns it for a new check (I6, I8, D6) | **Pass**, 17.5 s |
@@ -57,6 +59,8 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | D-15 | **High** | Every list silently stopped at 300 rows: with 384 inbounds the Inbounds list showed "300 of 300" (older records invisible; stock-based figures could be incomplete). Found by the volume test | **Fixed**: queries are fetched page by page until complete (tested with 384, 300 and 12 rows) |
 | D-16 | High | Deliveries failed ("Error occurred during query processing") once there were about 3,000 delivered pallets: the one query joining five tables was refused | **Fixed**: goods first, orders/dispatches/references looked up in small chunks; delivered history loads newest first, 300 at a time ("Load 300 older") |
 | D-17 | Medium | Lists, Storage and Availability slowed in step with the data (12 to 15 s at 1,084 inbounds / 10,000 pallets) because they downloaded every pallet and pick line to compute a status | **Fixed**: the database now counts and sums; 2 to 6 s at the same volume |
+| D-18 | **High** | Two people storing into the last free position in the same second both succeeded: a one-pallet position held 2 pallets (the check before storing passes for both) | **Fixed**: after writing, everyone in the position is listed in order of arrival and the later arrival undoes its placement and is told ("just filled by someone else"); the same rule for relocation. Found by `concurrency.spec.js` |
+| D-19 | **High** | Two outbounds adding the same pallet in the same second both got it (the earlier double-allocation fix only covered people acting one after the other) | **Fixed**: same write-then-verify rule; the second adder's line is removed and they are told ("just added to outbound OB-…") |
 | D-10 | Low | Uploaded files could not be previewed (file names with special spaces) | **Fixed** (files fetched inline; new names kept to plain characters) |
 
 ## 4. Open items
@@ -65,7 +69,7 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 |---|---|---|---|
 | O-1 | High | The same Handling Unit can be added to two open outbound requests | **Fixed** (hidden from other requests and refused again at add time); test O5 passes |
 | O-2 | High | The Slate site does not serve `/server/…`, so uploads and previews there use the token route, which can hang later requests (D-03) | There is no console setting that serves functions on the Slate address (Catalyst keeps them on a separate domain by design). Check the Slate domain is whitelisted with CORS on (Console, Authentication, Whitelisting), then run the browser suite on Slate to see whether uploads still stall later requests; if they do, engineer around it or use `/app/` for the client |
-| O-3 | High | Warehouse separation and business rules are enforced in the browser's queries, not on the server | Server-side enforcement (planned) |
+| O-3 | High | Warehouse separation and business rules are enforced in the browser's queries, not on the server. The capacity and double-allocation rules now also hold when two people act at once (D-18, D-19), but they still run in the browser, so a modified client could bypass them | Server-side enforcement (planned) |
 | O-4 | Medium | The functions are not marked "authenticated" in the console (the code-level check now protects them) | Switch it on in the console (defence in depth) |
 | O-5 | Low | `npm audit`: two moderate advisories in `react-router` (open redirect, server rendering) | One-line upgrade |
 | O-6 | Info | The legacy `/app/` host cannot open deep links (e.g. `/app/print/pickup/…`); Slate can | Use Slate for printing; the pass page is tested on Slate only |

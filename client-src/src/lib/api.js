@@ -1,6 +1,7 @@
 import { addRow, updateRow, deleteRow, getAllRows, zcql, callFunction, cachedFetch } from './catalystClient';
 import { formatSequentialRef } from './reference';
 import { expandLines } from './capacity';
+import { claimOutcome } from './allocation';
 
 const TABLES = {
   CUSTOMERS: 'Customers',
@@ -757,7 +758,20 @@ export const addPickLine = async (row) => {
   const other = holders.map((h) => h.OutboundRequest).find((o) => String(o?.ROWID) !== String(row.outbound_request_id));
   if (other) throw new Error(`This Handling Unit is already on outbound ${other.outbound_reference || `#${other.ROWID}`}.`);
   if (holders.length) throw new Error('This Handling Unit is already on this outbound.');
-  return createPickTask(row);
+  const created = await createPickTask(row);
+
+  // Two people can add the same pallet in the same second and both pass the check above. Look again at who
+  // holds it, in order of arrival, and give way if we were second (the same rule as for storage positions).
+  const claims = await zcql(
+    `SELECT PickTask.ROWID, OutboundRequest.outbound_reference, OutboundRequest.ROWID FROM PickTask LEFT JOIN OutboundRequest ON PickTask.outbound_request_id = OutboundRequest.ROWID WHERE PickTask.cargo_id = ${idOnly(row.cargo_id)} ORDER BY PickTask.CREATEDTIME ASC, PickTask.ROWID ASC`
+  );
+  const first = claims[0];
+  if (created?.ROWID && first && String(first.PickTask.ROWID) !== String(created.ROWID)) {
+    await removePickTask(created.ROWID);
+    const o = first.OutboundRequest;
+    throw new Error(`This Handling Unit was just added to outbound ${o?.outbound_reference || `#${o?.ROWID}`} by someone else.`);
+  }
+  return created;
 };
 
 export const listPickTasksByRequest = (outboundRequestId) =>
@@ -850,11 +864,45 @@ export async function recordScan(cargoId, scannedBy, scanContext, locationId) {
   }
 
   let fromLocationId = null;
+  let fromStatus = null;
   if (scanContext !== 'receiving') {
     const rows = await zcql(`SELECT current_location_id, status FROM Cargo WHERE ROWID = ${cargoId}`);
     fromLocationId = rows[0]?.Cargo?.current_location_id || null;
+    fromStatus = rows[0]?.Cargo?.status || null;
     if (scanContext === 'retrieval' && !fromLocationId) {
       throw new Error('This cargo is not in a storage location, so it cannot be retrieved.');
+    }
+  }
+
+  const update = { ROWID: cargoId, status: newStatus };
+  const placing = scanContext === 'storage' || scanContext === 'relocation';
+  if (placing) update.current_location_id = locationId;
+  if (LEAVES_LOCATION.has(scanContext)) update.current_location_id = null;
+  await updateRow(TABLES.CARGO, update);
+
+  // Someone else may have taken the last space in the same second: look again at who is in the position,
+  // in order of arrival, and give way if we were second (see claimOutcome).
+  if (placing) {
+    assertId(locationId);
+    const [occupants, place, types] = await Promise.all([
+      zcql(`SELECT Cargo.ROWID, Cargo.unit, Cargo.customer_id FROM Cargo WHERE Cargo.current_location_id = ${locationId} AND Cargo.qr_code IS NOT NULL ORDER BY Cargo.MODIFIEDTIME ASC, Cargo.ROWID ASC`),
+      zcql(`SELECT location_code, capacity FROM StorageLocations WHERE ROWID = ${locationId}`),
+      listPackageTypes(),
+    ]);
+    const outcome = claimOutcome({
+      cargoId,
+      occupants: occupants.map((r) => r.Cargo),
+      capacity: place[0]?.StorageLocations?.capacity,
+      packageTypes: types,
+    });
+    if (!outcome.ok) {
+      await updateRow(TABLES.CARGO, { ROWID: cargoId, current_location_id: fromLocationId, status: fromStatus || 'Received' });
+      const code = place[0]?.StorageLocations?.location_code || 'That position';
+      throw new Error(
+        outcome.reason === 'customer'
+          ? `${code} was just taken by another customer's goods. Choose another location.`
+          : `${code} was just filled by someone else. Choose another location.`
+      );
     }
   }
 
@@ -864,11 +912,6 @@ export async function recordScan(cargoId, scannedBy, scanContext, locationId) {
     scan_context: scanContext,
     scan_timestamp: formatDatetime(),
   });
-
-  const update = { ROWID: cargoId, status: newStatus };
-  if (scanContext === 'storage' || scanContext === 'relocation') update.current_location_id = locationId;
-  if (LEAVES_LOCATION.has(scanContext)) update.current_location_id = null;
-  await updateRow(TABLES.CARGO, update);
 
   if (MOVEMENT_TYPE[scanContext]) {
     const movement = {

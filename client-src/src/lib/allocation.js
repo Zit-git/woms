@@ -182,3 +182,25 @@ export function putawayConflicts({ placements, locations, allCargo, packageTypes
   });
   return [...messages];
 }
+
+// Two people can store into the last free position at the same moment, and both pass any check made
+// beforehand. The database has no transactions, so the rule is applied after writing: everyone now in
+// the position is listed in the order they arrived, and the new arrival keeps its place only if it still
+// fits when counted after those before it (and no one before it belongs to another customer).
+// `occupants` is [{ ROWID, unit, customer_id }] earliest first, and includes the new arrival.
+export function claimOutcome({ cargoId, occupants, capacity, packageTypes }) {
+  const packageTypesByName = new Map((packageTypes || []).map((p) => [p.name.trim().toLowerCase(), p]));
+  let used = 0;
+  let owner = null;
+  for (const o of occupants || []) {
+    const need = unitsPerItemFor(o.unit, packageTypesByName);
+    if (String(o.ROWID) === String(cargoId)) {
+      if (used + need > (Number(capacity) || 0) + 1e-9) return { ok: false, reason: 'full' };
+      if (owner && o.customer_id && String(o.customer_id) !== owner) return { ok: false, reason: 'customer' };
+      return { ok: true };
+    }
+    used += need;
+    if (!owner && o.customer_id) owner = String(o.customer_id);
+  }
+  return { ok: false, reason: 'missing' };
+}

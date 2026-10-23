@@ -36,3 +36,22 @@ export async function openSession() {
     );
   return { browser, page, call };
 }
+
+// ---- small helpers for tests that need exact records in the database (concurrency tests) ----
+export async function queryRows(call, sql) {
+  const r = await call('POST', '/query', { query: sql });
+  if (r.status !== 200) throw new Error(`query failed: ${r.status} ${String(r.text).slice(0, 200)}`);
+  return r.json?.data || r.json?.content || []; // rows keyed by table, as the query returns them
+}
+export async function insertRows(call, table, rows) {
+  const r = await call('POST', `/table/${table}/row`, rows);
+  const ids = rowIds(r.text);
+  if (r.status !== 200 || ids.length !== rows.length) throw new Error(`${table} insert failed: ${r.status} ${String(r.text).slice(0, 300)}`);
+  return ids;
+}
+export async function deleteRows(call, table, ids) {
+  for (let i = 0; i < ids.length; i += 100) {
+    const r = await call('DELETE', `/table/${table}/row?ids=${ids.slice(i, i + 100).join(',')}`);
+    if (r.status !== 200) throw new Error(`${table} delete failed: ${r.status} ${String(r.text).slice(0, 300)}`);
+  }
+}

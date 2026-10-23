@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { computeCapacity, projectAvailability } from '../capacity';
-import { allocateLocations, recommendWarehouses, putawayConflicts } from '../allocation';
+import { allocateLocations, recommendWarehouses, putawayConflicts, claimOutcome } from '../allocation';
 
 // Scenarios C1-C9 of docs/TEST_PLAN.md, run against the capacity and allocation engines with small
 // hand-made warehouses so every expected number can be checked by eye.
@@ -235,4 +235,26 @@ describe('putawayConflicts (the last check before storing)', () => {
     expect(putawayConflicts({ placements: cartons, locations: [loc(2)], allCargo: [], packageTypes: types, customerId: 'A' })).toEqual(['L2 is already full.']);
     expect(putawayConflicts({ placements: cartons.slice(0, 10), locations: [loc(2)], allCargo: [], packageTypes: types, customerId: 'A' })).toEqual([]);
   });
+});
+
+describe('claimOutcome: two people store into the same position at the same moment', () => {
+  const occ = (id, extra = {}) => ({ ROWID: String(id), unit: 'Pallet', customer_id: 'A', ...extra });
+  const outcome = (cargoId, occupants, capacity = 1) => claimOutcome({ cargoId, occupants, capacity, packageTypes: PALLET_TYPES });
+  it('alone in the position: keeps it', () => expect(outcome('1', [occ(1)])).toEqual({ ok: true }));
+  it('arrived first of two for one place: keeps it', () => expect(outcome('1', [occ(1), occ(2)])).toEqual({ ok: true }));
+  it('arrived second of two for one place: gives way', () => expect(outcome('2', [occ(1), occ(2)])).toEqual({ ok: false, reason: 'full' }));
+  it('exactly one of two ends up in the position, whichever way round they are asked', () => {
+    const order = [occ(7), occ(9)];
+    const kept = ['7', '9'].filter((id) => outcome(id, order).ok);
+    expect(kept).toEqual(['7']);
+  });
+  it('a position with room for two: both keep it, the third gives way', () => {
+    const three = [occ(1), occ(2), occ(3)];
+    expect(['1', '2', '3'].map((id) => outcome(id, three, 2).ok)).toEqual([true, true, false]);
+  });
+  it('another customer already there: gives way even with room', () => {
+    expect(outcome('2', [occ(1, { customer_id: 'B' }), occ(2)], 4)).toEqual({ ok: false, reason: 'customer' });
+  });
+  it('the same customer shares freely', () => expect(outcome('2', [occ(1), occ(2)], 4)).toEqual({ ok: true }));
+  it('not in the list at all (the write did not land): not ok', () => expect(outcome('5', [occ(1)]).ok).toBe(false));
 });

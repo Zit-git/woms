@@ -27,3 +27,5 @@ Run these in the Catalyst console (Data Store → ZCQL) or through the MCP query
 Other states seen and expected: delivered goods and goods on the dock (HU created, not yet stored) have no location; 3 picked units remain from test runs that stopped before dispatch.
 
 Re-check after the fix (same day, after a full journey run): a new pallet was stored in an empty position (`RT2-A1-R01-B2-L2`); the three over-full positions were unchanged. They hold test pallets; clear them by dispatching those pallets or removing the `AUTOTEST` data.
+
+Repeat after the concurrency fix (2026-10-23): positions of capacity 1 never hold two pallets from two people acting together, and a pallet is never on two pick lists from simultaneous adds (`e2e/concurrency.spec.js`).
