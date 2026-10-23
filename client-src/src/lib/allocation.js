@@ -146,3 +146,39 @@ export function recommendWarehouses({ warehouses, cargoRows, allLocations, allCa
   });
   return results.sort((a, b) => b.fitCount - a.fitCount);
 }
+
+// A last check before Handling Units are physically stored: what is in a location right now
+// (current_location_id set) really occupies it, whatever outbound is planned for it, and goods of
+// two customers never share a location. `placements` is [{ cargo, locationId }]; returns readable
+// messages, empty when everything may go ahead. Catches an operator's manual choice and two people
+// storing into the same last position at once.
+export function putawayConflicts({ placements, locations, allCargo, packageTypes, customerId }) {
+  const packageTypesByName = new Map((packageTypes || []).map((p) => [p.name.trim().toLowerCase(), p]));
+  const locationById = new Map((locations || []).map((l) => [String(l.ROWID), l]));
+  const used = new Map();
+  const owner = new Map();
+  (allCargo || []).forEach((c) => {
+    if (!c.current_location_id) return;
+    const key = String(c.current_location_id);
+    used.set(key, (used.get(key) || 0) + unitsPerItemFor(c.unit, packageTypesByName));
+    if (c.customer_id && !owner.has(key)) owner.set(key, String(c.customer_id));
+  });
+
+  const messages = new Set();
+  (placements || []).forEach(({ cargo, locationId }) => {
+    const key = String(locationId);
+    const location = locationById.get(key);
+    if (!location) return;
+    const code = location.location_code || key;
+    if (location.occupancy_status === 'Blocked') messages.add(`${code} is blocked.`);
+    const need = unitsPerItemFor(cargo.unit, packageTypesByName);
+    const free = (Number(location.capacity) || 0) - (used.get(key) || 0);
+    if (free < need - 1e-9) messages.add(`${code} is already full.`);
+    else used.set(key, (used.get(key) || 0) + need);
+    if (customerId) {
+      if (owner.has(key) && owner.get(key) !== String(customerId)) messages.add(`${code} holds another customer's goods.`);
+      else if (!owner.has(key)) owner.set(key, String(customerId));
+    }
+  });
+  return [...messages];
+}

@@ -11,7 +11,7 @@ import {
 import { useAuth } from '../../../context/AuthContext';
 import { computeCapacity } from '../../../lib/capacity';
 import { todayStr } from '../../../lib/dates';
-import { allocateLocations } from '../../../lib/allocation';
+import { allocateLocations, putawayConflicts } from '../../../lib/allocation';
 
 
 // Stage: Put-away, done from inside the inbound. Shows what the warehouse
@@ -64,7 +64,9 @@ export default function PutawayPopup({ advice, cargoRows, reloadCargo, patchAdvi
       cargoRows: pending,
       locations: locationsInWarehouse,
       allCargo: data.cargo,
-      outboundCommitments: data.outboundCommitments,
+      // Placing goods now is physical: a pallet still in a location occupies it even if an outbound
+      // is planned for today (that assumption is for planning ahead, not for putting goods away).
+      outboundCommitments: [],
       packageTypes: data.packageTypes,
       storageStart: todayStr(),
       customerId: advice.customer_id,
@@ -79,6 +81,25 @@ export default function PutawayPopup({ advice, cargoRows, reloadCargo, patchAdvi
   const store = async () => {
     setBusy(true);
     setError('');
+    try {
+      // Re-read what is in the locations right now: another person may have stored since this page opened.
+      const conflicts = putawayConflicts({
+        placements: readyToStore.map((c) => ({ cargo: c, locationId: chosenFor(c) })),
+        locations: locationsInWarehouse,
+        allCargo: await listCapacityCargo(),
+        packageTypes: data.packageTypes,
+        customerId: advice.customer_id,
+      });
+      if (conflicts.length) {
+        setError(`Not stored: ${conflicts.join(' ')} Choose another location.`);
+        setBusy(false);
+        return;
+      }
+    } catch (err) {
+      setError(err.message || String(err));
+      setBusy(false);
+      return;
+    }
     const results = await Promise.allSettled(readyToStore.map((c) => recordScan(c.ROWID, user?.email_id || '', 'storage', chosenFor(c))));
     const failed = results.filter((r) => r.status === 'rejected');
     try {

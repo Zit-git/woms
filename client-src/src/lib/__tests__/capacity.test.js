@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { computeCapacity, projectAvailability } from '../capacity';
-import { allocateLocations, recommendWarehouses } from '../allocation';
+import { allocateLocations, recommendWarehouses, putawayConflicts } from '../allocation';
 
 // Scenarios C1-C9 of docs/TEST_PLAN.md, run against the capacity and allocation engines with small
 // hand-made warehouses so every expected number can be checked by eye.
@@ -199,5 +199,40 @@ describe('C8/C9 warehouses', () => {
       storageEnd: '2026-11-30',
     });
     expect(ranked.map((r) => [r.warehouse.ROWID, r.fitCount])).toEqual([['W1', 2], ['W2', 1]]);
+  });
+});
+
+describe('put-away is physical: what is in a location right now occupies it', () => {
+  const stored = { ...pallet(30), current_location_id: '1', inbound_status: 'Put Away' };
+  const leavesToday = [{ cargo_id: '30', requested_date: '2026-11-01', warehouse_id: 'W1' }];
+  it('planning ahead: a pallet due out before the new storage starts frees its position', () => {
+    expect(run({ cargoRows: [pallet(1)], locations: [loc(1)], allCargo: [stored], outboundCommitments: leavesToday, storageStart: '2026-11-01' })[0].locationId).toBe('1');
+  });
+  it('putting away now: the same pallet, still there, blocks the position (no commitments assumed)', () => {
+    expect(run({ cargoRows: [pallet(1)], locations: [loc(1)], allCargo: [stored], outboundCommitments: [], storageStart: '2026-11-01' })[0].locationId).toBeNull();
+  });
+});
+
+describe('putawayConflicts (the last check before storing)', () => {
+  const stored = { ...pallet(30), current_location_id: '1' };
+  const check = (placements, o = {}) => putawayConflicts({ placements, locations: [loc(1), loc(2), loc(3, { occupancy_status: 'Blocked' })], allCargo: [stored], packageTypes: PALLET_TYPES, customerId: 'A', ...o });
+  it('an empty position is fine', () => expect(check([{ cargo: pallet(1), locationId: '2' }])).toEqual([]));
+  it('a position that is already full is refused', () => expect(check([{ cargo: pallet(1), locationId: '1' }])).toEqual(['L1 is already full.']));
+  it('two pallets into one single position: the second is refused', () => {
+    expect(check([{ cargo: pallet(1), locationId: '2' }, { cargo: pallet(2), locationId: '2' }])).toEqual(['L2 is already full.']);
+  });
+  it('another customer\'s goods in the position are refused even when there is room', () => {
+    const roomy = [loc(1, { capacity: 4 })];
+    expect(putawayConflicts({ placements: [{ cargo: pallet(1, { customer_id: 'B' }), locationId: '1' }], locations: roomy, allCargo: [stored], packageTypes: PALLET_TYPES, customerId: 'B' })).toEqual(["L1 holds another customer's goods."]);
+  });
+  it('the same customer may share a position with room', () => {
+    expect(putawayConflicts({ placements: [{ cargo: pallet(1), locationId: '1' }], locations: [loc(1, { capacity: 4 })], allCargo: [stored], packageTypes: PALLET_TYPES, customerId: 'A' })).toEqual([]);
+  });
+  it('a blocked position is refused', () => expect(check([{ cargo: pallet(1), locationId: '3' }])).toContain('L3 is blocked.'));
+  it('cartons of 0.1 position each fit ten to a position, the eleventh does not', () => {
+    const types = [{ name: 'Carton', capacity_unit: 'Pallet position', units_per_item: 0.1 }];
+    const cartons = Array.from({ length: 11 }, (_, i) => ({ cargo: pallet(i + 100, { unit: 'Carton' }), locationId: '2' }));
+    expect(putawayConflicts({ placements: cartons, locations: [loc(2)], allCargo: [], packageTypes: types, customerId: 'A' })).toEqual(['L2 is already full.']);
+    expect(putawayConflicts({ placements: cartons.slice(0, 10), locations: [loc(2)], allCargo: [], packageTypes: types, customerId: 'A' })).toEqual([]);
   });
 });
