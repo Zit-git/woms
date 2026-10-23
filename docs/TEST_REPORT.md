@@ -26,7 +26,7 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | Access tests (second user: Supervisor in Hamburg DC, Operator in Rotterdam DC2, nothing in Antwerp DC) | **5 of 5 pass** on `/app/`; the direct-link test (A3) is Slate-only and skipped here |
 | Volume (84, 384 and 1,084 inbounds; 10,000 pallets; see section 7) | **Done 2026-10-23**: three defects found and fixed; test data removed |
 | Phones and tablets: every menu screen and the key popups at 390x844, 360x640, 768x1024, 1024x768 and 1280x720 (`devices.spec.js`; screenshots in `e2e/results/devices/`) | **15 of 15 pass** (Chromium emulation of screen size, touch and mobile mode) |
-| Not yet run | Firefox and Safari engines (this machine has only Chromium; real devices by hand), A2/A6/A7 by hand, A3 direct link on Slate, concurrency between two people, performance with volume data, browsers other than Chrome, phones, backup/restore, client trial |
+| Not yet run | Firefox and Safari (this machine has only Chromium; do them on real devices), A2/A6/A7 by hand, the direct-link and printed-pass tests on Slate (needs a Slate sign-in), backup and restore rehearsal, client trial with their own data |
 
 ## 2. What each automated test proves
 
