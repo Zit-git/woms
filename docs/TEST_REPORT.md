@@ -8,7 +8,7 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 
 | Area | Result |
 |---|---|
-| Unit tests (dates, validation, warehouse access, visibility rules, row loader, query sharing) | **27 of 27 pass** (`core.test.js`: now also every-row paging, form refresh, newest-answer-only) |
+| Unit tests (dates, validation, warehouse access, visibility rules, row loader, query sharing) | **33 of 33 pass** (`core.test.js`: now also every-row paging, form refresh, newest-answer-only) |
 | Concurrency rules (who keeps the last position or pallet when two people act in the same second) | **8 of 8 pass** (`claimOutcome` in `capacity.test.js`) |
 | Two real users at the same moment (administrator + staff): last free position, same pallet on two outbounds, two edits to one request (`concurrency.spec.js`) | **3 of 3 pass**, stable over 3 runs; the loser is told |
 | Outbound rules (dispatch only after pick and check-in, status follows the goods, scanning accepts only the right passes and labels) | **12 of 12 pass** (`outbound.test.js`) |
@@ -18,7 +18,7 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | Outbound journey (request → goods → check-in → scan-pick → dispatch → delivered) | **Pass**, 27 s |
 | Pickup pass page (rendered) | Skipped here: needs the Slate site (the legacy `/app/` host has no deep links) |
 | Double allocation (O5): a Handling Unit on one request is not offered to another | **Pass**, 15 s |
-| Whole browser suite (access, concurrency, inbound, outbound, double allocation, rules, map, smoke, phone/tablet/laptop audit), run 2026-10-25 on the final build | **35 passed, 0 failed, 3 skipped** (2 Slate-only, 1 on-request volume timing), 13.2 min |
+| Whole browser suite (access, concurrency, inbound, outbound, double allocation, rules, map, number formats, smoke, phone/tablet/laptop audit), run 2026-10-25 on the final build | **36 passed, 0 failed, 3 skipped** (2 Slate-only, 1 on-request volume timing), 12.8 min |
 | Data integrity (orphans, packed vs received, positions over capacity, double pick lists; `INTEGRITY_CHECKS.md`) | **Checked 2026-10-23**: no orphans, packing reconciles; one defect found (D-14, fixed); leftover test data only |
 | Security probes of the three functions | **Fixed**, re-verified from outside |
 | Inbound rules: reject needs a reason, reopen, accept, editing an accepted request returns it for a new check (I6, I8, D6) | **Pass**, 17.5 s |
