@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { openHome, openMenu, expectNoErrors, inDays, field, chooseWorkingWarehouse, watchSlowRequests } from './helpers';
+import { openSession, queryRows, insertRows, deleteRows } from './volume/common.mjs';
 
 const WAREHOUSE = 'Rotterdam DC2';
 const CUSTOMER = 'TEST Alpha Pallets Ltd';
@@ -139,29 +140,84 @@ async function createRequest(page, label) {
   await expect(page.getByRole('button', { name: /Select Goods/ })).toBeVisible({ timeout: 30_000 });
 }
 
+// Two stored pallets of its own, so the test does not depend on what earlier tests happened to leave behind.
+async function seedTwoStoredPallets() {
+  const db = await openSession();
+  const DC2 = '11648000001183001';
+  const ALPHA = '11648000001228002';
+  const locs = await queryRows(
+    db.call,
+    'SELECT StorageLocations.ROWID, StorageLocations.capacity, StorageLocations.occupancy_status FROM StorageLocations LEFT JOIN Racks ON StorageLocations.rack_id = Racks.ROWID LEFT JOIN Aisles ON Racks.aisle_id = Aisles.ROWID LEFT JOIN Zones ON Aisles.zone_id = Zones.ROWID WHERE Zones.warehouse_id = ' + DC2
+  );
+  const used = await queryRows(db.call, 'SELECT Cargo.current_location_id, Cargo.reserved_location_id FROM Cargo WHERE Cargo.current_location_id IS NOT NULL OR Cargo.reserved_location_id IS NOT NULL');
+  const taken = new Set(used.flatMap((r) => [r.Cargo.current_location_id, r.Cargo.reserved_location_id]).filter(Boolean).map(String));
+  const free = locs.map((r) => r.StorageLocations).filter((l) => String(l.capacity) === '1' && l.occupancy_status !== 'Blocked' && !taken.has(String(l.ROWID)));
+  expect(free.length, 'not enough free positions in Rotterdam DC2').toBeGreaterThanOrEqual(2);
+  const [adviceId] = await insertRows(db.call, 'InboundAdvice', [
+    { reference_number: `AUTOTEST O5 ${Date.now()}`, status: 'Put Away', customer_id: ALPHA, warehouse_id: DC2, destination: 'Netherlands', expected_date: inDays(0) },
+  ]);
+  const cargoIds = await insertRows(
+    db.call,
+    'Cargo',
+    [1, 2].map((n) => ({
+      inbound_advice_id: adviceId,
+      customer_id: ALPHA,
+      warehouse_id: DC2,
+      description: `O5TEST pallet ${n}`,
+      unit: 'Pallet',
+      qty: '1',
+      received_qty: 1,
+      weight: 100,
+      length_cm: 60,
+      width_cm: 40,
+      height_cm: 40,
+      outer_package_no: String(n),
+      qr_code: `O5TEST-${Date.now()}-${n}`,
+      status: 'Stored',
+      current_location_id: free[n - 1].ROWID,
+    }))
+  );
+  const remove = async () => {
+    try {
+      const picks = await queryRows(db.call, `SELECT PickTask.ROWID FROM PickTask WHERE PickTask.cargo_id IN (${cargoIds.join(', ')})`);
+      await deleteRows(db.call, 'PickTask', picks.map((r) => r.PickTask.ROWID));
+      await deleteRows(db.call, 'Cargo', cargoIds);
+      await deleteRows(db.call, 'InboundAdvice', [adviceId]);
+    } finally {
+      await db.browser.close();
+    }
+  };
+  return { remove };
+}
+
 test('outbound: a Handling Unit already on one request is not offered to a second request (O5)', async ({ page }) => {
   test.setTimeout(180_000);
-  await openHome(page);
-  await chooseWorkingWarehouse(page, WAREHOUSE);
+  const seeded = await seedTwoStoredPallets();
+  try {
+    await openHome(page);
+    await chooseWorkingWarehouse(page, WAREHOUSE);
 
-  // request A takes the first available Handling Unit
-  await createRequest(page, 'OB-A');
-  await page.getByRole('button', { name: /Select Goods/ }).click();
-  let modal = page.locator('.modal-card');
-  const select = modal.locator('select').first();
-  const options = async () => (await select.locator('option').allTextContents()).slice(1);
-  await expect.poll(async () => (await options()).length, { timeout: 30_000 }).toBeGreaterThan(1);
-  const taken = (await options())[0];
-  await select.selectOption({ index: 1 });
-  await modal.getByRole('button', { name: 'Add', exact: true }).click();
-  await expect(modal.getByText('On this outbound (1)')).toBeVisible({ timeout: 30_000 });
-  await modal.getByRole('button', { name: 'Done' }).click();
+    // request A takes pallet 1
+    await createRequest(page, 'OB-A');
+    await page.getByRole('button', { name: /Select Goods/ }).click();
+    let modal = page.locator('.modal-card');
+    const select = modal.locator('select').first();
+    await expect.poll(async () => (await select.locator('option', { hasText: 'O5TEST pallet 1' }).count()), { timeout: 30_000 }).toBe(1);
+    const taken = await select.locator('option', { hasText: 'O5TEST pallet 1' }).first().innerText();
+    await select.selectOption({ label: taken });
+    await modal.getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(modal.getByText('On this outbound (1)')).toBeVisible({ timeout: 30_000 });
+    await modal.getByRole('button', { name: 'Done' }).click();
 
-  // request B must not see it
-  await createRequest(page, 'OB-B');
-  await page.getByRole('button', { name: /Select Goods/ }).click();
-  modal = page.locator('.modal-card');
-  await expect.poll(async () => (await modal.locator('select').first().locator('option').count()), { timeout: 30_000 }).toBeGreaterThan(1);
-  const offeredToB = await modal.locator('select').first().locator('option').allTextContents();
-  expect(offeredToB).not.toContain(taken);
+    // request B is still offered pallet 2, but not pallet 1
+    await createRequest(page, 'OB-B');
+    await page.getByRole('button', { name: /Select Goods/ }).click();
+    modal = page.locator('.modal-card');
+    const offered = modal.locator('select').first().locator('option');
+    await expect.poll(async () => (await offered.filter({ hasText: 'O5TEST pallet 2' }).count()), { timeout: 30_000 }).toBe(1);
+    expect(await offered.allTextContents()).not.toContain(taken);
+    expect(await offered.filter({ hasText: 'O5TEST pallet 1' }).count()).toBe(0);
+  } finally {
+    await seeded.remove();
+  }
 });
