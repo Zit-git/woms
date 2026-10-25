@@ -8,7 +8,7 @@ let reportPending = () => {};
 test.afterEach(() => reportPending());
 
 // A request with one line, ready for the availability check.
-async function newReadyInbound(page) {
+async function newReadyInbound(page, { beforeDone } = {}) {
   await openMenu(page, 'Inbounds');
   await page.getByRole('button', { name: '+ New Inbound' }).click();
   await expect(page.getByText('Shipment Details')).toBeVisible();
@@ -34,6 +34,7 @@ async function newReadyInbound(page) {
   await inputs.nth(6).blur();
   await field(page, 'Expected Colli *').fill('4');
   await field(page, 'Expected Colli *').blur();
+  await beforeDone?.();
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.getByRole('button', { name: /Availability Check/ })).toBeVisible({ timeout: 60_000 });
 }
@@ -145,5 +146,26 @@ test('outbound: two pickups for one customer on one day keep their own driver, v
   await page.getByPlaceholder(/Find by pickup reference/).fill(jobs[0].reference);
   await expect(page.locator('tr', { hasText: jobs[0].reference })).toBeVisible();
   await expect(page.locator('tr', { hasText: jobs[1].reference })).toHaveCount(0);
+  await expectNoErrors(page);
+});
+
+// Closing the request right after the last field must not show a stale page: the line item's last save was
+// still on its way when the page re-read the lines, and the inbound looked incomplete until reloaded. Here
+// every line save is held back 3 s on purpose, so the race happens every time.
+test('inbound: closing the request while a line is still saving shows the saved line, not a stale one', async ({ page }) => {
+  test.setTimeout(240_000);
+  let inFlight = 0;
+  await page.route(/\/table\/InboundLine\/row/, async (route) => {
+    if (route.request().method() !== 'PUT') return route.continue();
+    inFlight++;
+    await new Promise((r) => setTimeout(r, 3_000));
+    await route.continue();
+    inFlight--;
+  });
+  await openHome(page);
+  await chooseWorkingWarehouse(page, WAREHOUSE);
+  let savesWaitingAtDone = 0;
+  await newReadyInbound(page, { beforeDone: async () => { savesWaitingAtDone = inFlight; } });
+  expect(savesWaitingAtDone, 'the test must close the request while a line save is still in flight').toBeGreaterThan(0);
   await expectNoErrors(page);
 });

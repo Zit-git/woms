@@ -22,6 +22,7 @@ export default function RequestPopup({
   reloadSuppliers,
   reloadLines,
   patchAdvice,
+  trackSave,
   saving,
   setError,
   onClose,
@@ -289,6 +290,7 @@ export default function RequestPopup({
         reloadLines={reloadLines}
         onRowsChange={setLiveLines}
         customerId={form.customer_id}
+        trackSave={trackSave}
         patchAdvice={patchAdvice}
         saving={saving}
         setError={setError}

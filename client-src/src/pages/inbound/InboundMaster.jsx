@@ -127,13 +127,26 @@ export default function InboundMaster() {
     return result;
   };
 
+  // Saves that run on their own in the background (a line item's last field, queued updates to the request)
+  // are tracked here, so closing a popup right after typing waits for them before the page is re-read.
+  // Otherwise the re-read can overtake the last save and show an inbound that looks incomplete.
+  const pendingSaves = useRef(new Set());
+  const trackSave = (promise) => {
+    pendingSaves.current.add(promise);
+    const done = () => pendingSaves.current.delete(promise);
+    promise.then(done, done);
+    return promise;
+  };
+
   // Popups edit records directly, so refresh everything on the page when one closes.
   const closePopup = () => {
     setActivePopup(null);
-    loadAdvice();
-    loadLines();
-    loadCargo();
-    loadExtras();
+    Promise.allSettled([patchQueue.current, ...pendingSaves.current]).then(() => {
+      loadAdvice();
+      loadLines();
+      loadCargo();
+      loadExtras();
+    });
   };
 
   if (loading) return <p className="muted">Loading...</p>;
@@ -204,6 +217,7 @@ export default function InboundMaster() {
     reloadCargo: loadCargo,
     reloadHus: loadCargo,
     patchAdvice,
+    trackSave,
     saving,
     setError,
     onClose: closePopup,

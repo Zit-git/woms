@@ -20,7 +20,7 @@ function blankLine(inboundAdviceId, customerId, warehouseId, index) {
 
 // embedded: used inline inside RequestPopup (no wizard chrome, no Back/Next
 // footer -- every field already autosaves on blur/add/remove).
-export default function StepGoods({ advice, lines, reloadLines, patchAdvice, goNext, goBack, saving, setError: setParentError, embedded = false, onRowsChange, customerId }) {
+export default function StepGoods({ advice, lines, reloadLines, patchAdvice, goNext, goBack, saving, setError: setParentError, embedded = false, onRowsChange, customerId, trackSave }) {
   const [rows, setRows] = useState(lines);
   // Lets the parent popup (Expected Colli check) see edits as they happen.
   useEffect(() => {
@@ -83,6 +83,7 @@ export default function StepGoods({ advice, lines, reloadLines, patchAdvice, goN
         pendingSaves.current = pendingSaves.current.filter((p) => p !== promise);
       });
     pendingSaves.current.push(promise);
+    trackSave?.(promise); // the page waits for this save before it re-reads the lines
   };
 
   const removeLine = (rowId) => {
