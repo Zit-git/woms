@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import Modal from '../../components/Modal';
+import { newestOnly } from '../../lib/latest';
 import {
   listWarehouses,
   createWarehouse,
@@ -21,6 +24,7 @@ import {
   createPackageType,
   removePackageType,
   getWarehouseMap,
+  listHusInLocation,
   listCapacityLocations,
   listCapacityCargo,
   listCapacityOutboundCommitments,
@@ -38,14 +42,19 @@ function useList(loader, deps) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const requests = useRef(newestOnly());
 
+  // Only the newest request may fill the screen: when the choice changes (another warehouse) an older,
+  // slower answer must not land afterwards and show the wrong warehouse's data under the right name.
   const reload = () => {
     if (!loader) return;
+    const mine = requests.current.start();
     setLoading(true);
+    setError('');
     loader()
-      .then(setItems)
-      .catch((err) => setError(err.message || String(err)))
-      .finally(() => setLoading(false));
+      .then((rows) => requests.current.isNewest(mine) && setItems(rows))
+      .catch((err) => requests.current.isNewest(mine) && setError(err.message || String(err)))
+      .finally(() => requests.current.isNewest(mine) && setLoading(false));
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1090,6 +1099,7 @@ function LocationsTab() {
 function WarehouseMapTab() {
   const { items: warehouses } = useMyWarehouses();
   const [warehouseId, setWarehouseId] = useState('');
+  const [picked, setPicked] = useState(null); // { loc, path } of the position whose popup is open
   const { items: zoneMap, loading, error, reload } = useList(
     warehouseId ? () => getWarehouseMap(warehouseId) : null,
     [warehouseId]
@@ -1157,16 +1167,7 @@ function WarehouseMapTab() {
                   <div className="warehouse-rack" key={rack.ROWID}>
                     <div className="warehouse-rack-label">{rack.code}</div>
                     <div className="warehouse-rack-locations">
-                      {locations.map((loc) => (
-                        <div
-                          key={loc.ROWID}
-                          className={'location-box' + (loc.occupied ? ' occupied' : ' empty')}
-                          title={`${loc.location_code}${loc.bay ? ` · Bay ${loc.bay}` : ''}${loc.rack_level ? ` · Level ${loc.rack_level}` : ''} - ${loc.occupied ? 'Occupied' : 'Empty'}`}
-                        >
-                          {loc.location_code}
-                        </div>
-                      ))}
-                      {locations.length === 0 && <span className="muted small">No storage locations in this rack.</span>}
+                      <RackLevels locations={locations} onPick={(loc) => setPicked({ loc, path: `${zone.name} / ${aisle.name} / ${rack.code}` })} />
                     </div>
                   </div>
                 ))}
@@ -1175,7 +1176,169 @@ function WarehouseMapTab() {
           </div>
         ))
       )}
+      {picked && <LocationPopup location={picked.loc} path={picked.path} onClose={() => setPicked(null)} />}
     </div>
+  );
+}
+
+const locationTitle = (loc) =>
+  `${loc.location_code}${loc.bay ? ` · Bay ${loc.bay}` : ''}${loc.rack_level ? ` · Level ${loc.rack_level}` : ''} - ${loc.occupied ? 'Occupied' : 'Empty'}`;
+
+// A rack as it stands in the warehouse: one column per bay, the levels stacked upwards like a slide of cards
+// (level 1 at the bottom, level 2 above it and a step to the right, and so on). A rack without bays or
+// levels (older data) keeps the flat row of boxes. Every position can be opened.
+function RackLevels({ locations, onPick }) {
+  if (locations.length === 0) return <span className="muted small">No storage locations in this rack.</span>;
+  const box = (loc, extra = {}) => ({
+    type: 'button',
+    className: 'location-box' + (loc.occupied ? ' occupied' : ' empty') + (extra.card ? ' level-card' : ''),
+    title: locationTitle(loc),
+    onClick: () => onPick(loc),
+    style: extra.style,
+    'data-level': loc.rack_level || undefined,
+  });
+  if (!locations.some((l) => l.bay || l.rack_level)) {
+    return (
+      <div className="location-flat">
+        {locations.map((loc) => (
+          <button key={loc.ROWID} {...box(loc)}>
+            {loc.location_code}
+          </button>
+        ))}
+      </div>
+    );
+  }
+  const bays = new Map();
+  locations.forEach((loc) => {
+    const key = loc.bay ? String(loc.bay) : '';
+    if (!bays.has(key)) bays.set(key, []);
+    bays.get(key).push(loc);
+  });
+  const byLevel = (a, b) => (Number(a.rack_level) || 0) - (Number(b.rack_level) || 0) || String(a.location_code).localeCompare(String(b.location_code));
+  return (
+    <div className="rack-bays">
+      {[...bays.entries()]
+        .sort(([a], [b]) => (Number(a) || 0) - (Number(b) || 0))
+        .map(([bay, list]) => (
+          <div className="rack-bay" key={bay || 'none'}>
+            <div className="rack-bay-label">{bay ? `Bay ${bay}` : 'No bay'}</div>
+            <div className="level-stack">
+              {[...list].sort(byLevel).map((loc, i) => (
+                <button key={loc.ROWID} {...box(loc, { card: true, style: { '--i': i } })}>
+                  <span className="level-tag">L{loc.rack_level || i + 1}</span>
+                  <span className="level-code">{loc.location_code}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+    </div>
+  );
+}
+
+// What is in one position: the position itself, and each Handling Unit in it with its contents.
+function LocationPopup({ location, path, onClose }) {
+  const [hus, setHus] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let live = true;
+    listHusInLocation(location.ROWID)
+      .then((rows) => live && setHus(rows))
+      .catch((err) => live && setError(err.message || String(err)));
+    return () => {
+      live = false;
+    };
+  }, [location.ROWID]);
+  const dims = (o) => (o.length_cm && o.width_cm && o.height_cm ? `${o.length_cm} × ${o.width_cm} × ${o.height_cm} cm` : null);
+  const day = (v) => (v ? String(v).slice(0, 10) : null);
+
+  return (
+    <Modal title={`${location.location_code}`} onClose={onClose} wide>
+      <p className="muted small" style={{ marginTop: -8 }}>
+        {path}
+        {location.bay ? ` · Bay ${location.bay}` : ''}
+        {location.rack_level ? ` · Level ${location.rack_level}` : ''}
+      </p>
+      <div className="summary-strip">
+        <div>
+          <div className="muted small">Status</div>
+          <div className="summary-value">{location.occupied ? 'Occupied' : 'Empty'}</div>
+        </div>
+        <div>
+          <div className="muted small">Capacity</div>
+          <div className="summary-value">
+            {location.capacity ?? '—'} <span className="muted small">{location.capacity_unit || ''}</span>
+          </div>
+        </div>
+        <div>
+          <div className="muted small">Max weight</div>
+          <div className="summary-value">{location.max_weight_kg ? `${location.max_weight_kg} kg` : '—'}</div>
+        </div>
+        <div>
+          <div className="muted small">Size</div>
+          <div className="summary-value small">{dims(location) || '—'}</div>
+        </div>
+      </div>
+
+      {error && <div className="error-text">{error}</div>}
+      <div className="form-section-title">Handling Units here</div>
+      {!hus && !error && <p className="muted">Loading...</p>}
+      {hus && hus.length === 0 && <p className="muted">Nothing is stored in this position.</p>}
+      {(hus || []).map((h) => (
+        <div className="card hu-card" key={h.ROWID}>
+          <div className="toolbar" style={{ marginBottom: 6 }}>
+            <strong>
+              {h.outer_package_no ? `HU ${h.outer_package_no} · ` : ''}
+              {h.description || 'Handling Unit'}
+            </strong>
+            <Link className="link-btn" to={`/cargo/${h.ROWID}`}>
+              Open full record →
+            </Link>
+          </div>
+          <div className="hu-facts">
+            <span>
+              <span className="muted small">Customer</span> {h.customer_name || '—'}
+            </span>
+            <span>
+              <span className="muted small">Inbound</span> {h.inbound_reference || '—'}
+            </span>
+            <span>
+              <span className="muted small">Type</span> {h.qty ? `${h.qty} ` : ''}
+              {h.unit || '—'}
+            </span>
+            <span>
+              <span className="muted small">Weight</span> {h.weight ? `${h.weight} kg` : '—'}
+            </span>
+            <span>
+              <span className="muted small">Size</span> {dims(h) || '—'}
+            </span>
+            <span>
+              <span className="muted small">Here since</span> {day(h.since) || '—'}
+            </span>
+            <span>
+              <span className="muted small">Status</span> <span className="status-badge">{h.status}</span>
+            </span>
+            <span>
+              <span className="muted small">QR</span> {h.qr_code || '—'}
+            </span>
+          </div>
+          {h.contents.length > 0 && (
+            <ul className="hu-contents">
+              {h.contents.map((c, i) => (
+                <li key={i}>
+                  {c.qty} × {c.description || 'Line item'} {c.unit ? <span className="muted small">({c.unit})</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ))}
+      <div className="form-actions" style={{ justifyContent: 'flex-end' }}>
+        <button className="btn" onClick={onClose}>
+          Close
+        </button>
+      </div>
+    </Modal>
   );
 }
 

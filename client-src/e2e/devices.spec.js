@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
-import { openHome, inDays, chooseWorkingWarehouse } from './helpers';
+import { openHome, inDays, chooseWorkingWarehouse, field } from './helpers';
 import { openSession, queryRows, insertRows, deleteRows } from './volume/common.mjs';
 
 // Phones and tablets: every screen in the menu and the main popups must fit the screen (no sideways
@@ -136,6 +136,14 @@ async function checkScreen(page, device, name) {
   await page.screenshot({ path: `${SHOTS}/${device.name.replace(/ /g, '_')}--${name.replace(/[^a-z0-9]+/gi, '_')}.png`, fullPage: false });
   expect(r.pageOverflow, `${name}: the page scrolls sideways by ${r.pageOverflow}px (${r.poking.join('; ')})`).toBeLessThanOrEqual(1);
   expect(r.poking, `${name}: elements outside the screen`).toEqual([]);
+  // tabs side by side must not lie on top of each other (a row of eight squeezed into a phone did)
+  const overlaps = await page.evaluate(() =>
+    [...document.querySelectorAll('.tabs')].flatMap((strip) => {
+      const boxes = [...strip.querySelectorAll('.tab')].map((t) => ({ text: t.textContent.trim(), r: t.getBoundingClientRect() }));
+      return boxes.flatMap((a, i) => boxes.slice(i + 1).filter((b) => a.r.right > b.r.left + 2 && b.r.right > a.r.left + 2 && a.r.bottom > b.r.top + 2 && b.r.bottom > a.r.top + 2).map((b) => `${a.text} / ${b.text}`));
+    })
+  );
+  expect(overlaps, `${name}: tabs overlap each other`).toEqual([]);
   expect(await page.locator('.error-text').count(), `${name} shows an error`).toBe(0);
 }
 
@@ -185,6 +193,12 @@ for (const device of DEVICES) {
         await go(page, label);
         await checkScreen(page, device, label);
       }
+      // the warehouse map (stacked level cards) as well
+      await go(page, 'Warehouses');
+      await page.locator('.tab', { hasText: 'Map' }).click();
+      await field(page, 'Warehouse').selectOption({ label: DC2.name });
+      await expect(page.locator('.level-card').first()).toBeVisible({ timeout: 90_000 });
+      await checkScreen(page, device, 'warehouse map');
     });
 
     test('inbound popups fit and their buttons are reachable', async ({ page }) => {

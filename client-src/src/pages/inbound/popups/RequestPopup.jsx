@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Modal from '../../../components/Modal';
 import StepGoods from '../steps/StepGoods';
 import { createSupplier } from '../../../lib/api';
 import { COUNTRIES } from '../../../lib/countries';
+import { applyServerChanges } from '../../../lib/formSync';
 import { validateRequestDates, colliMismatch, totalPackages } from '../../../lib/inboundValidation';
 
 const TRANSPORT_TYPES = ['Sea/Ocean Freight', 'Air Freight', 'Road Freight', 'Rail Freight', 'Courier', 'Other'];
@@ -32,8 +33,11 @@ export default function RequestPopup({
   const [newSupplierName, setNewSupplierName] = useState('');
   const [savingSupplier, setSavingSupplier] = useState(false);
 
+  const savedAdvice = useRef(advice);
   useEffect(() => {
-    setForm(advice);
+    // take over only what changed on the server; what is being typed stays (see lib/formSync.js)
+    setForm((f) => applyServerChanges(f, savedAdvice.current, advice));
+    savedAdvice.current = advice;
     setOtherDestination(Boolean(advice.destination) && !COUNTRIES.includes(advice.destination));
   }, [advice]);
 

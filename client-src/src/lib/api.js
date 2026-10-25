@@ -570,6 +570,39 @@ const toStockRow = (r) => ({
   destination: r.InboundAdvice?.destination,
 });
 
+// The Handling Units sitting in one storage position, for the popup on the warehouse map: what they are,
+// whose they are, what is inside them (the line items on each) and since when they have been there.
+export const listHusInLocation = async (locationId) => {
+  assertId(locationId);
+  const hus = (
+    await zcql(
+      `SELECT ${STOCK_COLUMNS} ${STOCK_JOINS} WHERE Cargo.current_location_id = ${locationId} AND Cargo.qr_code IS NOT NULL ORDER BY Cargo.outer_package_no`
+    )
+  ).map(toStockRow);
+  const ids = hus.map((h) => String(h.ROWID)).filter((id) => /^\d+$/.test(id));
+  if (!ids.length) return [];
+  const [contents, moves] = await Promise.all([
+    zcql(
+      `SELECT HuLine.cargo_id, HuLine.qty, InboundLine.description, InboundLine.unit FROM HuLine LEFT JOIN InboundLine ON HuLine.inbound_line_id = InboundLine.ROWID WHERE HuLine.cargo_id IN (${ids.join(', ')})`
+    ),
+    zcql(
+      `SELECT CargoMovementLog.cargo_id, CargoMovementLog.movement_timestamp FROM CargoMovementLog WHERE CargoMovementLog.to_location_id = ${locationId} ORDER BY CargoMovementLog.movement_timestamp DESC`
+    ),
+  ]);
+  const contentsBy = new Map();
+  contents.forEach((r) => {
+    const k = String(r.HuLine.cargo_id);
+    if (!contentsBy.has(k)) contentsBy.set(k, []);
+    contentsBy.get(k).push({ description: r.InboundLine?.description, unit: r.InboundLine?.unit, qty: Number(r.HuLine.qty) || 0 });
+  });
+  const sinceBy = new Map();
+  moves.forEach((r) => {
+    const k = String(r.CargoMovementLog.cargo_id);
+    if (!sinceBy.has(k)) sinceBy.set(k, r.CargoMovementLog.movement_timestamp); // newest first: the latest arrival here
+  });
+  return hus.map((h) => ({ ...h, contents: contentsBy.get(String(h.ROWID)) || [], since: sinceBy.get(String(h.ROWID)) || null }));
+};
+
 // Cargo that is in the building but not in a rack: freshly received (needs
 // put-away) or retrieved (taken out of a rack, on the floor). Cargo already
 // picked for an outbound order is excluded -- it belongs to that order now.

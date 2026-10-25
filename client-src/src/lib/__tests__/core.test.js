@@ -5,6 +5,8 @@ import { canApproveIn, canAccessWarehouse, scopeByWarehouse } from '../access';
 import { expandLines } from '../capacity';
 import { visibilityClause } from '../api';
 import { getAllRows } from '../catalystClient';
+import { applyServerChanges } from '../formSync';
+import { newestOnly } from '../latest';
 
 describe('dates', () => {
   it('addDays moves forward one calendar day in any timezone (it used to return the same date in India)', () => {
@@ -157,5 +159,47 @@ describe('queries return every row, not just the first 300', () => {
     const asked = fakeData(1000);
     await zcql('SELECT n FROM T4 ORDER BY n LIMIT 1, 5');
     expect(asked).toEqual(['SELECT n FROM T4 ORDER BY n LIMIT 1, 5']);
+  });
+});
+
+describe('a refresh of the saved record does not wipe what is being typed', () => {
+  const saved = { customer: 'A', reference: 'old', expected_colli: null, destination: 'NL' };
+  it('keeps an unsaved edit in another field when the record is re-read', () => {
+    // the user has typed colli 4 (not saved yet) while the save of the reference comes back
+    const form = { ...saved, expected_colli: '4' };
+    const next = { ...saved, reference: 'new' };
+    expect(applyServerChanges(form, saved, next)).toEqual({ customer: 'A', reference: 'new', expected_colli: '4', destination: 'NL' });
+  });
+  it('takes over a field that really changed on the server', () => {
+    expect(applyServerChanges({ ...saved }, saved, { ...saved, destination: 'DE' }).destination).toBe('DE');
+  });
+  it('a re-read with nothing new leaves the form exactly as typed', () => {
+    const form = { ...saved, reference: 'typing...' };
+    expect(applyServerChanges(form, saved, { ...saved })).toEqual(form);
+  });
+  it('fields that appear or disappear are handled', () => {
+    expect(applyServerChanges({ a: 1 }, { a: 1 }, { a: 1, b: 2 })).toEqual({ a: 1, b: 2 });
+  });
+});
+
+describe('only the newest request fills the screen', () => {
+  it('a slow answer for the earlier choice is ignored when it arrives last', () => {
+    const r = newestOnly();
+    const forDC1 = r.start(); // the first warehouse is asked for ...
+    const forDC2 = r.start(); // ... and the user switches before it answers
+    expect(r.isNewest(forDC2)).toBe(true); // the DC2 answer arrives first and is shown
+    expect(r.isNewest(forDC1)).toBe(false); // the late DC1 answer must not replace it
+  });
+  it('a single request is always current', () => {
+    const r = newestOnly();
+    expect(r.isNewest(r.start())).toBe(true);
+  });
+  it('each use has its own tickets', () => {
+    const a = newestOnly();
+    const b = newestOnly();
+    const t = a.start();
+    b.start();
+    b.start();
+    expect(a.isNewest(t)).toBe(true);
   });
 });

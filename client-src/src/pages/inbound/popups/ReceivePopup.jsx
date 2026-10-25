@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Modal from '../../../components/Modal';
 import DocumentSlot from '../../../components/DocumentSlot';
 import SignaturePad from '../../../components/SignaturePad';
 import { editLine, listDocumentsForRecord } from '../../../lib/api';
+import { applyServerChanges } from '../../../lib/formSync';
 
 const DRIVER_SIGNATURE_DOC_TYPE = 'Driver Signature (Receiving)';
 
@@ -16,7 +17,12 @@ export default function ReceivePopup({ advice, lines, patchAdvice, reloadLines, 
   const [marking, setMarking] = useState(false);
   const [localError, setLocalError] = useState('');
 
-  useEffect(() => setForm(advice), [advice]);
+  const savedAdvice = useRef(advice);
+  useEffect(() => {
+    // take over only what changed on the server; what is being typed stays (see lib/formSync.js)
+    setForm((f) => applyServerChanges(f, savedAdvice.current, advice));
+    savedAdvice.current = advice;
+  }, [advice]);
   // Rows are rebuilt only when the set of line items changes, never because the page refreshed its
   // data in the background: that used to wipe quantities the user had already typed.
   const lineKey = lines.map((l) => l.ROWID).join(',');
