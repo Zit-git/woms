@@ -85,7 +85,7 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 
 ## 5. Test data left behind
 
-14 `AUTOTEST` inbounds from the first debugging runs (15 and 16 October) are still open: 9 accepted but never received and 5 received but never packed. They reserve space and show as dock backlog on the availability screen (Rotterdam DC2 currently reads Available -46.40). Close them to see real figures.
+On 2026-10-25 the 14 `AUTOTEST` inbounds left open by the first debugging runs (15 and 16 October; 9 accepted, 5 received) were closed (status Rejected, reason "Test leftover from early test runs"; nothing deleted, each can be reopened). Rotterdam DC2 availability went from -46.40 to 64.00 and Space from -27.02 to 57.98 m³.
 
 On 2026-10-25 the 22 stored `AUTOTEST` pallets were taken out of their positions and marked Delivered (nothing deleted), so the warehouse map no longer shows over-full test positions. The two real pallets (Acme Freight, "Spare parts" at `A-01-01` and the walkthrough pallet at `RT2-A1-R01-B1-L2`) were left alone.
 
