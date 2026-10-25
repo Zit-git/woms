@@ -18,7 +18,7 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | Outbound journey (request → goods → check-in → scan-pick → dispatch → delivered) | **Pass**, 27 s |
 | Pickup pass page (rendered) | Skipped here: needs the Slate site (the legacy `/app/` host has no deep links) |
 | Double allocation (O5): a Handling Unit on one request is not offered to another | **Pass**, 15 s |
-| Whole browser suite (access, concurrency, inbound, outbound, double allocation, rules, map, smoke, phone/tablet/laptop audit) | **33 passed, 1 failed (the double-allocation test, which needed leftover test pallets; now seeds its own and passes 3 of 3), 3 skipped** (2 Slate-only, 1 on-request volume timing), 10.8 min |
+| Whole browser suite (access, concurrency, inbound, outbound, double allocation, rules, map, smoke, phone/tablet/laptop audit), run 2026-10-25 on the final build | **35 passed, 0 failed, 3 skipped** (2 Slate-only, 1 on-request volume timing), 13.2 min |
 | Data integrity (orphans, packed vs received, positions over capacity, double pick lists; `INTEGRITY_CHECKS.md`) | **Checked 2026-10-23**: no orphans, packing reconciles; one defect found (D-14, fixed); leftover test data only |
 | Security probes of the three functions | **Fixed**, re-verified from outside |
 | Inbound rules: reject needs a reason, reopen, accept, editing an accepted request returns it for a new check (I6, I8, D6) | **Pass**, 17.5 s |
