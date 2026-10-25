@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { getInboundAdviceById, listCargoByAdvice, getGrnForAdvice } from '../../lib/api';
 import QrCodeImage from '../../components/QrCodeImage';
+import { decimal2 } from '../../lib/format';
 
 export default function InboundPrint() {
   const { adviceId } = useParams();
@@ -93,7 +94,7 @@ export default function InboundPrint() {
               <td>{advice.inbound_reference ? `${advice.inbound_reference}-${String(c.outer_package_no || '').padStart(3, '0')}` : c.outer_package_no}</td>
               <td>{c.description}</td>
               <td>{c.unit}</td>
-              <td>{c.weight ? `${c.weight} kg` : '—'}</td>
+              <td>{c.weight ? `${decimal2(c.weight)} kg` : '—'}</td>
               <td>
                 {c.qr_code ? <QrCodeImage value={c.qr_code} size={80} /> : <span className="muted">Not generated</span>}
               </td>

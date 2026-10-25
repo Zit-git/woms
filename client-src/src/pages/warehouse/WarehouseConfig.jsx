@@ -33,6 +33,7 @@ import { todayStr, addDays } from '../../lib/dates';
 import { computeCapacity, projectAvailability } from '../../lib/capacity';
 import { useAuth } from '../../context/AuthContext';
 import { accessibleWarehouses, scopeByWarehouse } from '../../lib/access';
+import { fixed2, decimal2 } from '../../lib/format';
 
 const TABS = ['Warehouses', 'Zones', 'Aisles', 'Racks', 'Storage Locations', 'Package Types', 'Map', 'Availability'];
 const CAPACITY_UNITS = ['Pallet Positions', 'Cartons', 'Crates', 'm²', 'm³', 'Other'];
@@ -338,11 +339,11 @@ function AvailabilityTab() {
                     <td>{row.date}</td>
                     {projectionUnits.map((u) => {
                       const entry = row.byCapacityUnit.find((e) => e.capacityUnit === u);
-                      return <td key={u}>{entry ? entry.available : '—'}</td>;
+                      return <td key={u}>{entry ? fixed2(entry.available) : '—'}</td>;
                     })}
-                    <td>{row.weight.available.toFixed(0)}</td>
-                    <td>{row.space.available.toFixed(1)}</td>
-                    <td>{row.totals.unclaimedAvailable}</td>
+                    <td>{fixed2(row.weight.available)}</td>
+                    <td>{fixed2(row.space.available)}</td>
+                    <td>{fixed2(row.totals.unclaimedAvailable)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -364,12 +365,12 @@ function AvailabilityTab() {
             </div>
             <div className="card kpi-card">
               <h3>Total Capacity</h3>
-              <div className="kpi-value">{overallSnapshot.totals.total}</div>
+              <div className="kpi-value">{fixed2(overallSnapshot.totals.total)}</div>
               <p className="muted small">all capacity units</p>
             </div>
             <div className="card kpi-card">
               <h3>Physical Occupancy</h3>
-              <div className="kpi-value">{overallSnapshot.totals.occupied}</div>
+              <div className="kpi-value">{fixed2(overallSnapshot.totals.occupied)}</div>
               <p className="muted small">capacity units currently consumed</p>
             </div>
             <div className="card kpi-card">
@@ -379,23 +380,23 @@ function AvailabilityTab() {
             </div>
             <div className="card kpi-card">
               <h3>Available</h3>
-              <div className="kpi-value">{overallSnapshot.totals.available}</div>
+              <div className="kpi-value">{fixed2(overallSnapshot.totals.available)}</div>
               <p className="muted small">total − occupied − committed − on dock</p>
             </div>
             <div className="card kpi-card">
               <h3>Unclaimed</h3>
-              <div className="kpi-value">{overallSnapshot.totals.unclaimedAvailable}</div>
+              <div className="kpi-value">{fixed2(overallSnapshot.totals.unclaimedAvailable)}</div>
               <p className="muted small">free and not dedicated to any customer</p>
             </div>
             <div className="card kpi-card">
               <h3>Weight Available</h3>
-              <div className="kpi-value">{overallSnapshot.weight.available.toFixed(0)} kg</div>
-              <p className="muted small">of {overallSnapshot.weight.total.toFixed(0)} kg budgeted</p>
+              <div className="kpi-value">{fixed2(overallSnapshot.weight.available)} kg</div>
+              <p className="muted small">of {fixed2(overallSnapshot.weight.total)} kg budgeted</p>
             </div>
             <div className="card kpi-card">
               <h3>Space Available</h3>
-              <div className="kpi-value">{overallSnapshot.space.available.toFixed(1)} m³</div>
-              <p className="muted small">of {overallSnapshot.space.total.toFixed(1)} m³ dimensioned</p>
+              <div className="kpi-value">{fixed2(overallSnapshot.space.available)} m³</div>
+              <p className="muted small">of {fixed2(overallSnapshot.space.total)} m³ dimensioned</p>
             </div>
           </div>
 
@@ -422,14 +423,14 @@ function AvailabilityTab() {
                   <tr key={w.ROWID} className="clickable-row" onClick={() => setWarehouseId(w.ROWID)}>
                     <td>{w.name}</td>
                     <td>{locationCount}</td>
-                    <td>{s.totals.total}</td>
-                    <td>{s.totals.occupied}</td>
+                    <td>{fixed2(s.totals.total)}</td>
+                    <td>{fixed2(s.totals.occupied)}</td>
                     <td>{s.pendingPutaway}</td>
-                    <td>{s.totals.committed}</td>
-                    <td>{s.totals.available}</td>
-                    <td>{s.totals.unclaimedAvailable}</td>
-                    <td>{s.weight.available.toFixed(0)}</td>
-                    <td>{s.space.available.toFixed(1)}</td>
+                    <td>{fixed2(s.totals.committed)}</td>
+                    <td>{fixed2(s.totals.available)}</td>
+                    <td>{fixed2(s.totals.unclaimedAvailable)}</td>
+                    <td>{fixed2(s.weight.available)}</td>
+                    <td>{fixed2(s.space.available)}</td>
                     <td>
                       <span className="link-btn">View detail</span>
                     </td>
@@ -457,12 +458,12 @@ function AvailabilityTab() {
           <div className="card-grid">
             <div className="card kpi-card">
               <h3>Total Capacity</h3>
-              <div className="kpi-value">{snapshot.totals.total}</div>
+              <div className="kpi-value">{fixed2(snapshot.totals.total)}</div>
               <p className="muted small">all capacity units</p>
             </div>
             <div className="card kpi-card">
               <h3>Physical Occupancy</h3>
-              <div className="kpi-value">{snapshot.totals.occupied}</div>
+              <div className="kpi-value">{fixed2(snapshot.totals.occupied)}</div>
               <p className="muted small">capacity units currently consumed</p>
             </div>
             <div className="card kpi-card">
@@ -472,28 +473,28 @@ function AvailabilityTab() {
             </div>
             <div className="card kpi-card">
               <h3>Committed (est.)</h3>
-              <div className="kpi-value">{snapshot.totals.committed}</div>
+              <div className="kpi-value">{fixed2(snapshot.totals.committed)}</div>
               <p className="muted small">accepted, not yet arrived</p>
             </div>
             <div className="card kpi-card">
               <h3>Available</h3>
-              <div className="kpi-value">{snapshot.totals.available}</div>
+              <div className="kpi-value">{fixed2(snapshot.totals.available)}</div>
               <p className="muted small">total − occupied − committed − on dock</p>
             </div>
             <div className="card kpi-card">
               <h3>Unclaimed</h3>
-              <div className="kpi-value">{snapshot.totals.unclaimedAvailable}</div>
+              <div className="kpi-value">{fixed2(snapshot.totals.unclaimedAvailable)}</div>
               <p className="muted small">free and not dedicated to any customer</p>
             </div>
             <div className="card kpi-card">
               <h3>Weight Available</h3>
-              <div className="kpi-value">{snapshot.weight.available.toFixed(0)} kg</div>
-              <p className="muted small">of {snapshot.weight.total.toFixed(0)} kg budgeted</p>
+              <div className="kpi-value">{fixed2(snapshot.weight.available)} kg</div>
+              <p className="muted small">of {fixed2(snapshot.weight.total)} kg budgeted</p>
             </div>
             <div className="card kpi-card">
               <h3>Space Available</h3>
-              <div className="kpi-value">{snapshot.space.available.toFixed(1)} m³</div>
-              <p className="muted small">of {snapshot.space.total.toFixed(1)} m³ dimensioned</p>
+              <div className="kpi-value">{fixed2(snapshot.space.available)} m³</div>
+              <p className="muted small">of {fixed2(snapshot.space.total)} m³ dimensioned</p>
             </div>
           </div>
 
@@ -515,12 +516,12 @@ function AvailabilityTab() {
                 {snapshot.byCapacityUnit.map((u) => (
                   <tr key={u.capacityUnit}>
                     <td>{u.capacityUnit}</td>
-                    <td>{u.total}</td>
-                    <td>{u.occupied}</td>
-                    <td>{u.committed}</td>
-                    <td>{u.available}</td>
-                    <td>{u.unclaimedAvailable}</td>
-                    <td>{snapshot.expectedReleaseByUnit.get(u.capacityUnit) || 0}</td>
+                    <td>{fixed2(u.total)}</td>
+                    <td>{fixed2(u.occupied)}</td>
+                    <td>{fixed2(u.committed)}</td>
+                    <td>{fixed2(u.available)}</td>
+                    <td>{fixed2(u.unclaimedAvailable)}</td>
+                    <td>{fixed2(snapshot.expectedReleaseByUnit.get(u.capacityUnit) || 0)}</td>
                   </tr>
                 ))}
                 {snapshot.byCapacityUnit.length === 0 && (
@@ -1059,9 +1060,9 @@ function LocationsTab() {
                   />
                 </td>
                 <td>{l.location_type || <span className="muted">—</span>}</td>
-                <td>{l.capacity} {l.capacity_unit && <span className="muted small">{l.capacity_unit}</span>}</td>
+                <td>{decimal2(l.capacity)} {l.capacity_unit && <span className="muted small">{l.capacity_unit}</span>}</td>
                 <td>{l.length_cm && l.width_cm && l.height_cm ? `${l.length_cm}×${l.width_cm}×${l.height_cm}` : <span className="muted">—</span>}</td>
-                <td>{l.max_weight_kg ? `${l.max_weight_kg} kg` : <span className="muted">—</span>}</td>
+                <td>{l.max_weight_kg ? `${decimal2(l.max_weight_kg)} kg` : <span className="muted">—</span>}</td>
                 <td>
                   <select value={LOCATION_STATUSES.includes(l.occupancy_status) ? l.occupancy_status : 'Available'} onChange={(e) => setStatus(l.ROWID, e.target.value)}>
                     {LOCATION_STATUSES.map((s) => (
@@ -1267,12 +1268,12 @@ function LocationPopup({ location, path, onClose }) {
         <div>
           <div className="muted small">Capacity</div>
           <div className="summary-value">
-            {location.capacity ?? '—'} <span className="muted small">{location.capacity_unit || ''}</span>
+            {decimal2(location.capacity)} <span className="muted small">{location.capacity_unit || ''}</span>
           </div>
         </div>
         <div>
           <div className="muted small">Max weight</div>
-          <div className="summary-value">{location.max_weight_kg ? `${location.max_weight_kg} kg` : '—'}</div>
+          <div className="summary-value">{location.max_weight_kg ? `${decimal2(location.max_weight_kg)} kg` : '—'}</div>
         </div>
         <div>
           <div className="muted small">Size</div>
@@ -1307,7 +1308,7 @@ function LocationPopup({ location, path, onClose }) {
               {h.unit || '—'}
             </span>
             <span>
-              <span className="muted small">Weight</span> {h.weight ? `${h.weight} kg` : '—'}
+              <span className="muted small">Weight</span> {h.weight ? `${decimal2(h.weight)} kg` : '—'}
             </span>
             <span>
               <span className="muted small">Size</span> {dims(h) || '—'}
@@ -1406,7 +1407,7 @@ function PackageTypesTab() {
               <tr key={p.ROWID}>
                 <td>{p.name}</td>
                 <td>{p.capacity_unit || <span className="muted">—</span>}</td>
-                <td>{p.units_per_item ?? 1}</td>
+                <td>{decimal2(p.units_per_item ?? 1)}</td>
                 <td>
                   <span className="status-badge">{p.status}</span>
                 </td>

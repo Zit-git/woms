@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listDeliveryGoods, markCargoDelivered } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
+import { decimal2 } from '../../lib/format';
 
 const TABS = [
   { key: 'Dispatched', label: 'In Transit' },
@@ -143,7 +144,7 @@ export default function DeliveryPage() {
       </td>
       <td>
         {r.qty ? `${r.qty} ${r.unit || ''}` : r.unit || '—'}
-        {r.weight ? <span className="muted small"> · {r.weight} kg</span> : null}
+        {r.weight ? <span className="muted small"> · {decimal2(r.weight)} kg</span> : null}
       </td>
       <td>
         {r.outbound_request_id ? (

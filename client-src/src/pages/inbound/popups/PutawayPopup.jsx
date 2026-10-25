@@ -12,6 +12,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { computeCapacity } from '../../../lib/capacity';
 import { todayStr } from '../../../lib/dates';
 import { allocateLocations, putawayConflicts } from '../../../lib/allocation';
+import { fixed2 } from '../../../lib/format';
 
 
 // Stage: Put-away, done from inside the inbound. Shows what the warehouse
@@ -141,24 +142,24 @@ export default function PutawayPopup({ advice, cargoRows, reloadCargo, patchAdvi
               {availability.byCapacityUnit.map((u) => (
                 <tr key={u.capacityUnit}>
                   <td>{u.capacityUnit}</td>
-                  <td>{u.total}</td>
-                  <td>{u.occupied.toFixed(1)}</td>
-                  <td>{u.available.toFixed(1)}</td>
-                  <td>{u.unclaimedAvailable.toFixed(1)}</td>
+                  <td>{fixed2(u.total)}</td>
+                  <td>{fixed2(u.occupied)}</td>
+                  <td>{fixed2(u.available)}</td>
+                  <td>{fixed2(u.unclaimedAvailable)}</td>
                 </tr>
               ))}
               <tr>
                 <td>Weight (kg)</td>
-                <td>{availability.weight.total.toFixed(0)}</td>
-                <td>{availability.weight.occupied.toFixed(0)}</td>
-                <td>{availability.weight.available.toFixed(0)}</td>
+                <td>{fixed2(availability.weight.total)}</td>
+                <td>{fixed2(availability.weight.occupied)}</td>
+                <td>{fixed2(availability.weight.available)}</td>
                 <td>—</td>
               </tr>
               <tr>
                 <td>Space (m³)</td>
-                <td>{availability.space.total.toFixed(1)}</td>
-                <td>{availability.space.occupied.toFixed(1)}</td>
-                <td>{availability.space.available.toFixed(1)}</td>
+                <td>{fixed2(availability.space.total)}</td>
+                <td>{fixed2(availability.space.occupied)}</td>
+                <td>{fixed2(availability.space.available)}</td>
                 <td>—</td>
               </tr>
             </tbody>

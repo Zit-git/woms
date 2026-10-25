@@ -7,6 +7,7 @@ import { computeCapacity, expandLines, projectAvailability, requiredCapacityByUn
 import { recommendWarehouses } from '../../../lib/allocation';
 import { addDays } from '../../../lib/dates';
 import { accessibleWarehouses } from '../../../lib/access';
+import { fixed2 } from '../../../lib/format';
 
 // Stage 2 (Availability Check & Acceptance): a Warehouse Manager/Supervisor
 // checks this request's required capacity against what's actually available
@@ -185,7 +186,7 @@ export default function ConfirmPopup({ advice, lines, suppliers, transporters, p
         </div>
         <div>
           <div className="muted small">Total Weight</div>
-          <div className="summary-value">{summary.totalWeight.toFixed(2)} kg</div>
+          <div className="summary-value">{fixed2(summary.totalWeight)} kg</div>
         </div>
       </div>
 
@@ -238,10 +239,10 @@ export default function ConfirmPopup({ advice, lines, suppliers, transporters, p
                 <tr style={{ fontWeight: 600, background: 'var(--bg)' }}>
                   <td>Required</td>
                   {unitColumns.map((u) => (
-                    <td key={u}>{(required.get(u) || 0).toFixed(1)}</td>
+                    <td key={u}>{fixed2(required.get(u) || 0)}</td>
                   ))}
-                  <td>{requiredWeightSpace.weight.toFixed(1)}</td>
-                  <td>{requiredWeightSpace.spaceM3.toFixed(2)}</td>
+                  <td>{fixed2(requiredWeightSpace.weight)}</td>
+                  <td>{fixed2(requiredWeightSpace.spaceM3)}</td>
                 </tr>
                 {evaluation.rows.map((row) => {
                   const bad = { color: 'var(--danger)', fontWeight: 600 };
@@ -252,12 +253,12 @@ export default function ConfirmPopup({ advice, lines, suppliers, transporters, p
                         const avail = row.byCapacityUnit.find((e) => e.capacityUnit === u)?.available ?? 0;
                         return (
                           <td key={u} style={(required.get(u) || 0) > avail ? bad : undefined}>
-                            {avail.toFixed(1)}
+                            {fixed2(avail)}
                           </td>
                         );
                       })}
-                      <td style={requiredWeightSpace.weight > row.weight.available ? bad : undefined}>{row.weight.available.toFixed(1)}</td>
-                      <td style={requiredWeightSpace.spaceM3 > row.space.available ? bad : undefined}>{row.space.available.toFixed(2)}</td>
+                      <td style={requiredWeightSpace.weight > row.weight.available ? bad : undefined}>{fixed2(row.weight.available)}</td>
+                      <td style={requiredWeightSpace.spaceM3 > row.space.available ? bad : undefined}>{fixed2(row.space.available)}</td>
                     </tr>
                   );
                 })}

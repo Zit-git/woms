@@ -5,6 +5,7 @@ import AuditTrail from '../../components/AuditTrail';
 import QrCodeImage from '../../components/QrCodeImage';
 import DocumentsSummary from '../../components/DocumentsSummary';
 import LazySection from '../../components/LazySection';
+import { fixed2, decimal2 } from '../../lib/format';
 
 // Plain read-only record view, used by InboundMaster regardless of status --
 // the one action button opens whichever stage popup is contextually next
@@ -149,11 +150,11 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
         </div>
         <div>
           <div className="muted small">Total Weight</div>
-          <div className="summary-value">{summary.totalWeight.toFixed(2)} kg</div>
+          <div className="summary-value">{fixed2(summary.totalWeight)} kg</div>
         </div>
         <div>
           <div className="muted small">Total Volume</div>
-          <div className="summary-value">{summary.totalVolume.toFixed(3)} m³</div>
+          <div className="summary-value">{fixed2(summary.totalVolume)} m³</div>
         </div>
       </div>
 
@@ -181,7 +182,7 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
                 <td>{l.qty ?? '—'}</td>
                 <td>{l.received_qty ?? '—'}</td>
                 <td>{packedByLine.get(String(l.ROWID)) || 0}</td>
-                <td>{l.weight ?? '—'}</td>
+                <td>{decimal2(l.weight)}</td>
                 <td>
                   {l.length_cm ?? '—'}×{l.width_cm ?? '—'}×{l.height_cm ?? '—'}
                 </td>
@@ -235,7 +236,7 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
                       })
                       .join(' · ') || c.description || '—'}
                   </td>
-                  <td>{c.weight ?? '—'}</td>
+                  <td>{decimal2(c.weight)}</td>
                   <td>{locationLabels?.get(String(c.current_location_id)) || <span className="muted">Not put away yet</span>}</td>
                   <td>
                     {(outboundByHu.get(String(c.ROWID)) || []).length ? (

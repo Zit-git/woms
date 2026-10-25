@@ -25,6 +25,7 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | Two pickups, one customer, one day: own driver, vehicle and reference (O4) | **Pass**, 20.7 s |
 | Access tests (second user: Supervisor in Hamburg DC, Operator in Rotterdam DC2, nothing in Antwerp DC) | **5 of 5 pass** on `/app/`; the direct-link test (A3) is Slate-only and skipped here |
 | Volume (84, 384 and 1,084 inbounds; 10,000 pallets; see section 7) | **Done 2026-10-23**: three defects found and fixed; test data removed |
+| Number formatting: decimals shown with two digits, rounded (`format.js`; `format.spec.js` checks the availability figures, inbound totals and that no screen shows a long decimal tail) | **Pass**: 6 unit tests, 1 browser test |
 | Warehouse map: levels stacked upwards as angled cards, a position opens its Handling Units (`map.spec.js`) | **Pass**, 3 of 3 runs |
 | Phones and tablets: every menu screen and the key popups at 390x844, 360x640, 768x1024, 1024x768 and 1280x720 (`devices.spec.js`, now also the warehouse map and a check that tabs do not overlap; screenshots in `e2e/results/devices/`) | **15 of 15 pass** (Chromium emulation of screen size, touch and mobile mode) |
 | Not yet run | Firefox and Safari (this machine has only Chromium; do them on real devices), A2/A6/A7 by hand, the direct-link and printed-pass tests on Slate (needs a Slate sign-in), backup and restore rehearsal, client trial with their own data |
@@ -83,6 +84,8 @@ Method: browser tests (Playwright) signed in through a saved session, unit tests
 | O-6 | Info | The legacy `/app/` host cannot open deep links (e.g. `/app/print/pickup/…`); Slate can | Use Slate for printing; the pass page is tested on Slate only |
 
 ## 5. Test data left behind
+
+14 `AUTOTEST` inbounds from the first debugging runs (15 and 16 October) are still open: 9 accepted but never received and 5 received but never packed. They reserve space and show as dock backlog on the availability screen (Rotterdam DC2 currently reads Available -46.40). Close them to see real figures.
 
 On 2026-10-25 the 22 stored `AUTOTEST` pallets were taken out of their positions and marked Delivered (nothing deleted), so the warehouse map no longer shows over-full test positions. The two real pallets (Acme Freight, "Spare parts" at `A-01-01` and the walkthrough pallet at `RT2-A1-R01-B1-L2`) were left alone.
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Modal from '../../../components/Modal';
 import { createHandlingUnit, deleteHandlingUnit, listPackageTypes } from '../../../lib/api';
+import { decimal2 } from '../../../lib/format';
 
 const DEFAULT_HU_TYPES = ['Pallet', 'Box', 'Crate', 'Carton', 'Bag', 'Drum', 'Roll', 'Other'];
 
@@ -270,7 +271,7 @@ export default function CreateHUPopup({ advice, lines, cargoRows, huContents, re
                     })
                     .join(' · ') || c.description || '—'}
                 </td>
-                <td>{c.weight ?? '—'}</td>
+                <td>{decimal2(c.weight)}</td>
                 <td>{c.length_cm ?? '—'}×{c.width_cm ?? '—'}×{c.height_cm ?? '—'}</td>
                 <td>
                   {!c.current_location_id && (

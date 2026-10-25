@@ -5,6 +5,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { computeInboundSummary } from '../../../lib/inboundSummary';
 import RecordTasks from '../../../components/RecordTasks';
 import AuditTrail from '../../../components/AuditTrail';
+import { fixed2, decimal2 } from '../../../lib/format';
 
 // Stage: final review before generating the GRN -- HUs (and their QR labels)
 // were created one stage earlier (CreateHUPopup).
@@ -64,11 +65,11 @@ export default function CheckPopup({ advice, lines, cargoRows, transporters, sup
         </div>
         <div>
           <div className="muted small">Total Weight</div>
-          <div className="summary-value">{summary.totalWeight.toFixed(2)} kg</div>
+          <div className="summary-value">{fixed2(summary.totalWeight)} kg</div>
         </div>
         <div>
           <div className="muted small">Total Volume</div>
-          <div className="summary-value">{summary.totalVolume.toFixed(3)} m³</div>
+          <div className="summary-value">{fixed2(summary.totalVolume)} m³</div>
         </div>
       </div>
 
@@ -94,7 +95,7 @@ export default function CheckPopup({ advice, lines, cargoRows, transporters, sup
                 <td>{c.description}</td>
                 <td>{c.qty || '—'}</td>
                 <td>{c.received_qty ?? '—'}</td>
-                <td>{c.weight}</td>
+                <td>{decimal2(c.weight)}</td>
                 <td>
                   {c.length_cm}×{c.width_cm}×{c.height_cm}
                 </td>

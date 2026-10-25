@@ -12,6 +12,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { todayStr } from '../../lib/dates';
 import { allocateLocations } from '../../lib/allocation';
+import { decimal2 } from '../../lib/format';
 
 
 const QrScannerModal = lazy(() => import('../../components/QrScannerModal'));
@@ -239,7 +240,7 @@ export default function StoragePage() {
       </td>
       <td>
         {c.qty ? `${c.qty} ${c.unit || ''}` : c.unit || '—'}
-        {c.weight ? <span className="muted small"> · {c.weight} kg</span> : null}
+        {c.weight ? <span className="muted small"> · {decimal2(c.weight)} kg</span> : null}
       </td>
       <td>
         {c.inbound_reference || <span className="muted">—</span>}

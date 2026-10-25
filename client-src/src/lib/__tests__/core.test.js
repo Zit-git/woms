@@ -7,6 +7,7 @@ import { visibilityClause } from '../api';
 import { getAllRows } from '../catalystClient';
 import { applyServerChanges } from '../formSync';
 import { newestOnly } from '../latest';
+import { fixed2, decimal2 } from '../format';
 
 describe('dates', () => {
   it('addDays moves forward one calendar day in any timezone (it used to return the same date in India)', () => {
@@ -201,5 +202,45 @@ describe('only the newest request fills the screen', () => {
     b.start();
     b.start();
     expect(a.isNewest(t)).toBe(true);
+  });
+});
+
+describe('decimal values are shown with two digits, rounded', () => {
+  it('fixed2 always shows two decimals', () => {
+    expect(fixed2(12)).toBe('12.00');
+    expect(fixed2(0.384)).toBe('0.38');
+    expect(fixed2('11.1')).toBe('11.10');
+    expect(fixed2(0)).toBe('0.00');
+  });
+  it('rounds off rather than cuts off, including the cases binary numbers get wrong', () => {
+    expect(fixed2(2.675)).toBe('2.68');
+    expect(fixed2(1.005)).toBe('1.01');
+    expect(fixed2(0.285)).toBe('0.29');
+    expect(fixed2(-1.005)).toBe('-1.01');
+    expect(fixed2(0.994)).toBe('0.99');
+    expect(fixed2(0.995)).toBe('1.00');
+  });
+  it('removes floating point noise from sums', () => {
+    expect(fixed2(0.1 + 0.2)).toBe('0.30');
+    expect(decimal2(0.1 + 0.2)).toBe('0.30');
+    expect(decimal2(7.000000000000001)).toBe('7');
+    expect(fixed2(7.000000000000001)).toBe('7.00');
+  });
+  it('never shows minus zero', () => {
+    expect(fixed2(-0.001)).toBe('0.00');
+  });
+  it('decimal2 keeps whole values whole and gives fractions two digits', () => {
+    expect(decimal2(228)).toBe('228');
+    expect(decimal2('228')).toBe('228');
+    expect(decimal2(12.5)).toBe('12.50');
+    expect(decimal2(0.1)).toBe('0.10');
+    expect(decimal2(40.456)).toBe('40.46');
+  });
+  it('empty and odd values are handled', () => {
+    expect(fixed2(null)).toBe('—');
+    expect(fixed2(undefined)).toBe('—');
+    expect(decimal2('')).toBe('—');
+    expect(decimal2(null, '')).toBe('');
+    expect(fixed2('n/a')).toBe('n/a');
   });
 });

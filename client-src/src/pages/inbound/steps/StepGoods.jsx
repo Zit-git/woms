@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createLine, editLine, deleteLine, listPackageTypes } from '../../../lib/api';
 import { computeInboundSummary } from '../../../lib/inboundSummary';
+import { fixed2 } from '../../../lib/format';
 
 const DEFAULT_UNIT_TYPES = ['Box', 'Carton', 'Crate', 'Pallet', 'Bag', 'Drum', 'Roll', 'Other'];
 
@@ -277,11 +278,11 @@ export default function StepGoods({ advice, lines, reloadLines, patchAdvice, goN
         </div>
         <div>
           <div className="muted small">Total Weight</div>
-          <div className="summary-value">{summary.totalWeight.toFixed(2)} kg</div>
+          <div className="summary-value">{fixed2(summary.totalWeight)} kg</div>
         </div>
         <div>
           <div className="muted small">Total Volume</div>
-          <div className="summary-value">{summary.totalVolume.toFixed(3)} m³</div>
+          <div className="summary-value">{fixed2(summary.totalVolume)} m³</div>
         </div>
       </div>
 

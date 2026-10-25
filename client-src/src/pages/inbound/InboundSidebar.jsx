@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { fixed2 } from '../../lib/format';
 
 const STATUS_CLASS = {
   Requested: 'status-requested',
@@ -53,11 +54,11 @@ export default function InboundSidebar({ advice, summary, adviceId, saving }) {
         </div>
         <div className="sidebar-kv">
           <span className="muted small">Total Weight</span>
-          <span>{summary.totalWeight.toFixed(2)} kg</span>
+          <span>{fixed2(summary.totalWeight)} kg</span>
         </div>
         <div className="sidebar-kv">
           <span className="muted small">Total Volume</span>
-          <span>{summary.totalVolume.toFixed(3)} m³</span>
+          <span>{fixed2(summary.totalVolume)} m³</span>
         </div>
         <div className="sidebar-kv">
           <span className="muted small">Handling Units</span>
