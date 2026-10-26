@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { addDays, todayStr } from '../dates';
 import { validateRequestDates, colliMismatch, totalPackages } from '../inboundValidation';
 import { canApproveIn, canAccessWarehouse, scopeByWarehouse } from '../access';
@@ -79,37 +79,109 @@ describe('capacity', () => {
   });
 });
 
-describe('getAllRows (sign-in loads the role list with 500 rows; Catalyst allows 300)', () => {
-  let requested;
-  const stub = (response) => {
-    requested = null;
-    globalThis.window = { catalyst: { table: { tableId: () => ({ getPagedRows: (opts) => { requested = opts; return Promise.resolve(response); } }) } } };
+// The app talks to the data service directly (see catalystClient.js). These tests stand in for the network:
+// a fake `fetch` answers like the real service and records what was asked.
+function fakeNetwork(handler) {
+  const asked = [];
+  globalThis.window = { location: { origin: 'https://site.test' } };
+  globalThis.document = { cookie: 'a=1; ZD_CSRF_TOKEN=csrf-123; b=2' };
+  globalThis.fetch = async (url, opts = {}) => {
+    asked.push({ url: String(url), method: opts.method || 'GET', headers: opts.headers || {}, body: opts.body ? JSON.parse(opts.body) : undefined });
+    if (String(url).includes('/__catalyst/sdk/init.js')) {
+      return { ok: true, status: 200, text: async () => 'catalyst.initApp({ project_Id : "999", zaid : "888", auth_domain : "https://auth.test" })' };
+    }
+    const out = handler(String(url), opts) || {};
+    const status = out.status ?? 200;
+    return { ok: status >= 200 && status < 300, status, text: async () => (typeof out.body === 'string' ? out.body : JSON.stringify(out.body ?? { status: 'success', data: [] })), json: async () => out.body };
   };
-  beforeEach(() => { delete globalThis.window; });
+  return asked;
+}
+
+describe('getAllRows (sign-in loads the role list with 500 rows; Catalyst allows 300)', () => {
   it('never asks for more than 300 rows', async () => {
-    stub({ status: 200, content: [{ ROWID: '1' }] });
+    const asked = fakeNetwork(() => ({ body: { status: 'success', data: [{ ROWID: '1' }] } }));
     await getAllRows('Customers', 500);
-    expect(requested.max_rows).toBe(300);
+    expect(asked.find((a) => a.url.includes('/table/Customers/row')).url).toContain('max_rows=300');
   });
   it('turns an error response into a readable error instead of crashing', async () => {
-    stub({ status: 400, message: 'max_rows too large' });
+    fakeNetwork(() => ({ status: 400, body: { status: 'failure', data: { message: 'max_rows too large' } } }));
     await expect(getAllRows('Transporters', 200)).rejects.toThrow(/max_rows too large/);
   });
   it('never hands back a non-array', async () => {
-    stub({ status: 200, content: { error: 'x' } });
+    fakeNetwork(() => ({ body: { status: 'success', data: { error: 'x' } } }));
     expect(await getAllRows('Suppliers', 200)).toEqual([]);
+  });
+});
+
+describe('the data service is called directly, with the session', () => {
+  it('uses the project from the SDK init script and sends the CSRF token from the cookie', async () => {
+    const asked = fakeNetwork(() => ({ body: { status: 'success', data: [{ ROWID: '7' }] } }));
+    const { updateRow } = await import('../catalystClient');
+    await updateRow('InboundLine', { ROWID: '7', qty: 4 });
+    const put = asked.find((a) => a.method === 'PUT');
+    expect(put.url).toBe('/baas/v1/project/999/table/InboundLine/row');
+    expect(put.headers['X-ZCSRF-TOKEN']).toBe('zd_csrparam=csrf-123');
+    expect(put.body).toEqual([{ ROWID: '7', qty: 4 }]);
+  });
+  it('an id sent as a bare 17-digit number is kept exact (a browser would change its last digit)', async () => {
+    const { addRow } = await import('../catalystClient');
+    fakeNetwork(() => ({ body: '{"status":"success","data":[{"ROWID":11648000001245061,"customer_id":11648000001228002,"name":"x"}]}' }));
+    const row = await addRow('Customers', { name: 'x' });
+    expect(row.ROWID).toBe('11648000001245061');
+    expect(row.customer_id).toBe('11648000001228002');
+  });
+  it('text inside a value is never altered, even when it looks like an id', async () => {
+    const { parseReply } = await import('../catalystClient');
+    const reply = parseReply('{"data":[{"description":"ref \\"ROWID\\":11648000001245061, ok","ROWID":"1"}]}');
+    expect(reply.data[0].description).toBe('ref "ROWID":11648000001245061, ok');
+  });
+  it('a failed save says why, in words, and does not look like success', async () => {
+    const { updateRow } = await import('../catalystClient');
+    fakeNetwork(() => ({ status: 400, body: { status: 'failure', data: { message: 'No such Table with the given name exists.' } } }));
+    await expect(updateRow('Nowhere', { ROWID: '1' })).rejects.toThrow(/No such Table/);
+    fakeNetwork(() => ({ status: 401, body: { status: 'failure', data: {} } }));
+    await expect(updateRow('Customers', { ROWID: '1' })).rejects.toThrow(/sign in again/i);
+  });
+  it('delete sends only the digits of the id', async () => {
+    const { deleteRow } = await import('../catalystClient');
+    const asked = fakeNetwork(() => ({ body: { status: 'success', data: [] } }));
+    await deleteRow('Cargo', "123'; DROP TABLE x;--456");
+    expect(asked.find((a) => a.method === 'DELETE').url).toContain('/table/Cargo/row?ids=123456');
+  });
+});
+
+describe('calling a function from another address uses a token, without the SDK', () => {
+  it('exchanges the project token with the sign-in service, caches it, and sends it without cookies', async () => {
+    const { callFunction } = await import('../catalystClient');
+    const asked = fakeNetwork((url) => {
+      if (url.includes('/authentication/custom-token')) return { body: { status: 'success', data: { client_id: 'cid', jwt_token: 'signed', scopes: 'a,b' } } };
+      if (url.startsWith('https://auth.test/clientoauth/v2/888/remote/auth')) return { body: { access_token: 'tok1', expires_in_sec: 3600 } };
+      if (url.includes('/server/uploadFile/')) return { body: { ok: true } };
+      return { body: { status: 'success', data: [] } };
+    });
+    globalThis.window.__WOMS_FORCE_TOKEN_ROUTE = true; // as Slate: this address does not serve functions
+    // (the module remembers the route it first used, so load a fresh copy)
+    const fresh = await import('../catalystClient?token-route');
+    await fresh.callFunction('uploadFile', { a: 1 });
+    await fresh.callFunction('uploadFile', { a: 2 });
+    const exchange = asked.filter((a) => a.url.startsWith('https://auth.test/'));
+    expect(exchange).toHaveLength(1); // the second upload reused the token
+    expect(exchange[0].url).toContain('response_type=remote_token');
+    expect(exchange[0].url).toContain('client_id=cid');
+    expect(exchange[0].method).toBe('POST');
+    const upload = asked.filter((a) => a.url.includes('/server/uploadFile/'));
+    expect(upload).toHaveLength(2);
+    expect(upload[0].headers.Authorization).toBe('Zoho-oauthtoken tok1');
+    expect(callFunction).toBeTypeOf('function');
   });
 });
 
 describe('identical simultaneous queries share one request', () => {
   it('sends one request for N identical zcql calls made at the same time', async () => {
     const { zcql } = await import('../catalystClient');
-    let sent = 0;
-    globalThis.window = {
-      catalyst: { ZCatalystQL: { executeQuery: () => { sent += 1; return new Promise((r) => setTimeout(() => r({ status: 200, content: [{ T: { a: 1 } }] }), 20)); } } },
-    };
+    const asked = fakeNetwork(() => ({ body: { status: 'success', data: [{ T: { a: 1 } }] } }));
     const results = await Promise.all([zcql('SELECT a FROM T'), zcql('SELECT a FROM T'), zcql('SELECT a FROM T'), zcql('SELECT b FROM T')]);
-    expect(sent).toBe(2); // the three identical ones shared one request
+    expect(asked.filter((a) => a.url.endsWith('/query'))).toHaveLength(2); // the three identical ones shared one request
     results.forEach((r) => expect(r).toEqual([{ T: { a: 1 } }]));
     results[0].push('mutated'); // each caller gets its own array
     expect(results[1]).toHaveLength(1);
@@ -117,29 +189,21 @@ describe('identical simultaneous queries share one request', () => {
 });
 
 describe('queries return every row, not just the first 300', () => {
-  const fakeData = (total) => {
-    const asked = [];
-    globalThis.window = {
-      catalyst: {
-        ZCatalystQL: {
-          executeQuery: (q) => {
-            asked.push(q);
-            const m = /LIMIT (\d+), (\d+)$/.exec(q);
-            const from = m ? Number(m[1]) - 1 : 0;
-            const count = m ? Number(m[2]) : 300;
-            const rows = Array.from({ length: Math.max(0, Math.min(count, total - from)) }, (_, i) => ({ T: { n: from + i + 1 } }));
-            return Promise.resolve({ status: 200, content: rows });
-          },
-        },
-      },
-    };
-    return asked;
-  };
+  const fakeData = (total) =>
+    fakeNetwork((url, opts) => {
+      const q = JSON.parse(opts.body).query;
+      const m = /LIMIT (\d+), (\d+)$/.exec(q);
+      const from = m ? Number(m[1]) - 1 : 0;
+      const count = m ? Number(m[2]) : 300;
+      const rows = Array.from({ length: Math.max(0, Math.min(count, total - from)) }, (_, i) => ({ T: { n: from + i + 1 } }));
+      return { body: { status: 'success', data: rows } };
+    });
+  const queries = (asked) => asked.filter((a) => a.url.endsWith('/query')).map((a) => a.body.query);
   it('a short result is one request', async () => {
     const { zcql } = await import('../catalystClient');
     const asked = fakeData(12);
     expect(await zcql('SELECT n FROM T ORDER BY n')).toHaveLength(12);
-    expect(asked).toEqual(['SELECT n FROM T ORDER BY n LIMIT 1, 300']);
+    expect(queries(asked)).toEqual(['SELECT n FROM T ORDER BY n LIMIT 1, 300']);
   });
   it('384 rows come back as 300 + 84, in order, none missing or repeated', async () => {
     const { zcql } = await import('../catalystClient');
@@ -147,19 +211,19 @@ describe('queries return every row, not just the first 300', () => {
     const rows = await zcql('SELECT n FROM T2 ORDER BY n');
     expect(rows).toHaveLength(384);
     expect(rows.map((r) => r.T.n)).toEqual(Array.from({ length: 384 }, (_, i) => i + 1));
-    expect(asked).toEqual(['SELECT n FROM T2 ORDER BY n LIMIT 1, 300', 'SELECT n FROM T2 ORDER BY n LIMIT 301, 300']);
+    expect(queries(asked)).toEqual(['SELECT n FROM T2 ORDER BY n LIMIT 1, 300', 'SELECT n FROM T2 ORDER BY n LIMIT 301, 300']);
   });
   it('exactly 300 rows asks once more to be sure there is no 301st', async () => {
     const { zcql } = await import('../catalystClient');
     const asked = fakeData(300);
     expect(await zcql('SELECT n FROM T3 ORDER BY n')).toHaveLength(300);
-    expect(asked).toHaveLength(2);
+    expect(queries(asked)).toHaveLength(2);
   });
   it('a query with its own LIMIT is left alone', async () => {
     const { zcql } = await import('../catalystClient');
     const asked = fakeData(1000);
     await zcql('SELECT n FROM T4 ORDER BY n LIMIT 1, 5');
-    expect(asked).toEqual(['SELECT n FROM T4 ORDER BY n LIMIT 1, 5']);
+    expect(queries(asked)).toEqual(['SELECT n FROM T4 ORDER BY n LIMIT 1, 5']);
   });
 });
 

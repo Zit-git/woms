@@ -3,6 +3,8 @@ import { expect } from '@playwright/test';
 // Open the app and wait for the signed-in home screen. (The legacy /app/ host cannot open
 // deep links like /app/inbound directly, so tests always start here and use the menu.)
 export async function openHome(page) {
+  // WOMS_TOKEN_ROUTE=1: call functions the way the Slate address has to (a token across addresses), on /app/
+  if (process.env.WOMS_TOKEN_ROUTE) await page.addInitScript(() => { window.__WOMS_FORCE_TOKEN_ROUTE = true; });
   await page.goto('./');
   await expect(page.getByRole('heading', { name: /^Welcome/ })).toBeVisible();
 }

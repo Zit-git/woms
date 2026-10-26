@@ -782,6 +782,20 @@ const listClaimedCargoIds = (customerId) =>
     rows.map((r) => r.PickTask.cargo_id)
   );
 
+// Two people acting in the same second each write, then look to see who was first. A write that has just
+// finished is not always visible to the other person's look yet, so each side would see only itself and both
+// would keep their claim. The look is therefore repeated after short pauses; a claim is kept only if it is still
+// first every time. (Without transactions this narrows the gap very far, it cannot close it for certain.)
+const SETTLE_MS = 400;
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+async function stillFirstAfterSettling(check) {
+  for (let i = 0; i < 2; i++) {
+    await pause(SETTLE_MS);
+    if (!(await check())) return false;
+  }
+  return true;
+}
+
 // Adds a Handling Unit to an outbound's pick lines, refusing one that another outbound already has
 // (checked again here, because the list on screen may be a few seconds old).
 export const addPickLine = async (row) => {
@@ -795,14 +809,19 @@ export const addPickLine = async (row) => {
 
   // Two people can add the same pallet in the same second and both pass the check above. Look again at who
   // holds it, in order of arrival, and give way if we were second (the same rule as for storage positions).
-  const claims = await zcql(
-    `SELECT PickTask.ROWID, OutboundRequest.outbound_reference, OutboundRequest.ROWID FROM PickTask LEFT JOIN OutboundRequest ON PickTask.outbound_request_id = OutboundRequest.ROWID WHERE PickTask.cargo_id = ${idOnly(row.cargo_id)} ORDER BY PickTask.CREATEDTIME ASC, PickTask.ROWID ASC`
-  );
-  const first = claims[0];
-  if (created?.ROWID && first && String(first.PickTask.ROWID) !== String(created.ROWID)) {
+  let rival = null;
+  const stillFirst = async () => {
+    const claims = await zcql(
+      `SELECT PickTask.ROWID, OutboundRequest.outbound_reference, OutboundRequest.ROWID FROM PickTask LEFT JOIN OutboundRequest ON PickTask.outbound_request_id = OutboundRequest.ROWID WHERE PickTask.cargo_id = ${idOnly(row.cargo_id)} ORDER BY PickTask.CREATEDTIME ASC, PickTask.ROWID ASC`
+    );
+    const first = claims[0];
+    if (!created?.ROWID || !first || String(first.PickTask.ROWID) === String(created.ROWID)) return true;
+    rival = first.OutboundRequest;
+    return false;
+  };
+  if (!(await stillFirstAfterSettling(stillFirst))) {
     await removePickTask(created.ROWID);
-    const o = first.OutboundRequest;
-    throw new Error(`This Handling Unit was just added to outbound ${o?.outbound_reference || `#${o?.ROWID}`} by someone else.`);
+    throw new Error(`This Handling Unit was just added to outbound ${rival?.outbound_reference || `#${rival?.ROWID}`} by someone else.`);
   }
   return created;
 };
@@ -914,25 +933,27 @@ export async function recordScan(cargoId, scannedBy, scanContext, locationId) {
   await updateRow(TABLES.CARGO, update);
 
   // Someone else may have taken the last space in the same second: look again at who is in the position,
-  // in order of arrival, and give way if we were second (see claimOutcome).
+  // in order of arrival, and give way if we were second (see claimOutcome). The look is repeated after short
+  // pauses (see stillFirstAfterSettling) so that both people see each other.
   if (placing) {
     assertId(locationId);
-    const [occupants, place, types] = await Promise.all([
-      zcql(`SELECT Cargo.ROWID, Cargo.unit, Cargo.customer_id FROM Cargo WHERE Cargo.current_location_id = ${locationId} AND Cargo.qr_code IS NOT NULL ORDER BY Cargo.MODIFIEDTIME ASC, Cargo.ROWID ASC`),
-      zcql(`SELECT location_code, capacity FROM StorageLocations WHERE ROWID = ${locationId}`),
-      listPackageTypes(),
-    ]);
-    const outcome = claimOutcome({
-      cargoId,
-      occupants: occupants.map((r) => r.Cargo),
-      capacity: place[0]?.StorageLocations?.capacity,
-      packageTypes: types,
-    });
-    if (!outcome.ok) {
+    let lastOutcome = { ok: true };
+    let positionCode = '';
+    const stillMine = async () => {
+      const [occupants, place, types] = await Promise.all([
+        zcql(`SELECT Cargo.ROWID, Cargo.unit, Cargo.customer_id FROM Cargo WHERE Cargo.current_location_id = ${locationId} AND Cargo.qr_code IS NOT NULL ORDER BY Cargo.MODIFIEDTIME ASC, Cargo.ROWID ASC`),
+        zcql(`SELECT location_code, capacity FROM StorageLocations WHERE ROWID = ${locationId}`),
+        listPackageTypes(),
+      ]);
+      positionCode = place[0]?.StorageLocations?.location_code || '';
+      lastOutcome = claimOutcome({ cargoId, occupants: occupants.map((r) => r.Cargo), capacity: place[0]?.StorageLocations?.capacity, packageTypes: types });
+      return lastOutcome.ok;
+    };
+    if (!(await stillFirstAfterSettling(stillMine))) {
       await updateRow(TABLES.CARGO, { ROWID: cargoId, current_location_id: fromLocationId, status: fromStatus || 'Received' });
-      const code = place[0]?.StorageLocations?.location_code || 'That position';
+      const code = positionCode || 'That position';
       throw new Error(
-        outcome.reason === 'customer'
+        lastOutcome.reason === 'customer'
           ? `${code} was just taken by another customer's goods. Choose another location.`
           : `${code} was just filled by someone else. Choose another location.`
       );

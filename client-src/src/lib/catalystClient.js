@@ -173,8 +173,63 @@ function withDeadline(promise, label, detail = '') {
   return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
 }
 
-export function table(tableName) {
-  return sdk().table.tableId(tableName);
+// -- Direct access to the data service -----------------------------------------------------------------
+// The Web SDK is used only for signing in and out. Its data calls are not used: after the SDK has been asked for
+// a function token (uploads, photos, signatures on the Slate address), it silently stops sending any request at
+// all, so every later save "did not respond". The data service is an ordinary web address on the same site as the
+// page (on both the /app/ address and Slate), so the app calls it directly with the session it already has.
+const FALLBACK_CONFIG = { project: '11648000001127001', zaid: '10131718057', authDomain: 'https://accounts.zohoportal.com' };
+let configPromise;
+// Project, ZAID and sign-in domain differ per environment: read them from the SDK's own init script.
+function projectConfig() {
+  if (!configPromise) {
+    configPromise = fetch('/__catalyst/sdk/init.js')
+      .then((r) => r.text())
+      .then((t) => ({
+        project: /project_Id\s*:\s*"(\d+)"/.exec(t)?.[1] || FALLBACK_CONFIG.project,
+        zaid: /zaid\s*:\s*"(\d+)"/.exec(t)?.[1] || FALLBACK_CONFIG.zaid,
+        authDomain: /auth_domain\s*:\s*"([^"]+)"/.exec(t)?.[1] || FALLBACK_CONFIG.authDomain,
+      }))
+      .catch(() => FALLBACK_CONFIG);
+  }
+  return configPromise;
+}
+
+function csrfHeaders() {
+  try {
+    const m = /(?:^|;\s*)ZD_CSRF_TOKEN=([^;]+)/.exec(document.cookie);
+    return m ? { 'X-ZCSRF-TOKEN': `zd_csrparam=${m[1]}` } : {};
+  } catch {
+    return {};
+  }
+}
+
+// Row ids are 17 digits and the service sometimes sends one as a bare number (after an insert). A browser reads that
+// as a float and silently changes the last digits, so ids are turned into text before the reply is parsed.
+// Only keys named ROWID or *_id are touched, so text inside a value can never be changed.
+export function parseReply(text) {
+  const safe = String(text).replace(/("(?:ROWID|[A-Za-z0-9_]+_id)"\s*:\s*)(-?\d{16,})(?=\s*[,}\]])/g, '$1"$2"');
+  try {
+    return JSON.parse(safe);
+  } catch {
+    return null;
+  }
+}
+
+async function baas(method, path, body) {
+  const { project } = await projectConfig();
+  const res = await fetch(`/baas/v1/project/${project}${path}`, {
+    method,
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const json = parseReply(await res.text());
+  if (!res.ok || json?.status === 'failure') {
+    const message = json?.data?.message || (res.status === 401 || res.status === 403 ? 'Your session has ended. Please sign in again.' : `The server returned an error (${res.status}).`);
+    throw Object.assign(new Error(message), { status: res.status });
+  }
+  return json;
 }
 
 // -- Read cache ---------------------------------------------------------
@@ -208,36 +263,33 @@ export function invalidateTable(tableName) {
 
 export function addRow(tableName, row) {
   return withDeadline(
-    table(tableName)
-      .addRow([row])
-      .then((res) => {
-        invalidateTable(tableName);
-        return res.content[0];
-      }),
+    baas('POST', `/table/${tableName}/row`, [row]).then((json) => {
+      invalidateTable(tableName);
+      return json.data[0];
+    }),
     `saving to ${tableName}`
   );
 }
 
 export function updateRow(tableName, rowWithId) {
   return withDeadline(
-    table(tableName)
-      .updateRow([rowWithId])
-      .then((res) => {
-        invalidateTable(tableName);
-        return res.content[0];
-      }),
+    baas('PUT', `/table/${tableName}/row`, [rowWithId]).then((json) => {
+      invalidateTable(tableName);
+      return json.data[0];
+    }),
     `updating ${tableName}`
   );
 }
 
 export function deleteRow(tableName, rowId) {
-  return table(tableName)
-    .rowId(rowId)
-    .delete()
-    .then((res) => {
+  const id = String(rowId).replace(/\D/g, '');
+  return withDeadline(
+    baas('DELETE', `/table/${tableName}/row?ids=${id}`).then((json) => {
       invalidateTable(tableName);
-      return res;
-    });
+      return json;
+    }),
+    `deleting from ${tableName}`
+  );
 }
 
 // The API rejects max_rows above 300 -- and the SDK still *resolves*, handing back an
@@ -247,12 +299,7 @@ export function deleteRow(tableName, rowId) {
 export function getAllRows(tableName, maxRows = 200) {
   const load = () =>
     withDeadline(
-      table(tableName)
-        .getPagedRows({ max_rows: Math.min(maxRows, 300) })
-        .then((res) => {
-          if (res?.status && res.status !== 200) throw new Error(res.message || `Could not load ${tableName} (${res.status})`);
-          return Array.isArray(res?.content) ? res.content : [];
-        }),
+      baas('GET', `/table/${tableName}/row?max_rows=${Math.min(maxRows, 300)}`).then((json) => (Array.isArray(json?.data) ? json.data : [])),
       `loading ${tableName}`
     );
   if (!CACHED_TABLES.has(tableName)) return shareWhileInFlight(`rows:${tableName}:${maxRows}`, load);
@@ -284,16 +331,7 @@ const ZCQL_PAGE = 300;
 const ZCQL_MAX_PAGES = 60; // 18,000 rows: beyond this a screen should filter, not load everything
 function zcqlPage(query) {
   return withDeadline(
-    sdk()
-      .ZCatalystQL.executeQuery(query)
-      .then((res) => {
-        // The SDK resolves (rather than rejects) on a rejected query, handing
-        // back an empty object; surface the real reason instead of {}.
-        if (res.status && res.status !== 200) {
-          throw new Error(res.message || `Query failed (${res.status})`);
-        }
-        return res.content || [];
-      }),
+    baas('POST', '/query', { query }).then((json) => (Array.isArray(json.data) ? json.data : [])),
     'loading data',
     query.slice(0, 160)
   );
@@ -321,13 +359,39 @@ const FUNCTIONS_BASE_URL = 'https://woms-775318997.development.catalystserverles
 // chain we hold, so without a deadline a call could hang the screen forever.
 const FUNCTION_TIMEOUT_MS = 12000;
 
-// Calling a function with the SDK's token (generateAuthToken) BREAKS the page: from then on every
-// data request made through the SDK hangs forever, which showed up as uploads and "Saving..." that
-// never finished. So functions are called with the session cookie instead, on this site's own
-// address (the legacy /app/ host serves /server/... itself; Slate does when functions are mapped
-// to it). Only when this site cannot serve /server/... does it fall back to the token, because
-// the call then has to cross to the Catalyst domain.
-let functionsServedHere = typeof window !== 'undefined' && window.location.origin === FUNCTIONS_BASE_URL ? true : null; // null = not known yet
+// Functions are called with the session cookie on this site's own address when it serves /server/... (the
+// legacy /app/ host does). Slate does not, so there the call crosses to the Catalyst domain with a token
+// (see functionAuthHeader). The SDK's own token call is never used: it breaks every later SDK request.
+// Tests can force the token route on the /app/ address (window.__WOMS_FORCE_TOKEN_ROUTE) to exercise what Slate does.
+let functionsServedHere =
+  typeof window !== 'undefined' && window.__WOMS_FORCE_TOKEN_ROUTE ? false : typeof window !== 'undefined' && window.location.origin === FUNCTIONS_BASE_URL ? true : null; // null = not known yet
+
+// The token that lets this page call a function on another address (Slate). Asked for in the same two steps the
+// SDK takes (a signed token from the project, exchanged with the sign-in service), but without the SDK, which
+// stops answering afterwards. Kept until shortly before it expires, so repeated uploads do not ask again.
+let tokenCache = null; // { header, until }
+let tokenInFlight = null;
+function functionAuthHeader() {
+  if (tokenCache && Date.now() < tokenCache.until) return Promise.resolve(tokenCache.header);
+  if (!tokenInFlight) {
+    tokenInFlight = (async () => {
+      const [{ zaid, authDomain }, signed] = await Promise.all([projectConfig(), baas('GET', '/authentication/custom-token?feature=functions')]);
+      const { client_id, jwt_token, scopes } = signed.data || {};
+      if (!jwt_token) throw new Error('The server did not give permission to upload. Sign out and back in.');
+      const query = new URLSearchParams({ response_type: 'remote_token', scope: scopes, client_id, jwt_token });
+      const res = await fetch(`${authDomain}/clientoauth/v2/${zaid}/remote/auth?${query}`, { method: 'POST' });
+      const out = await res.json().catch(() => ({}));
+      const token = out.access_token || out.access_toke;
+      if (!token) throw new Error('The server did not give permission to upload. Sign out and back in.');
+      const seconds = Number(out.expires_in_sec) || 600;
+      tokenCache = { header: `Zoho-oauthtoken ${token}`, until: Date.now() + Math.max(30, seconds - 60) * 1000 };
+      return tokenCache.header;
+    })().finally(() => {
+      tokenInFlight = null;
+    });
+  }
+  return tokenInFlight;
+}
 
 async function readResult(res) {
   const body = await res.json().catch(() => null);
@@ -354,10 +418,10 @@ export function callFunction(functionName, args = {}, method = 'POST') {
       }
       functionsServedHere = false; // this site does not serve functions: use the token route below
     }
-    const { access_token } = await sdk().auth.generateAuthToken();
     const res = await fetch(`${FUNCTIONS_BASE_URL}/server/${functionName}/`, {
       method,
-      headers: { Authorization: access_token, 'Content-Type': 'application/json' },
+      credentials: 'omit', // from another address the session cookie is not sent: the token is what identifies the user
+      headers: { Authorization: await functionAuthHeader(), 'Content-Type': 'application/json' },
       body: JSON.stringify(args),
     });
     return readResult(res);

@@ -41,6 +41,9 @@ const CUSTOMER = 'TEST Alpha Pallets Ltd';
 test('inbound: request to GRN (validation, availability, receive, handling units, put-away)', async ({ page }) => {
   test.setTimeout(240_000);
   reportPending = watchSlowRequests(page);
+  // With WOMS_TOKEN_ROUTE=1 the page calls functions the way Slate must (a token across addresses): count the token exchanges
+  const tokenExchanges = [];
+  page.on('request', (r) => /clientoauth\/v2\/\d+\/remote\/auth/.test(r.url()) && tokenExchanges.push(r.url()));
 
   await test.step('open Inbounds for the working warehouse and start a new request', async () => {
     await openHome(page);
@@ -232,4 +235,9 @@ test('inbound: request to GRN (validation, availability, receive, handling units
     await expect(page.getByText('Goods Receipt Note')).toBeVisible();
     await expectNoErrors(page);
   });
+
+  if (process.env.WOMS_TOKEN_ROUTE) {
+    expect(tokenExchanges.length, 'the Slate route was not used: no token was requested').toBeGreaterThan(0);
+    expect(tokenExchanges.length, 'a token is reused, not asked for again on every upload').toBeLessThan(4);
+  }
 });
