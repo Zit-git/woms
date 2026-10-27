@@ -1,3 +1,5 @@
+import { apiHeaders } from './apiHeaders';
+
 // Thin wrapper around the Catalyst Web SDK (loaded globally via <script> tags
 // in index.html -- there is no npm package for it, see index.html).
 
@@ -195,15 +197,6 @@ function projectConfig() {
   return configPromise;
 }
 
-function csrfHeaders() {
-  try {
-    const m = /(?:^|;\s*)ZD_CSRF_TOKEN=([^;]+)/.exec(document.cookie);
-    return m ? { 'X-ZCSRF-TOKEN': `zd_csrparam=${m[1]}` } : {};
-  } catch {
-    return {};
-  }
-}
-
 // Row ids are 17 digits and the service sometimes sends one as a bare number (after an insert). A browser reads that
 // as a float and silently changes the last digits, so ids are turned into text before the reply is parsed.
 // Only keys named ROWID or *_id are touched, so text inside a value can never be changed.
@@ -221,7 +214,7 @@ async function baas(method, path, body) {
   const res = await fetch(`/baas/v1/project/${project}${path}`, {
     method,
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
+    headers: { 'Content-Type': 'application/json; charset=utf-8', ...apiHeaders() },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const json = parseReply(await res.text());

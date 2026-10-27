@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { embedSignIn, authReturnPath, authRedirectUrl, readAuthIssue } from '../lib/catalystClient';
 import { useAuth } from '../context/AuthContext';
+import { apiHeaders } from '../lib/apiHeaders';
 
 // If this screen keeps being loaded again and again (sign-in succeeds on Catalyst's side but
 // the app doesn't see a session, so it redirects back here), stop embedding the form -- which
@@ -50,7 +51,7 @@ async function runSessionCheck() {
   const seen = performance.getEntriesByType('resource').find((e) => e.name.includes('/project-user/current'));
   if (seen) {
     try {
-      const res = await fetch(seen.name.split('?')[0], { credentials: 'include' });
+      const res = await fetch(seen.name.split('?')[0], { credentials: 'include', headers: apiHeaders() }); // with the headers Slate needs, or its answer (a page) gets cached for everyone
       const body = (await res.text()).slice(0, 160).replace(/\s+/g, ' ');
       lines.push(`GET project-user/current -> HTTP ${res.status} ${body}`);
     } catch (e) {

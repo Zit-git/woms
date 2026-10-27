@@ -121,7 +121,21 @@ describe('the data service is called directly, with the session', () => {
     const put = asked.find((a) => a.method === 'PUT');
     expect(put.url).toBe('/baas/v1/project/999/table/InboundLine/row');
     expect(put.headers['X-ZCSRF-TOKEN']).toBe('zd_csrparam=csrf-123');
+    // Slate only passes a /baas/ request on to the service when it carries this header (see apiHeaders.js)
+    expect(put.headers['CATALYST-COMPONENT']).toBe('true');
+    expect(put.headers.Accept).toBe('application/vnd.catalyst.v2+json');
     expect(put.body).toEqual([{ ROWID: '7', qty: 4 }]);
+  });
+  it('every kind of request carries the headers Slate needs: read, write, delete and the token request', async () => {
+    const { getAllRows, addRow, deleteRow, zcql } = await import('../catalystClient');
+    const asked = fakeNetwork(() => ({ body: { status: 'success', data: [] } }));
+    await Promise.all([getAllRows('Warehouses', 5), addRow('Suppliers', { name: 'x' }), deleteRow('Cargo', '12'), zcql('SELECT a FROM B ORDER BY a LIMIT 1, 1')]);
+    const api = asked.filter((a) => a.url.startsWith('/baas/'));
+    expect(api.length).toBe(4);
+    api.forEach((a) => {
+      expect(a.headers['CATALYST-COMPONENT'], `${a.method} ${a.url} is missing the header Slate needs`).toBe('true');
+      expect(a.headers['X-ZCSRF-TOKEN']).toBe('zd_csrparam=csrf-123');
+    });
   });
   it('an id sent as a bare 17-digit number is kept exact (a browser would change its last digit)', async () => {
     const { addRow } = await import('../catalystClient');

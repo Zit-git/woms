@@ -3,6 +3,25 @@ import { openHome, openMenu, expectNoErrors } from './helpers';
 
 // The 2-minute check after every release: signed in, home loads, the main lists open.
 test.describe('smoke', () => {
+  // Slate only passes a /baas/ request on to the Catalyst service when it carries CATALYST-COMPONENT (see src/lib/apiHeaders.js).
+  // A request without it is answered by the app's own page and the wrong answer is cached for everyone: this once broke
+  // sign-in on Slate while every test on /app/ (which does not need the header) passed. So every data request is checked.
+  test('every data request the app makes carries the header the Slate address needs', async ({ page }) => {
+    const missing = [];
+    page.on('request', (r) => {
+      if (/\/baas\/v1\//.test(r.url()) && !r.headers()['catalyst-component']) missing.push(`${r.method()} ${r.url().replace(/.*\/baas\/v1\/project\/\d+/, '')}`);
+    });
+    await openHome(page);
+    await openMenu(page, 'Inbounds');
+    await expect(page.getByRole('heading', { name: 'Inbound Operations' })).toBeVisible();
+    await expect(page.getByText(/^Loading/)).toHaveCount(0, { timeout: 60_000 });
+    await openMenu(page, 'Outbounds');
+    await expect(page.getByRole('heading', { name: 'Outbound Operations' })).toBeVisible();
+    await expect(page.getByText(/^Loading/)).toHaveCount(0, { timeout: 60_000 });
+    expect(missing, `data requests without CATALYST-COMPONENT: ${missing.slice(0, 4).join('; ')}`).toEqual([]);
+  });
+
+
   test('home screen loads for the signed-in user', async ({ page }) => {
     await openHome(page);
     await expect(page.getByText(/Role:/)).toBeVisible();
