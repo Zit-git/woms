@@ -164,6 +164,32 @@ describe('the data service is called directly, with the session', () => {
   });
 });
 
+describe('who is signed in is asked directly; "nobody" is a normal answer, not an error', () => {
+  it('a signed-in user is returned', async () => {
+    const { getCurrentUser } = await import('../catalystClient');
+    const asked = fakeNetwork(() => ({ body: { status: 'success', data: { email_id: 'a@b.test', first_name: 'A' } } }));
+    expect((await getCurrentUser()).email_id).toBe('a@b.test');
+    const call = asked.find((a) => a.url.includes('/project-user/current'));
+    expect(call.headers['CATALYST-COMPONENT']).toBe('true'); // Slate only passes the request on with this header
+  });
+  it('a visitor who is not signed in gets null, without an error and without a note to show in red', async () => {
+    const { getCurrentUser, readAuthIssue } = await import('../catalystClient');
+    const store = {};
+    globalThis.sessionStorage = { setItem: (k, v) => (store[k] = v), getItem: (k) => store[k] ?? null, removeItem: (k) => delete store[k] };
+    fakeNetwork(() => ({ status: 401, body: { status: 'failure', data: { message: 'Authentication failed' } } }));
+    expect(await getCurrentUser()).toBeNull();
+    expect(readAuthIssue()).toBe('');
+  });
+  it('a real failure is still recorded so the sign-in page can show it', async () => {
+    const { getCurrentUser, readAuthIssue } = await import('../catalystClient');
+    const store = {};
+    globalThis.sessionStorage = { setItem: (k, v) => (store[k] = v), getItem: (k) => store[k] ?? null, removeItem: (k) => delete store[k] };
+    fakeNetwork(() => ({ status: 500, body: { status: 'failure', data: { message: 'Server exploded' } } }));
+    expect(await getCurrentUser()).toBeNull();
+    expect(readAuthIssue()).toContain('Server exploded');
+  });
+});
+
 describe('calling a function from another address uses a token, without the SDK', () => {
   it('exchanges the project token with the sign-in service, caches it, and sends it without cookies', async () => {
     const { callFunction } = await import('../catalystClient');

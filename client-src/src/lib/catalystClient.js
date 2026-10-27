@@ -36,22 +36,20 @@ export function clearAuthIssue() {
   }
 }
 
-export function getCurrentUser() {
+// Who is signed in. Asked directly (not through the web library): for a visitor who has not signed in yet the
+// library fails with "Some network issue occured!" instead of answering "nobody", and that was written down
+// and shown in red as a sign-in problem to everyone. The service itself answers 401 for "not signed in", which
+// is a normal answer and is not an error; any other failure is a real problem and is recorded.
+export async function getCurrentUser() {
   try {
-    return sdk()
-      .userManagement.getCurrentProjectUser()
-      .then((res) => {
-        if (res?.content?.email_id) return res.content;
-        recordAuthIssue(`Catalyst returned no signed-in user (response: ${JSON.stringify(res)?.slice(0, 200)})`);
-        return null;
-      })
-      .catch((err) => {
-        recordAuthIssue(`Checking the signed-in user failed: ${err?.message || err?.error || JSON.stringify(err)}`);
-        return null;
-      });
+    const json = await withDeadline(baas('GET', '/project-user/current'), 'checking who is signed in');
+    if (json?.data?.email_id) return json.data;
+    recordAuthIssue(`Catalyst returned no signed-in user (response: ${JSON.stringify(json)?.slice(0, 200)})`);
+    return null;
   } catch (err) {
-    recordAuthIssue(err.message);
-    return Promise.resolve(null);
+    if (err?.status === 401 || err?.status === 403) return null; // not signed in: the normal state of the sign-in page
+    recordAuthIssue(`Checking the signed-in user failed: ${err?.message || err?.error || JSON.stringify(err)}`);
+    return null;
   }
 }
 
