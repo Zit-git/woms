@@ -556,6 +556,40 @@ const loadAllStorageLocations = () =>
   );
 
 // Used on nearly every page (location labels); rebuilt only when the warehouse layout changes.
+// Everything a label shows for these Handling Units, in the order the ids were given (units without a QR code
+// are left out: there is nothing to print for them).
+export async function listHuLabelsByIds(ids) {
+  const wanted = [...new Set((ids || []).map(idOnly).filter(Boolean))].slice(0, 200);
+  if (!wanted.length) return [];
+  const cargo = [];
+  for (const part of chunksOf(wanted, 50)) {
+    const rows = await zcql(
+      `SELECT ROWID, description, qty, unit, weight, outer_package_no, qr_code, inbound_advice_id, customer_id, current_location_id FROM Cargo WHERE ROWID IN (${part.join(',')}) AND qr_code IS NOT NULL`
+    );
+    cargo.push(...rows.map((r) => r.Cargo));
+  }
+  const adviceIds = [...new Set(cargo.map((c) => idOnly(c.inbound_advice_id)).filter(Boolean))];
+  const advices = [];
+  for (const part of chunksOf(adviceIds, 50)) {
+    const rows = await zcql(`SELECT ROWID, inbound_reference FROM InboundAdvice WHERE ROWID IN (${part.join(',')})`);
+    advices.push(...rows.map((r) => r.InboundAdvice));
+  }
+  const [customers, locations] = await Promise.all([listCustomers(), listAllStorageLocations()]);
+  const refById = new Map(advices.map((a) => [String(a.ROWID), a.inbound_reference]));
+  const customerById = new Map(customers.map((c) => [String(c.ROWID), c.name]));
+  const locationById = new Map(locations.map((l) => [String(l.ROWID), l.location_code]));
+  const byId = new Map(cargo.map((c) => [String(c.ROWID), c]));
+  return wanted
+    .map((id) => byId.get(id))
+    .filter(Boolean)
+    .map((c) => ({
+      ...c,
+      inbound_reference: refById.get(String(c.inbound_advice_id)) || '',
+      customer_name: customerById.get(String(c.customer_id)) || '',
+      location_code: locationById.get(String(c.current_location_id)) || '',
+    }));
+}
+
 export const listAllStorageLocations = () =>
   cachedFetch('allStorageLocations', ['StorageLocations', 'Racks', 'Aisles', 'Zones', 'Warehouses'], loadAllStorageLocations).then((rows) => rows.slice());
 
@@ -749,24 +783,45 @@ export const checkInPickup = (requestId, fields, actor) =>
   );
 export const getOutboundRequestById = (id) =>
   zcql(
-    `SELECT OutboundRequest.ROWID, OutboundRequest.CREATEDTIME, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.reference_number, OutboundRequest.customer_id, OutboundRequest.transporter_id, OutboundRequest.warehouse_id, OutboundRequest.outbound_reference, OutboundRequest.driver_name, OutboundRequest.driver_id_number, OutboundRequest.driver_phone, OutboundRequest.vehicle_plate, OutboundRequest.trailer_plate, OutboundRequest.arrived_at, OutboundRequest.checked_in_by, Customers.name, Customers.email, Transporters.name, Warehouses.name, Warehouses.address FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID LEFT JOIN Warehouses ON OutboundRequest.warehouse_id = Warehouses.ROWID WHERE OutboundRequest.ROWID = ${id}`
-  ).then((rows) => {
+    `SELECT OutboundRequest.ROWID, OutboundRequest.CREATEDTIME, OutboundRequest.requested_date, OutboundRequest.status, OutboundRequest.reference_number, OutboundRequest.customer_id, OutboundRequest.transporter_id, OutboundRequest.warehouse_id, OutboundRequest.outbound_reference, OutboundRequest.driver_name, OutboundRequest.driver_id_number, OutboundRequest.driver_phone, OutboundRequest.vehicle_plate, OutboundRequest.trailer_plate, OutboundRequest.arrived_at, OutboundRequest.checked_in_by, OutboundRequest.inbound_advice_id, Customers.name, Customers.email, Transporters.name, Warehouses.name, Warehouses.address FROM OutboundRequest LEFT JOIN Customers ON OutboundRequest.customer_id = Customers.ROWID LEFT JOIN Transporters ON OutboundRequest.transporter_id = Transporters.ROWID LEFT JOIN Warehouses ON OutboundRequest.warehouse_id = Warehouses.ROWID WHERE OutboundRequest.ROWID = ${id}`
+  ).then(async (rows) => {
     const row = rows[0];
-    return row
-      ? {
-          ...row.OutboundRequest,
-          customer_name: row.Customers?.name,
-          customer_email: row.Customers?.email,
-          transporter_name: row.Transporters?.name,
-          warehouse_name: row.Warehouses?.name,
-          warehouse_address: row.Warehouses?.address,
-        }
-      : null;
+    if (!row) return null;
+    const sourceId = row.OutboundRequest.inbound_advice_id;
+    const source = sourceId ? (await zcql(`SELECT inbound_reference FROM InboundAdvice WHERE ROWID = ${idOnly(sourceId)}`))[0]?.InboundAdvice : null;
+    return {
+      ...row.OutboundRequest,
+      customer_name: row.Customers?.name,
+      customer_email: row.Customers?.email,
+      transporter_name: row.Transporters?.name,
+      warehouse_name: row.Warehouses?.name,
+      warehouse_address: row.Warehouses?.address,
+      source_inbound_reference: source?.inbound_reference || null,
+    };
   });
 
-export const listAvailableCargoForCustomer = (customerId) =>
+// An outbound created from an inbound (one inbound, many outbounds): the customer asks for goods by the inbound
+// or GRN they were given, and the supervisor opens the request from that inbound's page.
+export const createOutboundFromInbound = (advice, fields) => {
+  const row = {
+    customer_id: advice.customer_id,
+    warehouse_id: advice.warehouse_id,
+    inbound_advice_id: advice.ROWID,
+    status: 'Submitted',
+  };
+  ['transporter_id', 'reference_number', 'requested_date'].forEach((k) => {
+    if (fields?.[k]) row[k] = fields[k];
+  });
+  return createOutboundRequest(row);
+};
+export const listOutboundsByInbound = (inboundAdviceId) =>
   zcql(
-    `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.status, Cargo.qr_code, Cargo.outer_package_no, StorageLocations.location_code, InboundAdvice.inbound_reference FROM Cargo LEFT JOIN StorageLocations ON Cargo.current_location_id = StorageLocations.ROWID LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID WHERE Cargo.customer_id = ${customerId} AND ${goneSql('Cargo')} AND Cargo.status != 'Picked' ORDER BY Cargo.CREATEDTIME DESC`
+    `SELECT ROWID, outbound_reference, status, requested_date FROM OutboundRequest WHERE inbound_advice_id = ${idOnly(inboundAdviceId)} ORDER BY CREATEDTIME DESC`
+  ).then((rows) => rows.map((r) => r.OutboundRequest));
+
+export const listAvailableCargoForCustomer = (customerId, inboundAdviceId) =>
+  zcql(
+    `SELECT Cargo.ROWID, Cargo.description, Cargo.qty, Cargo.unit, Cargo.status, Cargo.qr_code, Cargo.outer_package_no, StorageLocations.location_code, InboundAdvice.inbound_reference FROM Cargo LEFT JOIN StorageLocations ON Cargo.current_location_id = StorageLocations.ROWID LEFT JOIN InboundAdvice ON Cargo.inbound_advice_id = InboundAdvice.ROWID WHERE Cargo.customer_id = ${customerId}${inboundAdviceId ? ` AND Cargo.inbound_advice_id = ${idOnly(inboundAdviceId)}` : ''} AND ${goneSql('Cargo')} AND Cargo.status != 'Picked' ORDER BY Cargo.CREATEDTIME DESC`
   ).then(async (rows) => {
     // A Handling Unit that is already on any outbound's pick lines belongs to that outbound, so it
     // is not offered to another one (two requests used to be able to claim the same pallet).

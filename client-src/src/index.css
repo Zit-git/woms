@@ -327,6 +327,19 @@ tr.clickable-row:hover td { background: var(--surface-soft); }
 .location-box.empty { background: #d7dee8; color: #4a5568; }
 .location-box.occupied { background: var(--primary); }
 
+/* Choosing a position on the map (put-away): green can take the unit, outlined is the suggestion, blue is the
+   choice, grey cannot (hover for why). */
+.location-box.pick-available { background: #2f855a; }
+.location-box.pick-suggested { background: #2f855a; outline: 3px solid #f6ad55; outline-offset: 1px; }
+.location-box.pick-selected { background: var(--primary); outline: 3px solid var(--text); outline-offset: 1px; }
+.location-box.pick-unavailable { background: #d7dee8; color: #7a8696; cursor: not-allowed; box-shadow: none; }
+.location-box.pick-unavailable:hover { transform: skewX(-14deg); }
+.legend-available { background: #2f855a; }
+.legend-suggested { background: #2f855a; outline: 2px solid #f6ad55; }
+.legend-selected { background: var(--primary); outline: 2px solid var(--text); }
+.legend-unavailable { background: #d7dee8; }
+.map-pick-button { display: inline-flex; align-items: center; gap: 8px; }
+
 .status-badge {
   display: inline-block;
   padding: 4px 12px;
@@ -591,6 +604,7 @@ tr.clickable-row:hover td { background: var(--surface-soft); }
 @media print {
   body { background: #fff; }
   .no-print { display: none !important; }
+  .label-grid { grid-template-columns: repeat(3, 1fr); }
   .print-doc { border: none; box-shadow: none; margin: 0; max-width: none; }
 }
 

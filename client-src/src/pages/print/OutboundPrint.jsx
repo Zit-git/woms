@@ -72,7 +72,10 @@ export default function OutboundPrint() {
               <td>{t.status}</td>
               <td>
                 {t.cargo_qr_code ? (
-                  <QrCodeImage value={t.cargo_qr_code} size={80} />
+                  <>
+                    <QrCodeImage value={t.cargo_qr_code} size={80} />
+                    <div className="muted small">{t.cargo_qr_code}</div>
+                  </>
                 ) : (
                   <span className="muted">Not generated</span>
                 )}

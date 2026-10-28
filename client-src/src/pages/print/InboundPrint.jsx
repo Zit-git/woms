@@ -96,7 +96,14 @@ export default function InboundPrint() {
               <td>{c.unit}</td>
               <td>{c.weight ? `${decimal2(c.weight)} kg` : '—'}</td>
               <td>
-                {c.qr_code ? <QrCodeImage value={c.qr_code} size={80} /> : <span className="muted">Not generated</span>}
+                {c.qr_code ? (
+                  <>
+                    <QrCodeImage value={c.qr_code} size={80} />
+                    <div className="muted small">{c.qr_code}</div>
+                  </>
+                ) : (
+                  <span className="muted">Not generated</span>
+                )}
               </td>
             </tr>
           ))}

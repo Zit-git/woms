@@ -19,6 +19,11 @@ export default function OutboundDetailView({ request, pickTasks, dispatches, loc
     inbounds.set(k, cur);
   });
 
+  // The inbound this outbound was opened from is shown even before any of its goods are selected.
+  if (request.inbound_advice_id && !inbounds.has(String(request.inbound_advice_id))) {
+    inbounds.set(String(request.inbound_advice_id), { id: request.inbound_advice_id, reference: request.source_inbound_reference, hus: 0 });
+  }
+
   return (
     <div className="card">
       <div className="toolbar">

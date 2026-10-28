@@ -35,7 +35,10 @@ export default function PickupPass() {
 
       <h1>Pickup Pass</h1>
       <div style={{ display: 'flex', gap: 24, alignItems: 'center', margin: '8px 0 16px' }}>
-        <QrCodeImage value={`${PICKUP_QR_PREFIX}${request.ROWID}`} size={140} />
+        <div>
+          <QrCodeImage value={`${PICKUP_QR_PREFIX}${request.ROWID}`} size={140} />
+          <div className="muted small">{PICKUP_QR_PREFIX}{request.ROWID}</div>
+        </div>
         <div>
           <div className="muted small">PICKUP REFERENCE</div>
           <div style={{ fontSize: 28, fontWeight: 700 }}>{request.outbound_reference || `#${request.ROWID}`}</div>

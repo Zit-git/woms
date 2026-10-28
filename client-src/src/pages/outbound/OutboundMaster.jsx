@@ -40,7 +40,7 @@ export default function OutboundMaster() {
           setRequest(r);
           return Promise.all([
             listPickTasksByRequest(requestId),
-            r ? listAvailableCargoForCustomer(r.customer_id) : [],
+            r ? listAvailableCargoForCustomer(r.customer_id, r.inbound_advice_id) : [],
             listDispatchesByRequest(requestId),
           ]);
         })

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
-import { getInboundAdviceById, editInboundAdvice, listCargoByAdvice, listLinesByAdvice, listHuContentsByAdvice, listCustomers, listTransporters, listSuppliers, listAllStorageLocations, listWarehouses, getGrnForAdvice, listOutboundLinksByAdvice } from '../../lib/api';
+import { getInboundAdviceById, editInboundAdvice, listCargoByAdvice, listLinesByAdvice, listHuContentsByAdvice, listCustomers, listTransporters, listSuppliers, listAllStorageLocations, listWarehouses, getGrnForAdvice, listOutboundLinksByAdvice, listOutboundsByInbound } from '../../lib/api';
 import InboundDetailView from './InboundDetailView';
 import InboundSidebar from './InboundSidebar';
 import RequestPopup from './popups/RequestPopup';
@@ -10,6 +10,7 @@ import CreateHUPopup from './popups/CreateHUPopup';
 import PutawayPopup from './popups/PutawayPopup';
 import CheckPopup from './popups/CheckPopup';
 import FinishPopup from './popups/FinishPopup';
+import CreateOutboundPopup from './popups/CreateOutboundPopup';
 import { computeInboundSummary } from '../../lib/inboundSummary';
 import { validateRequestDates, colliMismatch } from '../../lib/inboundValidation';
 import { useAuth } from '../../context/AuthContext';
@@ -46,6 +47,7 @@ export default function InboundMaster() {
   const [warehouses, setWarehouses] = useState([]);
   const [grn, setGrn] = useState(null);
   const [outboundLinks, setOutboundLinks] = useState([]); // which outbound each HU left on
+  const [createdOutbounds, setCreatedOutbounds] = useState([]); // outbounds opened from this inbound
   const [locationLabels, setLocationLabels] = useState(() => new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -63,9 +65,10 @@ export default function InboundMaster() {
   );
   const loadExtras = useCallback(
     () =>
-      Promise.all([getGrnForAdvice(adviceId), listOutboundLinksByAdvice(adviceId), listWarehouses()]).then(([g, links, w]) => {
+      Promise.all([getGrnForAdvice(adviceId), listOutboundLinksByAdvice(adviceId), listWarehouses(), listOutboundsByInbound(adviceId)]).then(([g, links, w, made]) => {
         setGrn(g);
         setOutboundLinks(links);
+        setCreatedOutbounds(made);
         setWarehouses(w);
       }),
     [adviceId]
@@ -180,6 +183,9 @@ export default function InboundMaster() {
     action = { label: 'Reopen Request', popup: 'request', resetStatus: 'Requested' };
   }
 
+  // Goods exist from the moment Handling Units are created; the customer then asks for them by this inbound or GRN.
+  const canCreateOutbound = isApprover && ['HU Created', 'Put Away', 'Ready', 'Completed'].includes(advice.status) && cargoRows.length > 0;
+
   const openAction = () => {
     if (!action) return;
     if (action.resetStatus) {
@@ -232,9 +238,16 @@ export default function InboundMaster() {
             Inbound record
           </p>
         </div>
-        <Link className="link-btn" to="/inbound">
-          &larr; Back to Inbound Operations
-        </Link>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {canCreateOutbound && (
+            <button className="btn secondary" onClick={() => setActivePopup('createoutbound')}>
+              Create Outbound
+            </button>
+          )}
+          <Link className="link-btn" to="/inbound">
+            &larr; Back to Inbound Operations
+          </Link>
+        </div>
       </div>
 
       {error && <div className="error-text">{error}</div>}
@@ -249,6 +262,7 @@ export default function InboundMaster() {
             warehouses={warehouses}
             grn={grn}
             outboundLinks={outboundLinks}
+            createdOutbounds={createdOutbounds}
             customers={customers}
             transporters={transporters}
             suppliers={suppliers}
@@ -269,6 +283,7 @@ export default function InboundMaster() {
       {activePopup === 'putaway' && <PutawayPopup {...popupProps} />}
       {activePopup === 'check' && <CheckPopup {...popupProps} />}
       {activePopup === 'finish' && <FinishPopup {...popupProps} />}
+      {activePopup === 'createoutbound' && <CreateOutboundPopup {...popupProps} grn={grn} />}
     </div>
   );
 }

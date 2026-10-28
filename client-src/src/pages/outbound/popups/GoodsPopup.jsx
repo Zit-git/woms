@@ -22,6 +22,20 @@ export default function GoodsPopup({ request, pickTasks, availableCargo, locatio
       .finally(() => setBusy(false));
   };
 
+  // One at a time: each add checks that nobody else has claimed the unit in the meantime.
+  const addAll = async () => {
+    setBusy(true);
+    try {
+      for (const c of availableCargo) {
+        await addPickLine({ outbound_request_id: request.ROWID, cargo_id: c.ROWID, assigned_to: user?.email_id || '', status: 'Assigned' });
+      }
+    } catch (err) {
+      setError(err.message || String(err));
+    }
+    await reload().catch(() => {});
+    setBusy(false);
+  };
+
   const remove = (task) => {
     setBusy(true);
     removePickTask(task.ROWID)
@@ -33,7 +47,10 @@ export default function GoodsPopup({ request, pickTasks, availableCargo, locatio
   return (
     <Modal title={`Select goods: ${request.outbound_reference || `#${request.ROWID}`}`} onClose={onClose} wide>
       <p className="muted small" style={{ marginTop: -8 }}>
-        Handling Units of {request.customer_name} that are still in the warehouse. Picked lines can't be removed.
+        {request.inbound_advice_id
+          ? `Handling Units from inbound ${request.source_inbound_reference || `#${request.inbound_advice_id}`} that are still in the warehouse.`
+          : `Handling Units of ${request.customer_name} that are still in the warehouse.`}{' '}
+        Picked lines can't be removed.
       </p>
 
       <form onSubmit={add} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
@@ -59,8 +76,13 @@ export default function GoodsPopup({ request, pickTasks, availableCargo, locatio
         <button className="btn" type="submit" disabled={busy || !cargoId}>
           Add
         </button>
+        {availableCargo.length > 1 && (
+          <button className="btn secondary" type="button" disabled={busy} onClick={addAll}>
+            Add all ({availableCargo.length})
+          </button>
+        )}
       </form>
-      {!availableCargo.length && <p className="muted small">No available Handling Units for this customer.</p>}
+      {!availableCargo.length && <p className="muted small">{request.inbound_advice_id ? 'No Handling Units from this inbound are left to add.' : 'No available Handling Units for this customer.'}</p>}
 
       <h3 style={{ marginTop: 18 }}>On this outbound ({pickTasks.length})</h3>
       <table>

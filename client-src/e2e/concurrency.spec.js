@@ -106,9 +106,11 @@ test.describe('two people at once', () => {
       await page.locator('tr', { hasText: ref }).click();
       await page.getByRole('button', { name: /Put Away/ }).click();
       const modal = page.locator('.modal-card');
-      const select = modal.locator('tbody select').first();
-      await expect(select).toHaveValue(/\d+/, { timeout: 60_000 }); // a location is suggested
-      await select.selectOption(String(target.ROWID)); // both choose the very same position
+      const choose = modal.getByRole('button', { name: /Change on map/ }).first();
+      await expect(choose).toBeVisible({ timeout: 60_000 }); // a location is suggested
+      await choose.click();
+      // both pick the very same position on the warehouse map
+      await page.locator(`.modal-card button.location-box[title^="${target.location_code} - "]`).click();
       await expect(modal.getByRole('button', { name: /^Store 1 of 1/ })).toBeEnabled();
       return modal;
     };

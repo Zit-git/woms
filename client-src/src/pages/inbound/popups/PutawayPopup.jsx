@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Modal from '../../../components/Modal';
+import LocationMapPicker from '../../../components/LocationMapPicker';
 import {
   listCapacityLocations,
   listCapacityCargo,
@@ -26,6 +27,7 @@ export default function PutawayPopup({ advice, cargoRows, reloadCargo, patchAdvi
   const [choices, setChoices] = useState({}); // cargoId -> locationId (operator overrides)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [mapFor, setMapFor] = useState(null); // the Handling Unit whose position is being chosen on the map
 
   useEffect(() => {
     Promise.all([listCapacityLocations(), listCapacityCargo(), listCapacityOutboundCommitments(), listPackageTypes(), listAllStorageLocations()])
@@ -42,6 +44,7 @@ export default function PutawayPopup({ advice, cargoRows, reloadCargo, patchAdvi
     () => (data ? data.locations.filter((l) => !advice.warehouse_id || String(l.warehouse_id) === String(advice.warehouse_id)) : []),
     [data, advice.warehouse_id]
   );
+  const codeById = useMemo(() => new Map((data?.labelled || []).map((l) => [String(l.ROWID), l.location_code])), [data]);
   const pathById = useMemo(() => new Map((data?.labelled || []).map((l) => [String(l.ROWID), `${l.location_code} (${l.path})`])), [data]);
 
   const availability = useMemo(
@@ -200,16 +203,9 @@ export default function PutawayPopup({ advice, cargoRows, reloadCargo, patchAdvi
                   <td data-label="Description">{c.description}</td>
                   <td data-label="Unit">{c.unit}</td>
                   <td data-label="Location">
-                    <select value={chosenFor(c)} onChange={(e) => setChoices((m) => ({ ...m, [c.ROWID]: e.target.value }))} disabled={busy}>
-                      <option value="">{data ? 'Select location...' : 'Loading...'}</option>
-                      {(data?.labelled || [])
-                        .filter((l) => locationsInWarehouse.some((w) => String(w.ROWID) === String(l.ROWID)))
-                        .map((l) => (
-                          <option key={l.ROWID} value={l.ROWID}>
-                            {l.location_code} ({l.path})
-                          </option>
-                        ))}
-                    </select>
+                    <button type="button" className="btn secondary map-pick-button" onClick={() => setMapFor(c)} disabled={busy || !data}>
+                      {chosenFor(c) ? `${codeById.get(String(chosenFor(c))) || 'Position'} · Change on map` : data ? 'Choose on map' : 'Loading...'}
+                    </button>
                     {data && !suggested && !choices[c.ROWID] && (
                       <div style={{ color: 'var(--danger)', fontWeight: 600 }} className="small">
                         ⚠ No suitable location found — pick one manually
@@ -241,6 +237,24 @@ export default function PutawayPopup({ advice, cargoRows, reloadCargo, patchAdvi
           </button>
         )}
       </div>
+      {mapFor && data && (
+        <LocationMapPicker
+          title={`Choose a position: ${mapFor.description || 'Handling Unit'}${mapFor.outer_package_no ? ` #${mapFor.outer_package_no}` : ''}`}
+          warehouseId={advice.warehouse_id}
+          cargos={[mapFor]}
+          allCargo={data.cargo}
+          packageTypes={data.packageTypes}
+          customerId={advice.customer_id}
+          otherPlacements={pending.filter((x) => x.ROWID !== mapFor.ROWID && chosenFor(x)).map((x) => ({ cargo: x, locationId: chosenFor(x) }))}
+          suggestedId={suggestions.get(String(mapFor.ROWID))}
+          value={chosenFor(mapFor)}
+          onPick={(id) => {
+            setChoices((m) => ({ ...m, [mapFor.ROWID]: id }));
+            setMapFor(null);
+          }}
+          onClose={() => setMapFor(null)}
+        />
+      )}
     </Modal>
   );
 }

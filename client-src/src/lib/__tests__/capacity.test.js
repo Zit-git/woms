@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { computeCapacity, projectAvailability } from '../capacity';
-import { allocateLocations, recommendWarehouses, putawayConflicts, claimOutcome } from '../allocation';
+import { allocateLocations, recommendWarehouses, putawayConflicts, claimOutcome, locationFit } from '../allocation';
 
 // Scenarios C1-C9 of docs/TEST_PLAN.md, run against the capacity and allocation engines with small
 // hand-made warehouses so every expected number can be checked by eye.
@@ -257,4 +257,53 @@ describe('claimOutcome: two people store into the same position at the same mome
   });
   it('the same customer shares freely', () => expect(outcome('2', [occ(1), occ(2)], 4)).toEqual({ ok: true }));
   it('not in the list at all (the write did not land): not ok', () => expect(outcome('5', [occ(1)]).ok).toBe(false));
+});
+
+describe('locationFit: which positions the warehouse map offers for a Handling Unit', () => {
+  const fit = (o) => locationFit({ packageTypes: PALLET_TYPES, customerId: 'A', allCargo: [], ...o });
+  it('an empty position that suits the unit is available', () => expect(fit({ cargos: [pallet(1)], location: loc(1) })).toEqual({ ok: true, reason: null }));
+  it('a blocked position is not', () => expect(fit({ cargos: [pallet(1)], location: loc(1, { occupancy_status: 'Blocked' }) }).reason).toBe('Blocked'));
+  it('a full position says Full', () => {
+    expect(fit({ cargos: [pallet(2)], location: loc(1), allCargo: [pallet(1, { current_location_id: '1' })] }).reason).toBe('Full');
+  });
+  it('another customer\'s goods keep the position, even with room left', () => {
+    const l = loc(1, { capacity: 4 });
+    expect(fit({ cargos: [pallet(2)], location: l, allCargo: [pallet(1, { current_location_id: '1', customer_id: 'B' })] }).reason).toBe("Holds another customer's goods");
+    expect(fit({ cargos: [pallet(2)], location: l, allCargo: [pallet(1, { current_location_id: '1', customer_id: 'A' })] }).ok).toBe(true);
+  });
+  it('too heavy, too big, and the wrong capacity unit each give their own reason', () => {
+    expect(fit({ cargos: [pallet(1, { weight: 900 })], location: loc(1, { max_weight_kg: 800 }) }).reason).toMatch(/heavy/);
+    expect(fit({ cargos: [pallet(1, { height_cm: 300 })], location: loc(1, { length_cm: 120, width_cm: 100, height_cm: 180 }) }).reason).toMatch(/big/);
+    expect(fit({ cargos: [pallet(1)], location: loc(1, { capacity_unit: 'Crates' }) }).reason).toMatch(/Counts in Crates/);
+  });
+  it('units chosen earlier in the same sitting use the position up', () => {
+    const other = [{ cargo: pallet(1), locationId: '1' }];
+    expect(fit({ cargos: [pallet(2)], location: loc(1), otherPlacements: other }).reason).toBe('Full');
+    expect(fit({ cargos: [pallet(2)], location: loc(2), otherPlacements: other }).ok).toBe(true);
+  });
+  it('a unit being moved does not block its own position', () => {
+    const stored = pallet(1, { current_location_id: '1' });
+    expect(fit({ cargos: [stored], location: loc(1), allCargo: [stored] }).reason).toBe('Full');
+    expect(fit({ cargos: [stored], location: loc(1), allCargo: [stored], excludeCargoIds: ['1'] }).ok).toBe(true);
+  });
+  it('several units placed together must fit together: five boxes (0.2 each) fill a pallet position, a sixth does not', () => {
+    const boxTypes = [{ name: 'Box', capacity_unit: 'Pallet position', units_per_item: 0.2 }];
+    const boxes = (n) => Array.from({ length: n }, (_, i) => pallet(i + 10, { unit: 'Box', weight: 15, length_cm: 50, width_cm: 40, height_cm: 30 }));
+    const l = loc(1, { max_weight_kg: 800, length_cm: 120, width_cm: 100, height_cm: 180 });
+    expect(locationFit({ cargos: boxes(5), location: l, allCargo: [], packageTypes: boxTypes, customerId: 'A' }).ok).toBe(true);
+    expect(locationFit({ cargos: boxes(6), location: l, allCargo: [], packageTypes: boxTypes, customerId: 'A' }).reason).toBe('Full');
+  });
+  it('agrees with the allocator: a position the allocator would give the unit is one the map offers', () => {
+    const cases = [
+      { item: pallet(1), l: loc(1) },
+      { item: pallet(1, { weight: 900 }), l: loc(1, { max_weight_kg: 800 }) },
+      { item: pallet(1, { height_cm: 300 }), l: loc(1, { length_cm: 120, width_cm: 100, height_cm: 180 }) },
+      { item: pallet(1), l: loc(1, { occupancy_status: 'Blocked' }) },
+      { item: pallet(1), l: loc(1, { capacity_unit: 'Crates' }) },
+    ];
+    cases.forEach(({ item, l }) => {
+      const picked = run({ cargoRows: [item], locations: [l], allCargo: [], outboundCommitments: [], storageStart: '2026-11-01', customerId: 'A' })[0].locationId;
+      expect(Boolean(picked), `${JSON.stringify(l)}`).toBe(fit({ cargos: [item], location: l }).ok);
+    });
+  });
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { outboundActions, computeOutboundFulfillment } from '../outboundStatus';
-import { pickupRequestIdFromPass, findPendingPickByCode } from '../scanning';
+import { huNumber, idsFromQuery, labelsPath } from '../labels';
+import { pickupRequestIdFromPass, findPendingPickByCode, findRequestIdByPass, sameCode, inboundMatchesQuery } from '../scanning';
 
 const line = (status, cargo_status = 'Stored') => ({ status, cargo_status });
 const popup = (a) => a.primary?.popup;
@@ -56,5 +57,58 @@ describe('O6/O8 scanning', () => {
     expect(findPendingPickByCode(tasks, 'HU-ZZZ')).toBeNull();
     expect(findPendingPickByCode(tasks, '')).toBeNull();
     expect(findPendingPickByCode([], 'HU-AAA')).toBeNull();
+  });
+});
+
+describe('scanning by hand: a typed code works like a scanned one', () => {
+  const requests = [{ ROWID: '7', outbound_reference: 'OB-2026-207030' }, { ROWID: '8', outbound_reference: 'OB-2026-207031' }];
+  it('codes match whatever the case and spaces', () => {
+    expect(sameCode(' womS-cargo-123 ', 'WOMS-CARGO-123')).toBe(true);
+    expect(sameCode('WOMS-CARGO-123', 'WOMS-CARGO-124')).toBe(false);
+    expect(sameCode('', '')).toBe(false);
+    expect(sameCode(null, undefined)).toBe(false);
+  });
+  it('a Handling Unit code typed in lower case still finds its pick line', () => {
+    expect(findPendingPickByCode([{ ROWID: '1', cargo_qr_code: 'WOMS-CARGO-9', status: 'Pending' }], ' woms-cargo-9 ')?.ROWID).toBe('1');
+  });
+  it('a pass is found by its scanned QR or by the printed pickup reference', () => {
+    expect(findRequestIdByPass(requests, 'WOMS-OB-99')).toBe('99');
+    expect(findRequestIdByPass(requests, 'ob-2026-207031')).toBe('8');
+    expect(findRequestIdByPass(requests, 'OB-2026-000000')).toBeNull();
+    expect(findRequestIdByPass(requests, '')).toBeNull();
+    expect(findRequestIdByPass([], 'OB-2026-207030')).toBeNull();
+  });
+});
+
+describe('finding an inbound from what the customer quotes', () => {
+  const advice = { inbound_reference: 'IB-2026-243231', reference_number: 'ACF001', reference_client: null };
+  it('by the IB reference, whole or partial, in any case', () => {
+    expect(inboundMatchesQuery(advice, 'IB-2026-243231')).toBe(true);
+    expect(inboundMatchesQuery(advice, ' ib-2026-2432 ')).toBe(true);
+  });
+  it('by the GRN number, which is GRN- plus the IB reference', () => {
+    expect(inboundMatchesQuery(advice, 'GRN-IB-2026-243231')).toBe(true);
+    expect(inboundMatchesQuery(advice, 'grn-ib-2026-999999')).toBe(false);
+  });
+  it('by the customer\'s own reference', () => expect(inboundMatchesQuery(advice, 'acf001')).toBe(true));
+  it('an empty search matches everything, a different number nothing', () => {
+    expect(inboundMatchesQuery(advice, '')).toBe(true);
+    expect(inboundMatchesQuery(advice, 'IB-2026-000000')).toBe(false);
+  });
+});
+
+describe('Handling Unit labels', () => {
+  it('the HU number is the inbound reference plus the package number', () => {
+    expect(huNumber('IB-2026-243231', 4)).toBe('IB-2026-243231-004');
+    expect(huNumber('IB-2026-243231', '12')).toBe('IB-2026-243231-012');
+    expect(huNumber('', 4)).toBe('4');
+  });
+  it('ids in a print link are digits only, without repeats, in order', () => {
+    expect(idsFromQuery('11648000001243237,11648000001243239, 11648000001243237,x,<script>')).toEqual(['11648000001243237', '11648000001243239']);
+    expect(idsFromQuery(null)).toEqual([]);
+  });
+  it('the link carries only the ids', () => {
+    expect(labelsPath('/app/', new Set(['1', '2']))).toBe('/app/print/labels?ids=1,2');
+    expect(labelsPath('/', ['9"><b>'])).toBe('/print/labels?ids=9');
   });
 });

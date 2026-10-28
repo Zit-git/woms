@@ -204,3 +204,50 @@ export function claimOutcome({ cargoId, occupants, capacity, packageTypes }) {
   }
   return { ok: false, reason: 'missing' };
 }
+
+// Whether a position can take these Handling Units right now, and if not why -- what the warehouse map shows
+// when someone chooses a position by hand. Put-away is physical: what is in a position now occupies it.
+// `cargos` are placed together, one after the other (a pallet and the boxes stored with it in one sitting),
+// `otherPlacements` ([{ cargo, locationId }]) are units already chosen for positions in the same sitting, and
+// `excludeCargoIds` are units that are being moved and so do not count where they stand now.
+export function locationFit({ cargos, location, allCargo, packageTypes, customerId, otherPlacements = [], excludeCargoIds = [] }) {
+  const packageTypesByName = new Map((packageTypes || []).map((p) => [p.name.trim().toLowerCase(), p]));
+  const key = String(location.ROWID);
+  if (location.occupancy_status === 'Blocked') return { ok: false, reason: 'Blocked' };
+
+  const skip = new Set((excludeCargoIds || []).map(String));
+  const occupants = (allCargo || []).filter((c) => c.current_location_id && String(c.current_location_id) === key && !skip.has(String(c.ROWID)));
+  (otherPlacements || []).forEach(({ cargo, locationId }) => {
+    if (String(locationId) === key && !skip.has(String(cargo.ROWID))) occupants.push(cargo);
+  });
+
+  let units = occupants.reduce((n, c) => n + unitsPerItemFor(c.unit, packageTypesByName), 0);
+  let weight = occupants.reduce((n, c) => n + (Number(c.weight) || 0), 0);
+  let volume = occupants.reduce((n, c) => n + volumeM3(c), 0);
+  let owner = occupants.find((c) => c.customer_id)?.customer_id;
+  owner = owner ? String(owner) : null;
+
+  const capacity = Number(location.capacity) || 0;
+  const maxWeight = location.max_weight_kg == null || location.max_weight_kg === '' ? null : Number(location.max_weight_kg);
+  const space = volumeM3(location);
+  const locationUnit = location.capacity_unit || UNGROUPED;
+
+  for (const c of cargos || []) {
+    const itemUnit = unitFor(c.unit, packageTypesByName);
+    if (locationUnit !== itemUnit) return { ok: false, reason: `Counts in ${locationUnit}, this goes in ${itemUnit}` };
+    if (!fitsDimensions(c, location)) return { ok: false, reason: 'Too big for this position' };
+    const who = String(c.customer_id || customerId || '');
+    if (owner && who && owner !== who) return { ok: false, reason: "Holds another customer's goods" };
+    const need = unitsPerItemFor(c.unit, packageTypesByName);
+    if (capacity - units < need - 1e-9) return { ok: false, reason: 'Full' };
+    const itemWeight = Number(c.weight) || 0;
+    if (maxWeight != null && maxWeight - weight < itemWeight - 1e-9) return { ok: false, reason: 'Too heavy for what is left' };
+    const itemVolume = volumeM3(c);
+    if (space && space - volume < itemVolume - 1e-9) return { ok: false, reason: 'Not enough room left' };
+    units += need;
+    weight += itemWeight;
+    volume += itemVolume;
+    if (!owner && who) owner = who;
+  }
+  return { ok: true, reason: null };
+}

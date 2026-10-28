@@ -10,7 +10,7 @@ import { fixed2, decimal2 } from '../../lib/format';
 // Plain read-only record view, used by InboundMaster regardless of status --
 // the one action button opens whichever stage popup is contextually next
 // (labeled by the caller), not an accident of clicking some other control.
-export default function InboundDetailView({ advice, lines, cargoRows, huContents, customers, transporters, suppliers, warehouses, grn, outboundLinks, locationLabels, onEdit, onEditRequest, editLabel = 'Edit' }) {
+export default function InboundDetailView({ advice, lines, cargoRows, huContents, customers, transporters, suppliers, warehouses, grn, outboundLinks, createdOutbounds, locationLabels, onEdit, onEditRequest, editLabel = 'Edit' }) {
   const supplier = suppliers.find((s) => String(s.ROWID) === String(advice.supplier_id));
   const transporter = transporters.find((t) => String(t.ROWID) === String(advice.transporter_id));
   const warehouse = (warehouses || []).find((w) => String(w.ROWID) === String(advice.warehouse_id));
@@ -26,6 +26,11 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
     const cur = linkedOutbounds.get(k) || { id: l.outbound_request_id, reference: l.outbound_reference, status: l.outbound_status, hus: 0 };
     cur.hus += 1;
     linkedOutbounds.set(k, cur);
+  });
+  // An outbound opened from this inbound is listed before any goods are on it.
+  (createdOutbounds || []).forEach((o) => {
+    const k = String(o.ROWID);
+    if (!linkedOutbounds.has(k)) linkedOutbounds.set(k, { id: o.ROWID, reference: o.outbound_reference, status: o.status, hus: 0 });
   });
   const summary = computeInboundSummary(advice, lines, cargoRows);
   const linesById = new Map((lines || []).map((l) => [String(l.ROWID), l]));
@@ -197,7 +202,14 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
         </table>
       </div>
 
-      <h3 style={{ marginTop: 24 }}>Handling Units</h3>
+      <div className="toolbar" style={{ marginTop: 24 }}>
+        <h3 style={{ margin: 0 }}>Handling Units</h3>
+        {cargoRows.length > 0 && (
+          <a className="link-btn" href={`${import.meta.env.BASE_URL}print/putaway/${advice.ROWID}`} target="_blank" rel="noreferrer">
+            Print all labels
+          </a>
+        )}
+      </div>
       {cargoRows.length === 0 ? (
         <p className="muted small">
           No Handling Units yet — they are created, and QR labels generated, after the goods are received.
@@ -223,6 +235,9 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
                   <td>
                     <strong>{advice.inbound_reference ? `${advice.inbound_reference}-${String(c.outer_package_no || '').padStart(3, '0')}` : c.outer_package_no}</strong>
                     <div className="muted small">{c.qr_code}</div>
+                    <a className="link-btn" href={`${import.meta.env.BASE_URL}print/putaway/${advice.ROWID}?ids=${c.ROWID}`} target="_blank" rel="noreferrer">
+                      Print label
+                    </a>
                   </td>
                   <td>
                     <QrCodeImage value={c.qr_code} size={56} />

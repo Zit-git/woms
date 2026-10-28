@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { inboundMatchesQuery } from '../../lib/scanning';
 import { useNavigate } from 'react-router-dom';
 import { listInboundAdvice, listCargoStatusForAllAdvices, listLineTotalsForAllAdvices, listCustomers, startNewInboundAdvice } from '../../lib/api';
 import SortableTh from '../../components/SortableTh';
@@ -20,6 +21,7 @@ export default function InboundAdviceList() {
   const [creating, setCreating] = useState(false);
   const [customerFilter, setCustomerFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [query, setQuery] = useState('');
   // Arrivals are planned by day: today / tomorrow / next 7 days, or a custom range.
   const [dateMode, setDateMode] = useState('all'); // today | tomorrow | week | all | custom
   const [customFrom, setCustomFrom] = useState(todayStr());
@@ -69,6 +71,8 @@ export default function InboundAdviceList() {
   const filtered = useMemo(
     () =>
       advices.filter((a) => {
+        // searching ignores the date filter, so an inbound quoted by its reference is found whatever its date
+        if (query.trim()) return inboundMatchesQuery(a, query) && (!customerFilter || String(a.customer_id) === customerFilter) && (!statusFilter || a.fulfillment_status === statusFilter);
         if (customerFilter && String(a.customer_id) !== customerFilter) return false;
         if (statusFilter && a.fulfillment_status !== statusFilter) return false;
         if (range) {
@@ -77,7 +81,7 @@ export default function InboundAdviceList() {
         }
         return true;
       }),
-    [advices, customerFilter, statusFilter, dateMode, customFrom, customTo]
+    [advices, customerFilter, statusFilter, dateMode, customFrom, customTo, query]
   );
   const { sorted, toggleSort, arrowFor } = useSortableData(filtered);
 
@@ -103,11 +107,12 @@ export default function InboundAdviceList() {
   };
 
   const clearFilters = () => {
+    setQuery('');
     setCustomerFilter('');
     setStatusFilter('');
     setDateMode('all');
   };
-  const filtersActive = customerFilter || statusFilter || dateMode !== 'all';
+  const filtersActive = query || customerFilter || statusFilter || dateMode !== 'all';
 
   return (
     <div>
@@ -156,6 +161,10 @@ export default function InboundAdviceList() {
       </div>
 
       <div className="filter-bar">
+        <div className="form-row">
+          <label htmlFor="inbound-search">Search</label>
+          <input id="inbound-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Inbound or GRN number, customer reference" />
+        </div>
         <div className="form-row">
           <label>Customer</label>
           <select value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)}>

@@ -112,6 +112,20 @@ Data added by `e2e/volume/seed.mjs` (tagged `VOLTEST`, removed again by `cleanup
 
 Reading: every screen now settles within about 6 s at 1,000 inbounds. The Inbounds and Outbounds lists still load every record (13 and 9 requests), so they grow with the data; beyond a few thousand inbounds they need server-side filtering (for example a default date window). The Dashboard has a fixed cost.
 
+## 5b. Added 2026-10-28
+
+| Change | Check |
+|---|---|
+| Every scan can be typed by hand (scanner window, pickup reference on a pass, code printed under each QR) | `e2e/manualscan.spec.js`, unit tests in `outbound.test.js` |
+| **Defect D-30:** closing the scanner window crashed the page to a 404 when the camera could not start (`Html5Qrcode.stop()` throws at once when never started) | found by the manual-scan test; fixed with `stopQuietly` |
+| Create an outbound from an inbound (one inbound, many outbounds; goods limited to that inbound; Add all); Inbounds search by IB / GRN / customer reference | `e2e/outboundFromInbound.spec.js`, unit tests. New column `OutboundRequest.inbound_advice_id` (Development) |
+| Handling Unit labels: one, several or all, from the inbound and Storage pages | unit tests (`labels`); page checked by hand |
+| Put-away position chosen on the warehouse map (put-away popup, Storage put away / put back / relocate): green can take it, grey says why | `locationFit` unit tests (9, including agreement with the allocator), `e2e/mapPicker.spec.js`, `e2e/concurrency.spec.js` now chooses on the map |
+
+Result on the deployed /app/: unit tests 127; browser suite 39 passed before the map picker; map picker, concurrency, inbound journey, map, manual scan and outbound-from-inbound all pass after it. The access tests need `WOMS_MANAGER_WH="Hamburg DC" WOMS_OPERATOR_WH="Rotterdam DC2"` for the second user (they pass with it). Not yet checked on Slate (needs your push and a signed-in Slate session).
+
+Known limit: the print pages and the scanner's typed code were exercised on /app/ by in-app navigation; the legacy /app/ address cannot open a deep link such as /print/labels directly, Slate can.
+
 ## 6. How to rerun
 
 ```

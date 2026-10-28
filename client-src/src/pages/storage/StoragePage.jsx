@@ -13,6 +13,9 @@ import { useAuth } from '../../context/AuthContext';
 import { todayStr } from '../../lib/dates';
 import { allocateLocations } from '../../lib/allocation';
 import { decimal2 } from '../../lib/format';
+import { sameCode } from '../../lib/scanning';
+import { labelsPath } from '../../lib/labels';
+import LocationMapPicker from '../../components/LocationMapPicker';
 
 
 const QrScannerModal = lazy(() => import('../../components/QrScannerModal'));
@@ -50,6 +53,7 @@ export default function StoragePage() {
 
   const [action, setAction] = useState(null); // { mode: 'putaway' | 'relocate', ids: string[] }
   const [pickedLocation, setPickedLocation] = useState('');
+  const [showMap, setShowMap] = useState(false);
   const [scanChoice, setScanChoice] = useState(null);
   const [busy, setBusy] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
@@ -178,6 +182,7 @@ export default function StoragePage() {
   const openPicker = (mode, ids, defaultLocationId) => {
     setAction({ mode, ids: ids.map(String) });
     setPickedLocation(defaultLocationId ? String(defaultLocationId) : '');
+    setShowMap(false);
     setScanChoice(null);
     setError('');
     setNotice('');
@@ -210,9 +215,9 @@ export default function StoragePage() {
   const handleScanned = useCallback(
     (code) => {
       setShowScanner(false);
-      const out = outOfRack.find((c) => c.qr_code === code);
+      const out = outOfRack.find((c) => sameCode(c.qr_code, code));
       if (out) return openPicker('putaway', [out.ROWID], suggestLocation(out));
-      const inRack = stored.find((c) => c.qr_code === code);
+      const inRack = stored.find((c) => sameCode(c.qr_code, code));
       if (inRack) {
         setScanChoice(inRack);
         setAction(null);
@@ -256,6 +261,9 @@ export default function StoragePage() {
         <span className={`status-badge ${statusClass(c.status)}`}>{c.status}</span>
       </td>
       <td>
+        <a className="link-btn" href={labelsPath(import.meta.env.BASE_URL, [c.ROWID])} target="_blank" rel="noreferrer">
+          Label
+        </a>{' '}
         {isStoredTab ? (
           <>
             <button className="link-btn" onClick={() => openPicker('relocate', [c.ROWID])}>
@@ -350,14 +358,9 @@ export default function StoragePage() {
                 Suggested based on size, weight and customer — pick a different one if needed.
               </p>
             )}
-            <select value={pickedLocation} onChange={(e) => setPickedLocation(e.target.value)}>
-              <option value="">Select location...</option>
-              {locations.map((l) => (
-                <option key={l.ROWID} value={l.ROWID}>
-                  {l.location_code} ({l.path}) — {perLocation.get(String(l.ROWID)) || 0} stored
-                </option>
-              ))}
-            </select>
+            <button type="button" className="btn secondary map-pick-button" onClick={() => setShowMap(true)} disabled={!capacityData}>
+              {pickedLocation ? `${locCode(pickedLocation)} · Change on map` : capacityData ? 'Choose on map' : 'Loading...'}
+            </button>
             {!locations.length && <p className="muted small">No storage locations yet. Add zones, racks and locations under Warehouses.</p>}
           </div>
           <div className="form-actions">
@@ -370,6 +373,28 @@ export default function StoragePage() {
           </div>
         </div>
       )}
+
+      {action && showMap && capacityData && (() => {
+        const moving = action.ids.map((id) => [...stored, ...outOfRack].find((c) => String(c.ROWID) === String(id))).filter(Boolean);
+        return (
+          <LocationMapPicker
+            title={`Choose a position for ${moving.length} package${moving.length === 1 ? '' : 's'}`}
+            warehouseId={moving[0]?.warehouse_id}
+            cargos={moving}
+            allCargo={capacityData.cargo}
+            packageTypes={capacityData.packageTypes}
+            customerId={moving[0]?.customer_id}
+            excludeCargoIds={action.ids}
+            suggestedId={action.mode === 'putaway' && moving.length === 1 ? suggestLocation(moving[0]) : undefined}
+            value={pickedLocation}
+            onPick={(id) => {
+              setPickedLocation(id);
+              setShowMap(false);
+            }}
+            onClose={() => setShowMap(false)}
+          />
+        );
+      })()}
 
       <div className="tabs">
         {TABS.map((t) => (
@@ -436,6 +461,9 @@ export default function StoragePage() {
               {tab === 'retrieved' ? 'Put back' : 'Put away'}
             </button>
           )}
+          <a className="btn secondary small-btn" href={labelsPath(import.meta.env.BASE_URL, selected)} target="_blank" rel="noreferrer">
+            Print labels
+          </a>
           <button className="link-btn" onClick={() => setSelected(new Set())}>
             Clear
           </button>
