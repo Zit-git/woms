@@ -35,3 +35,34 @@ export function inboundMatchesQuery(advice, query) {
   if (!q) return true;
   return [advice.inbound_reference, advice.reference_number, advice.reference_client].some((v) => String(v ?? '').toUpperCase().includes(q));
 }
+
+// What a scanned or typed code means on a pick list: a line still to pick, a line already picked, or nothing on this request.
+export function pickLineForCode(pickTasks, code) {
+  const task = (pickTasks || []).find((t) => sameCode(t.cargo_qr_code, code));
+  if (!task) return { task: null, state: 'none' };
+  return { task, state: task.status === 'Picked' ? 'picked' : 'pending' };
+}
+
+// A camera that stays open reads the same label many times a second. The gate lets a code through once, only while
+// nothing else is being handled, and not again for `holdMs` (the label is still in front of the camera); another label
+// goes through at once. `now` is injectable for tests.
+export function createScanGate({ holdMs = 2500, now = () => Date.now() } = {}) {
+  let busy = false;
+  let lastCode = '';
+  let lastAt = 0;
+  return {
+    enter(code) {
+      const key = String(code ?? '').trim().toUpperCase();
+      if (!key || busy) return false;
+      if (key === lastCode && now() - lastAt < holdMs) return false;
+      busy = true;
+      lastCode = key;
+      lastAt = now();
+      return true;
+    },
+    leave() {
+      busy = false;
+      lastAt = now();
+    },
+  };
+}

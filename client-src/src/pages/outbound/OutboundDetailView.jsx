@@ -3,6 +3,7 @@ import RecordTasks from '../../components/RecordTasks';
 import AuditTrail from '../../components/AuditTrail';
 import DocumentsSummary from '../../components/DocumentsSummary';
 import LazySection from '../../components/LazySection';
+import { ginNumber, ginStatus } from '../../lib/documents';
 
 // Plain read-only record view, used by OutboundMaster regardless of stage --
 // the buttons open whichever stage popup is next, they don't edit in place.
@@ -97,6 +98,14 @@ export default function OutboundDetailView({ request, pickTasks, dispatches, loc
           ) : (
             <div className="muted small">Not dispatched yet</div>
           )}
+        </div>
+        <div className="check-block">
+          <div className="check-block-title">Goods Issue Note</div>
+          <div>{ginNumber(request.outbound_reference) || '—'}</div>
+          <div className="muted small">{ginStatus(dispatched)}</div>
+          <a className="link-btn" href={`${import.meta.env.BASE_URL}print/outbound/${request.ROWID}`} target="_blank" rel="noreferrer">
+            View GIN
+          </a>
         </div>
         <div className="check-block">
           <div className="check-block-title">Linked Inbounds</div>

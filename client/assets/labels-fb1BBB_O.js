@@ -1,1 +1,0 @@
-function i(n,r){return n?`${n}-${String(r||"").padStart(3,"0")}`:r?String(r):""}function e(n){const r=new Set;return String(n??"").split(",").map(t=>t.replace(/\D/g,"")).filter(t=>t&&!r.has(t)&&r.add(t))}function a(n,r){return`${n}print/labels?ids=${[...r].map(t=>String(t).replace(/\D/g,"")).filter(Boolean).join(",")}`}export{i as h,e as i,a as l};

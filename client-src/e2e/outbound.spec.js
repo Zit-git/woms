@@ -70,7 +70,7 @@ test('outbound: request to delivery (pass, check-in, scan-pick, dispatch)', asyn
     await expect(modal.getByText(/RT2-[AB]\d-R0\d-B\d-L\d/).first()).toBeVisible({ timeout: 30_000 });
     // pick (scan) each line
     for (let i = 0; i < 2; i++) {
-      await modal.getByRole('button', { name: 'Scan & Pick' }).first().click();
+      await modal.getByRole('button', { name: 'Mark picked' }).first().click();
       await expect(modal.getByText(`${i + 1} of 2 picked`)).toBeVisible({ timeout: 60_000 });
     }
     await modal.getByRole('button', { name: 'Done' }).click();

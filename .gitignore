@@ -12,3 +12,4 @@ client-src/e2e/results/
 client-src/test-results/
 client-src/playwright-report/
 client-src/e2e/.volume/
+client-src/e2e/.fixtures/

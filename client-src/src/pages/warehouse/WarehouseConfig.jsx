@@ -35,6 +35,7 @@ import { useAuth } from '../../context/AuthContext';
 import { accessibleWarehouses, scopeByWarehouse } from '../../lib/access';
 import { fixed2, decimal2 } from '../../lib/format';
 import RackLevels from '../../components/RackLevels';
+import { locationLabelsPath } from '../../lib/labels';
 
 const TABS = ['Warehouses', 'Zones', 'Aisles', 'Racks', 'Storage Locations', 'Package Types', 'Map', 'Availability'];
 const CAPACITY_UNITS = ['Pallet Positions', 'Cartons', 'Crates', 'm²', 'm³', 'Other'];
@@ -961,6 +962,18 @@ function LocationsTab() {
             ))}
           </select>
         </div>
+        {warehouseId && (
+          <div className="form-row" style={{ alignSelf: 'flex-end' }}>
+            <a className="btn secondary" href={locationLabelsPath(import.meta.env.BASE_URL, { warehouse: warehouseId })} target="_blank" rel="noreferrer">
+              Print position labels (warehouse)
+            </a>{' '}
+            {rackId && (
+              <a className="link-btn" href={locationLabelsPath(import.meta.env.BASE_URL, { warehouse: warehouseId, rack: rackId })} target="_blank" rel="noreferrer">
+                this rack only
+              </a>
+            )}
+          </div>
+        )}
       </div>
 
       <form className="card" onSubmit={add}>
@@ -1144,6 +1157,11 @@ function WarehouseMapTab() {
           </span>
         </div>
         {!loading && <span className="muted small">{totalOccupied} of {totalLocations} locations occupied</span>}
+        {warehouseId && (
+          <a className="link-btn" href={locationLabelsPath(import.meta.env.BASE_URL, { warehouse: warehouseId })} target="_blank" rel="noreferrer">
+            Print position labels
+          </a>
+        )}
         <button className="link-btn" onClick={reload}>
           Refresh
         </button>
@@ -1178,13 +1196,13 @@ function WarehouseMapTab() {
           </div>
         ))
       )}
-      {picked && <LocationPopup location={picked.loc} path={picked.path} onClose={() => setPicked(null)} />}
+      {picked && <LocationPopup location={picked.loc} path={picked.path} warehouseId={warehouseId} onClose={() => setPicked(null)} />}
     </div>
   );
 }
 
 // What is in one position: the position itself, and each Handling Unit in it with its contents.
-function LocationPopup({ location, path, onClose }) {
+function LocationPopup({ location, path, warehouseId, onClose }) {
   const [hus, setHus] = useState(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -1206,6 +1224,13 @@ function LocationPopup({ location, path, onClose }) {
         {location.bay ? ` · Bay ${location.bay}` : ''}
         {location.rack_level ? ` · Level ${location.rack_level}` : ''}
       </p>
+      {warehouseId && (
+        <p style={{ marginTop: -4 }}>
+          <a className="link-btn" href={locationLabelsPath(import.meta.env.BASE_URL, { warehouse: warehouseId, position: location.ROWID })} target="_blank" rel="noreferrer">
+            Print this position's label
+          </a>
+        </p>
+      )}
       <div className="summary-strip">
         <div>
           <div className="muted small">Status</div>

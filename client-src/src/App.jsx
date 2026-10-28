@@ -27,6 +27,7 @@ const OutboundPrint = lazy(() => import('./pages/print/OutboundPrint'));
 const PickupPass = lazy(() => import('./pages/print/PickupPass'));
 const PutawayPrint = lazy(() => import('./pages/print/PutawayPrint'));
 const LabelsPrint = lazy(() => import('./pages/print/LabelsPrint'));
+const LocationLabels = lazy(() => import('./pages/print/LocationLabels'));
 
 const PageLoading = () => <div style={{ padding: 40 }}>Loading...</div>;
 
@@ -128,6 +129,16 @@ function Gate() {
           <Guarded module="Cargo & Storage Management">
             <Suspense fallback={<PageLoading />}>
               <LabelsPrint />
+            </Suspense>
+          </Guarded>
+        }
+      />
+      <Route
+        path="/print/locations"
+        element={
+          <Guarded module="Warehouse Management">
+            <Suspense fallback={<PageLoading />}>
+              <LocationLabels />
             </Suspense>
           </Guarded>
         }

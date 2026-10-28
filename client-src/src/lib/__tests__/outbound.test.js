@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { outboundActions, computeOutboundFulfillment } from '../outboundStatus';
-import { huNumber, idsFromQuery, labelsPath } from '../labels';
+import { ginNumber, ginStatus } from '../documents';
+import { pickLineForCode, createScanGate } from '../scanning';
+import { huNumber, idsFromQuery, labelsPath, locationQr, locationIdFromCode, findLocationByCode, locationLabelsPath } from '../labels';
 import { pickupRequestIdFromPass, findPendingPickByCode, findRequestIdByPass, sameCode, inboundMatchesQuery } from '../scanning';
 
 const line = (status, cargo_status = 'Stored') => ({ status, cargo_status });
@@ -110,5 +112,72 @@ describe('Handling Unit labels', () => {
   it('the link carries only the ids', () => {
     expect(labelsPath('/app/', new Set(['1', '2']))).toBe('/app/print/labels?ids=1,2');
     expect(labelsPath('/', ['9"><b>'])).toBe('/print/labels?ids=9');
+  });
+});
+
+describe('scanning a whole pick list with the camera left on', () => {
+  const tasks = [
+    { ROWID: '1', cargo_qr_code: 'WOMS-CARGO-1', status: 'Assigned' },
+    { ROWID: '2', cargo_qr_code: 'WOMS-CARGO-2', status: 'Picked' },
+  ];
+  it('a code is a line to pick, a line already picked, or not on this list', () => {
+    expect(pickLineForCode(tasks, 'woms-cargo-1')).toMatchObject({ state: 'pending', task: { ROWID: '1' } });
+    expect(pickLineForCode(tasks, 'WOMS-CARGO-2').state).toBe('picked');
+    expect(pickLineForCode(tasks, 'WOMS-CARGO-9')).toEqual({ task: null, state: 'none' });
+    expect(pickLineForCode(tasks, '').state).toBe('none');
+  });
+  it('the same label held in front of the camera is handled once, the next label at once', () => {
+    let t = 0;
+    const gate = createScanGate({ holdMs: 2500, now: () => t });
+    expect(gate.enter('A')).toBe(true);
+    gate.leave();
+    t = 100;
+    expect(gate.enter('A')).toBe(false); // still the same label, 10 frames a second
+    expect(gate.enter('B')).toBe(true); // another label goes through
+    gate.leave();
+    t = 3000;
+    expect(gate.enter('A')).toBe(true); // shown again later, e.g. after a failed save
+  });
+  it('nothing new is handled while the last code is still being worked on', () => {
+    const gate = createScanGate({ now: () => 0 });
+    expect(gate.enter('A')).toBe(true);
+    expect(gate.enter('B')).toBe(false); // A is not finished
+    gate.leave();
+    expect(gate.enter('B')).toBe(true);
+  });
+  it('an empty code is never handled', () => expect(createScanGate().enter('  ')).toBe(false));
+});
+
+describe('Goods Issue Note', () => {
+  it('its number is GIN- plus the pickup reference, like GRN- plus the inbound reference', () => {
+    expect(ginNumber('OB-2026-207030')).toBe('GIN-OB-2026-207030');
+    expect(ginNumber('')).toBe('');
+    expect(ginNumber(null)).toBe('');
+  });
+  it('it is a draft until the outbound is dispatched', () => {
+    expect(ginStatus(false)).toMatch(/Draft/);
+    expect(ginStatus(true)).toBe('Issued');
+  });
+});
+
+describe('storage position labels', () => {
+  const locations = [
+    { ROWID: '11648000001205071', location_code: 'RT2-A2-R01-B1-L2' },
+    { ROWID: '11648000001205072', location_code: 'RT2-A2-R01-B1-L3' },
+  ];
+  it('the QR text is WOMS-LOC- plus the position id, and reads back', () => {
+    expect(locationQr('11648000001205071')).toBe('WOMS-LOC-11648000001205071');
+    expect(locationIdFromCode(' woms-loc-11648000001205071 ')).toBe('11648000001205071');
+    for (const t of ['WOMS-CARGO-1', 'WOMS-LOC-', 'WOMS-LOC-12x', '', null]) expect(locationIdFromCode(t)).toBeNull();
+  });
+  it('a position is found by its QR text or by its typed code, in any case', () => {
+    expect(findLocationByCode(locations, 'WOMS-LOC-11648000001205072').location_code).toBe('RT2-A2-R01-B1-L3');
+    expect(findLocationByCode(locations, 'rt2-a2-r01-b1-l2').ROWID).toBe('11648000001205071');
+    expect(findLocationByCode(locations, 'RT2-A9-R01-B1-L1')).toBeNull();
+    expect(findLocationByCode(locations, '')).toBeNull();
+  });
+  it('the print link names the warehouse and optionally one rack or position', () => {
+    expect(locationLabelsPath('/app/', { warehouse: '1' })).toBe('/app/print/locations?warehouse=1');
+    expect(locationLabelsPath('/', { warehouse: '1', rack: '2', position: '3' })).toBe('/print/locations?warehouse=1&rack=2&position=3');
   });
 });

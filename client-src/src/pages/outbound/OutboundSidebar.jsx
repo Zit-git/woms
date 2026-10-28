@@ -61,7 +61,7 @@ export default function OutboundSidebar({ request, pickTasks, fulfillment }) {
             Print Pickup Pass
           </a>
           <a className="btn secondary" href={`${import.meta.env.BASE_URL}print/outbound/${request.ROWID}`} target="_blank" rel="noreferrer">
-            Print Dispatch Note
+            Print Goods Issue Note
           </a>
           <button className="btn secondary" onClick={() => navigate('/outbound')}>
             Back to list

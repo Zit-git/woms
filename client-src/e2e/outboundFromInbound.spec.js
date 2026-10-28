@@ -1,10 +1,22 @@
 import { test, expect } from '@playwright/test';
-import { openHome, openMenu, chooseWorkingWarehouse } from './helpers';
+import { openHome, openMenu } from './helpers';
+import { openSession, deleteRows } from './volume/common.mjs';
 
 // The customer quotes an inbound or GRN; the supervisor finds it, opens an outbound from its page, and can only pick
 // goods from that inbound. Uses the sample inbound IB-2026-243231 (4 boxes, stored); skipped where it does not exist.
-// The test creates one empty outbound and prints its reference so it can be removed afterwards.
+// The test creates one empty outbound and removes it again (by the exact id it created) when it is done.
 const INBOUND = 'IB-2026-243231';
+const created = [];
+
+test.afterAll(async () => {
+  if (!created.length) return;
+  const db = await openSession();
+  try {
+    await deleteRows(db.call, 'OutboundRequest', created);
+  } finally {
+    await db.browser.close();
+  }
+});
 
 test('an outbound is created from an inbound found by its GRN number', async ({ page }) => {
   await openHome(page);
@@ -22,7 +34,7 @@ test('an outbound is created from an inbound found by its GRN number', async ({ 
   await dialog.getByRole('button', { name: 'Create outbound' }).click();
 
   await expect(page).toHaveURL(/\/outbound\/\d+/);
-  console.log('CREATED', await page.locator('.wizard-ref-value').innerText());
+  created.push(new URL(page.url()).pathname.split('/').pop());
   await expect(page.getByRole('link', { name: INBOUND })).toBeVisible(); // Linked Inbounds, with no goods on it yet
 
   await page.getByRole('button', { name: /Select Goods|Edit Goods/ }).first().click();

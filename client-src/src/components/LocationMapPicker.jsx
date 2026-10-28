@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import Modal from './Modal';
 import RackLevels from './RackLevels';
 import { getWarehouseMap, listWarehouses } from '../lib/api';
 import { locationFit } from '../lib/allocation';
+import { findLocationByCode } from '../lib/labels';
+
+const QrScannerModal = lazy(() => import('./QrScannerModal'));
 
 // Choose where Handling Units go by clicking a position on the warehouse map. Positions that can take the
 // unit(s) right now are green (the suggested one is outlined), the rest are grey and say why on hover.
@@ -10,6 +13,8 @@ import { locationFit } from '../lib/allocation';
 export default function LocationMapPicker({ warehouseId, cargos, allCargo, packageTypes, customerId, otherPlacements, excludeCargoIds, suggestedId, value, onPick, onClose, title }) {
   const [maps, setMaps] = useState(null); // [{ warehouse, zones }]
   const [error, setError] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [scanMessage, setScanMessage] = useState('');
 
   // The unit's warehouse; units from old data have none recorded, and then every warehouse is shown.
   useEffect(() => {
@@ -41,6 +46,24 @@ export default function LocationMapPicker({ warehouseId, cargos, allCargo, packa
     };
   }, [cargos, allCargo, packageTypes, customerId, otherPlacements, excludeCargoIds, suggestedId, value]);
 
+  // Scan the position label on the rack (or type its code): an available position is chosen, any other says why not.
+  const onScanned = (text) => {
+    const all = zones.flatMap((z) => z.aisles.flatMap((a) => a.racks.flatMap((r) => r.locations)));
+    const loc = findLocationByCode(all, text);
+    setScanning(false);
+    if (!loc) {
+      setScanMessage(`"${text}" is not a position label of ${warehouseId ? 'this warehouse' : 'these warehouses'}.`);
+      return;
+    }
+    const state = classify(loc);
+    if (state.state === 'unavailable') {
+      setScanMessage(`${loc.location_code} cannot take it: ${state.reason}.`);
+      return;
+    }
+    setScanMessage('');
+    onPick(String(loc.ROWID), loc);
+  };
+
   const counts = useMemo(() => {
     let usable = 0;
     let all = 0;
@@ -63,6 +86,19 @@ export default function LocationMapPicker({ warehouseId, cargos, allCargo, packa
         {maps && <span className="muted small">{counts.usable} of {counts.all} positions can take it</span>}
       </div>
       {error && <div className="error-text">{error}</div>}
+      {scanMessage && <div className="error-text">{scanMessage}</div>}
+      {maps && (
+        <p style={{ margin: '4px 0 8px' }}>
+          <button type="button" className="btn secondary" onClick={() => setScanning(true)}>
+            Scan the position label
+          </button>
+        </p>
+      )}
+      {scanning && (
+        <Suspense fallback={null}>
+          <QrScannerModal title="Scan the position label" onDecode={onScanned} onClose={() => setScanning(false)} />
+        </Suspense>
+      )}
       {!maps && !error && <p className="muted">Loading the warehouse map...</p>}
       {maps && zones.length === 0 && <p className="muted">No zones are set up for this warehouse yet.</p>}
       {!warehouseId && maps && <p className="muted small">This unit has no warehouse recorded, so every warehouse is shown.</p>}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { createScanGate } from '../lib/scanning';
 
 const ELEMENT_ID = 'woms-qr-scanner-region';
 
@@ -18,14 +19,45 @@ function stopQuietly(scanner) {
 // text; callers are responsible for matching it against cargo.qr_code.
 // The same box takes a code typed by hand (read off the printed label or pass), or sent by a keyboard-style
 // handheld scanner, so every scan can be done without a camera.
-export default function QrScannerModal({ onDecode, onClose }) {
-  const scannerRef = useRef(null);
+//
+// Two modes. Default: the camera closes after the first code (one label, one answer). `continuous`: the camera
+// stays open for the whole job and every label held up is handled in turn, so a pick list of ten units is ten
+// scans, not ten times "open the camera". onDecode may return { ok, message } (or a promise of it): the message
+// is shown under the camera, and { done: true } closes the window when the job is finished.
+export default function QrScannerModal({ onDecode, onClose, continuous = false, title = 'Scan QR Code' }) {
   const [error, setError] = useState('');
   const [typed, setTyped] = useState('');
+  const [result, setResult] = useState(null); // { ok, message } of the last code handled
+  const [handled, setHandled] = useState(0);
+
+  // The camera is started once. Callers pass a new onDecode on nearly every render (it closes over fresh data);
+  // restarting the camera each time left it blank or stuck, so the latest one is kept in a ref instead.
+  const decodeRef = useRef(onDecode);
+  decodeRef.current = onDecode;
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const gate = useRef(null);
+  if (!gate.current) gate.current = createScanGate();
+
+  const handle = async (text) => {
+    if (!gate.current.enter(text)) return;
+    try {
+      const out = await decodeRef.current(text);
+      if (out && typeof out === 'object') {
+        setResult({ ok: out.ok !== false, message: out.message || '' });
+        if (out.ok !== false) setHandled((n) => n + 1);
+        if (out.ok !== false) navigator.vibrate?.(60);
+        if (out.done) closeRef.current();
+      }
+    } catch (err) {
+      setResult({ ok: false, message: err?.message || String(err) });
+    } finally {
+      gate.current.leave();
+    }
+  };
 
   useEffect(() => {
     const scanner = new Html5Qrcode(ELEMENT_ID);
-    scannerRef.current = scanner;
     let stopped = false;
 
     scanner
@@ -34,8 +66,12 @@ export default function QrScannerModal({ onDecode, onClose }) {
         { fps: 10, qrbox: { width: 240, height: 240 } },
         (decodedText) => {
           if (stopped) return;
+          if (continuous) {
+            handle(decodedText);
+            return;
+          }
           stopped = true;
-          stopQuietly(scanner).finally(() => onDecode(decodedText));
+          stopQuietly(scanner).finally(() => decodeRef.current(decodedText));
         },
         () => {} // per-frame decode failures are normal while aiming, ignore
       )
@@ -45,13 +81,23 @@ export default function QrScannerModal({ onDecode, onClose }) {
       stopped = true;
       stopQuietly(scanner);
     };
-  }, [onDecode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [continuous]);
+
+  const submitTyped = async (e) => {
+    e.preventDefault();
+    const code = typed.trim();
+    if (!code) return;
+    setTyped('');
+    if (continuous) await handle(code);
+    else decodeRef.current(code);
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="toolbar">
-          <h3>Scan QR Code</h3>
+          <h3>{title}</h3>
           <button className="link-btn" onClick={onClose}>
             Close
           </button>
@@ -61,14 +107,15 @@ export default function QrScannerModal({ onDecode, onClose }) {
             {error}. Check camera permissions, or type the code below instead.
           </div>
         )}
+        {continuous && !error && <p className="muted small">The camera stays on: hold the next label up after each one.{handled ? ` ${handled} done so far.` : ''}</p>}
         <div id={ELEMENT_ID} style={{ width: '100%' }} />
-        <form
-          className="form-row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (typed.trim()) onDecode(typed.trim());
-          }}
-        >
+        {result && (
+          <div role="status" className={result.ok ? 'scan-ok' : 'error-text'} style={{ marginTop: 8, fontWeight: 600 }}>
+            {result.ok ? '✓ ' : ''}
+            {result.message}
+          </div>
+        )}
+        <form className="form-row" onSubmit={submitTyped}>
           <label htmlFor="woms-manual-code">Or type the code</label>
           <input
             id="woms-manual-code"

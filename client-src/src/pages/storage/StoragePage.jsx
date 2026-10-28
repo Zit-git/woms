@@ -14,7 +14,7 @@ import { todayStr } from '../../lib/dates';
 import { allocateLocations } from '../../lib/allocation';
 import { decimal2 } from '../../lib/format';
 import { sameCode } from '../../lib/scanning';
-import { labelsPath } from '../../lib/labels';
+import { labelsPath, locationIdFromCode } from '../../lib/labels';
 import LocationMapPicker from '../../components/LocationMapPicker';
 
 
@@ -221,6 +221,10 @@ export default function StoragePage() {
       if (inRack) {
         setScanChoice(inRack);
         setAction(null);
+        return;
+      }
+      if (locationIdFromCode(code)) {
+        setError('That is a position label. Choose the package first (Put away or Relocate), then use "Scan the position label" on the map.');
         return;
       }
       setError(`No cargo matches scanned code "${code}"`);

@@ -338,6 +338,7 @@ tr.clickable-row:hover td { background: var(--surface-soft); }
 .legend-suggested { background: #2f855a; outline: 2px solid #f6ad55; }
 .legend-selected { background: var(--primary); outline: 2px solid var(--text); }
 .legend-unavailable { background: #d7dee8; }
+.scan-ok { color: #2f855a; }
 .map-pick-button { display: inline-flex; align-items: center; gap: 8px; }
 
 .status-badge {
