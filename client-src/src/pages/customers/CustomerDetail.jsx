@@ -4,6 +4,8 @@ import { getCustomerById, getCustomerActivity, editCustomer } from '../../lib/ap
 import CustomerForm from './CustomerForm';
 import { useAuth } from '../../context/AuthContext';
 import ContactList from '../../components/ContactList';
+import { usePagination } from '../../lib/usePagination';
+import Pagination from '../../components/Pagination';
 
 export default function CustomerDetail() {
   const { viewer } = useAuth();
@@ -39,6 +41,10 @@ export default function CustomerDetail() {
       .catch((err) => setError(err.message || String(err)))
       .finally(() => setSaving(false));
   };
+
+  const pagerInbound = usePagination(activity.inbound);
+  const pagerOutbound = usePagination(activity.outbound);
+  const pagerCargo = usePagination(activity.cargo);
 
   if (loading) return <p className="muted">Loading...</p>;
   if (!customer) return <p className="error-text">Customer not found.</p>;
@@ -87,6 +93,7 @@ export default function CustomerDetail() {
       <ContactList customerId={customerId} />
 
       <h3>Inbound Advices ({activity.inbound.length})</h3>
+      <>
       <table>
         <thead>
           <tr>
@@ -96,7 +103,7 @@ export default function CustomerDetail() {
           </tr>
         </thead>
         <tbody>
-          {activity.inbound.map((i) => (
+          {pagerInbound.pageRows.map((i) => (
             <tr key={i.ROWID}>
               <td>{i.expected_date}</td>
               <td>
@@ -118,8 +125,11 @@ export default function CustomerDetail() {
           )}
         </tbody>
       </table>
+      <Pagination pager={pagerInbound} />
+      </>
 
       <h3 style={{ marginTop: 24 }}>Outbound Requests ({activity.outbound.length})</h3>
+      <>
       <table>
         <thead>
           <tr>
@@ -129,7 +139,7 @@ export default function CustomerDetail() {
           </tr>
         </thead>
         <tbody>
-          {activity.outbound.map((o) => (
+          {pagerOutbound.pageRows.map((o) => (
             <tr key={o.ROWID}>
               <td>{o.requested_date}</td>
               <td>
@@ -151,8 +161,11 @@ export default function CustomerDetail() {
           )}
         </tbody>
       </table>
+      <Pagination pager={pagerOutbound} />
+      </>
 
       <h3 style={{ marginTop: 24 }}>Cargo ({activity.cargo.length})</h3>
+      <>
       <table>
         <thead>
           <tr>
@@ -162,7 +175,7 @@ export default function CustomerDetail() {
           </tr>
         </thead>
         <tbody>
-          {activity.cargo.map((c) => (
+          {pagerCargo.pageRows.map((c) => (
             <tr key={c.ROWID}>
               <td>{c.description}</td>
               <td>
@@ -182,6 +195,8 @@ export default function CustomerDetail() {
           )}
         </tbody>
       </table>
+      <Pagination pager={pagerCargo} />
+      </>
     </div>
   );
 }

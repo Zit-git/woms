@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { listContactsByCustomer, createContact, editContact, removeContact, setPrimaryContact } from '../lib/api';
+import { usePagination } from '../lib/usePagination';
+import Pagination from './Pagination';
 
 const SALUTATIONS = ['Mr.', 'Mrs.', 'Ms.', 'Dr.', 'Other'];
 const EMPTY = { salutation: 'Mr.', first_name: '', last_name: '', email: '', phone: '' };
@@ -74,6 +76,8 @@ export default function ContactList({ customerId }) {
       .finally(() => setBusyId(null));
   };
 
+  const pager = usePagination(contacts);
+
   return (
     <div className="card">
       <div className="toolbar">
@@ -135,6 +139,7 @@ export default function ContactList({ customerId }) {
       ) : contacts.length === 0 ? (
         <p className="muted small">No contacts added yet.</p>
       ) : (
+        <>
         <table>
           <thead>
             <tr>
@@ -145,7 +150,7 @@ export default function ContactList({ customerId }) {
             </tr>
           </thead>
           <tbody>
-            {contacts.map((c) =>
+            {pager.pageRows.map((c) =>
               editingId === c.ROWID ? (
                 <tr key={c.ROWID}>
                   <td style={{ display: 'flex', gap: 6 }}>
@@ -216,6 +221,8 @@ export default function ContactList({ customerId }) {
             )}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       )}
     </div>
   );

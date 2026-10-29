@@ -12,6 +12,8 @@ import {
 import { ADMIN_ROLE, STAFF_LEVEL, WAREHOUSE_ROLES } from '../../lib/access';
 import { authRedirectUrl } from '../../lib/catalystClient';
 import AuditTrail from '../../components/AuditTrail';
+import { usePagination } from '../../lib/usePagination';
+import Pagination from '../../components/Pagination';
 
 const MODULE_ORDER = [
   'Customer Management',
@@ -104,6 +106,8 @@ export default function AdminPage() {
     run(() => createUserWarehouseRole({ app_user_id: userId, warehouse_id: newRow.warehouseId, business_role: newRow.role }));
   };
 
+  const pager = usePagination(users);
+
   return (
     <div>
       <div className="toolbar">
@@ -195,6 +199,7 @@ export default function AdminPage() {
       {!loading && (
         <>
           <h3>Users</h3>
+          <>
           <table>
             <thead>
               <tr>
@@ -205,7 +210,7 @@ export default function AdminPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => {
+              {pager.pageRows.map((u) => {
                 const isAdminUser = u.business_role === ADMIN_ROLE;
                 const mine = accessOf(u.ROWID);
                 return (
@@ -293,6 +298,8 @@ export default function AdminPage() {
               )}
             </tbody>
           </table>
+          <Pagination pager={pager} />
+          </>
 
           <h3 style={{ marginTop: 24 }}>Role Permissions</h3>
           <div style={{ overflowX: 'auto' }}>

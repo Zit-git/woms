@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { listTransporters, createTransporter, editTransporter, removeTransporter } from '../../lib/api';
 import SortableTh from '../../components/SortableTh';
+import Pagination from '../../components/Pagination';
+import { usePagination } from '../../lib/usePagination';
 import { useSortableData } from '../../lib/useSortableData';
 
 const EMPTY = { name: '', contact_person: '', phone: '', vehicle_registration: '' };
@@ -14,6 +16,7 @@ export default function TransportersPage() {
   const [saving, setSaving] = useState(false);
 
   const { sorted, toggleSort, arrowFor } = useSortableData(transporters, 'name');
+  const pager = usePagination(sorted);
 
   const load = () => {
     setLoading(true);
@@ -102,6 +105,7 @@ export default function TransportersPage() {
       {loading ? (
         <p className="muted">Loading...</p>
       ) : (
+        <>
         <table>
           <thead>
             <tr>
@@ -114,7 +118,7 @@ export default function TransportersPage() {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((t) => (
+            {pager.pageRows.map((t) => (
               <tr key={t.ROWID}>
                 <td>{t.name}</td>
                 <td>{t.contact_person}</td>
@@ -142,6 +146,8 @@ export default function TransportersPage() {
             )}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       )}
     </div>
   );

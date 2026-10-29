@@ -6,6 +6,8 @@ import QrCodeImage from '../../components/QrCodeImage';
 import DocumentsSummary from '../../components/DocumentsSummary';
 import LazySection from '../../components/LazySection';
 import { fixed2, decimal2 } from '../../lib/format';
+import { usePagination } from '../../lib/usePagination';
+import Pagination from '../../components/Pagination';
 
 // Plain read-only record view, used by InboundMaster regardless of status --
 // the one action button opens whichever stage popup is contextually next
@@ -42,6 +44,10 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
   });
   const packedByLine = new Map();
   (huContents || []).forEach((h) => packedByLine.set(String(h.inbound_line_id), (packedByLine.get(String(h.inbound_line_id)) || 0) + h.qty));
+
+  const pagerLines = usePagination(lines);
+
+  const pagerHus = usePagination(cargoRows);
 
   return (
     <div className="card">
@@ -165,6 +171,7 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
 
       <h3 style={{ marginTop: 24 }}>Line Items</h3>
       <div style={{ overflowX: 'auto' }}>
+        <>
         <table>
           <thead>
             <tr>
@@ -179,7 +186,7 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
             </tr>
           </thead>
           <tbody>
-            {lines.map((l) => (
+            {pagerLines.pageRows.map((l) => (
               <tr key={l.ROWID}>
                 <td>{l.line_no}</td>
                 <td>{l.unit}</td>
@@ -200,6 +207,8 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
             )}
           </tbody>
         </table>
+        <Pagination pager={pagerLines} />
+        </>
       </div>
 
       <div className="toolbar" style={{ marginTop: 24 }}>
@@ -216,6 +225,7 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
         </p>
       ) : (
         <div style={{ overflowX: 'auto' }}>
+          <>
           <table>
             <thead>
               <tr>
@@ -230,7 +240,7 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
               </tr>
             </thead>
             <tbody>
-              {cargoRows.map((c) => (
+              {pagerHus.pageRows.map((c) => (
                 <tr key={c.ROWID}>
                   <td>
                     <strong>{advice.inbound_reference ? `${advice.inbound_reference}-${String(c.outer_package_no || '').padStart(3, '0')}` : c.outer_package_no}</strong>
@@ -274,6 +284,8 @@ export default function InboundDetailView({ advice, lines, cargoRows, huContents
               ))}
             </tbody>
           </table>
+          <Pagination pager={pagerHus} />
+          </>
         </div>
       )}
 

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { listAuditLogForModule } from '../lib/api';
+import { usePagination } from '../lib/usePagination';
+import Pagination from './Pagination';
 
 // modules: one module name or an array of related module tags (e.g. a
 // record's own module plus its "... Photos" upload tag). recordId: if set,
@@ -18,6 +20,8 @@ export default function AuditTrail({ modules, recordId, title = 'Audit Trail' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(modules), recordId]);
 
+  const pager = usePagination(log);
+
   return (
     <div className="card">
       <h3>{title}</h3>
@@ -27,6 +31,7 @@ export default function AuditTrail({ modules, recordId, title = 'Audit Trail' })
       ) : log.length === 0 ? (
         <p className="muted small">No audit entries yet.</p>
       ) : (
+        <>
         <table>
           <thead>
             <tr>
@@ -36,7 +41,7 @@ export default function AuditTrail({ modules, recordId, title = 'Audit Trail' })
             </tr>
           </thead>
           <tbody>
-            {log.map((l) => (
+            {pager.pageRows.map((l) => (
               <tr key={l.ROWID}>
                 <td>{l.event_timestamp}</td>
                 <td>{l.user_id || <span className="muted">—</span>}</td>
@@ -45,6 +50,8 @@ export default function AuditTrail({ modules, recordId, title = 'Audit Trail' })
             ))}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       )}
     </div>
   );

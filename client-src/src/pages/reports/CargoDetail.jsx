@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import Pagination from '../../components/Pagination';
+import { usePagination } from '../../lib/usePagination';
 import { useParams, Link } from 'react-router-dom';
 import { getCargoTimeline } from '../../lib/api';
 
@@ -16,23 +18,24 @@ export default function CargoDetail() {
       .finally(() => setLoading(false));
   }, [cargoId]);
 
-  if (loading) return <p className="muted">Loading...</p>;
-  if (error) return <div className="error-text">{error}</div>;
-  if (!data?.cargo) return <p className="error-text">Cargo not found.</p>;
-
-  const { cargo, movements, scans } = data;
-
   // Merge movement + scan events into one chronological timeline.
   const events = [
-    ...movements.map((m) => ({
+    ...(data?.movements || []).map((m) => ({
       timestamp: m.movement_timestamp,
       label: `${m.movement_type} — by ${m.moved_by || 'unknown'}${m.to_location_id ? ` → location #${m.to_location_id}` : ''}`,
     })),
-    ...scans.map((s) => ({
+    ...(data?.scans || []).map((s) => ({
       timestamp: s.scan_timestamp,
       label: `Scanned (${s.scan_context}) — by ${s.scanned_by || 'unknown'}`,
     })),
   ].sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+  const pager = usePagination(events);
+
+  if (loading) return <p className="muted">Loading...</p>;
+  if (error) return <div className="error-text">{error}</div>;
+  if (!data?.cargo) return <p className="error-text">Cargo not found.</p>;
+
+  const { cargo } = data;
 
   return (
     <div>
@@ -62,6 +65,7 @@ export default function CargoDetail() {
       {events.length === 0 ? (
         <p className="muted small">No movement or scan history recorded yet.</p>
       ) : (
+        <>
         <table>
           <thead>
             <tr>
@@ -70,7 +74,7 @@ export default function CargoDetail() {
             </tr>
           </thead>
           <tbody>
-            {events.map((e, i) => (
+            {pager.pageRows.map((e, i) => (
               <tr key={i}>
                 <td>{e.timestamp}</td>
                 <td>{e.label}</td>
@@ -78,6 +82,8 @@ export default function CargoDetail() {
             ))}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       )}
     </div>
   );

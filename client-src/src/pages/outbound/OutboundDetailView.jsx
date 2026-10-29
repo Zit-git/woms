@@ -4,6 +4,8 @@ import AuditTrail from '../../components/AuditTrail';
 import DocumentsSummary from '../../components/DocumentsSummary';
 import LazySection from '../../components/LazySection';
 import { ginNumber, ginStatus } from '../../lib/documents';
+import { usePagination } from '../../lib/usePagination';
+import Pagination from '../../components/Pagination';
 
 // Plain read-only record view, used by OutboundMaster regardless of stage --
 // the buttons open whichever stage popup is next, they don't edit in place.
@@ -24,6 +26,8 @@ export default function OutboundDetailView({ request, pickTasks, dispatches, loc
   if (request.inbound_advice_id && !inbounds.has(String(request.inbound_advice_id))) {
     inbounds.set(String(request.inbound_advice_id), { id: request.inbound_advice_id, reference: request.source_inbound_reference, hus: 0 });
   }
+
+  const pager = usePagination(pickTasks);
 
   return (
     <div className="card">
@@ -128,6 +132,7 @@ export default function OutboundDetailView({ request, pickTasks, dispatches, loc
 
       <h3>Goods ({pickTasks.length})</h3>
       <div style={{ overflowX: 'auto' }}>
+        <>
         <table>
           <thead>
             <tr>
@@ -142,7 +147,7 @@ export default function OutboundDetailView({ request, pickTasks, dispatches, loc
             </tr>
           </thead>
           <tbody>
-            {pickTasks.map((t) => {
+            {pager.pageRows.map((t) => {
               const loc = locations.get(String(t.cargo_location_id));
               return (
                 <tr key={t.ROWID}>
@@ -178,6 +183,8 @@ export default function OutboundDetailView({ request, pickTasks, dispatches, loc
             )}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       </div>
 
       <LazySection><DocumentsSummary linkedModules={['Outbound Operations', 'Outbound Operations Photos']} recordId={request.ROWID} title="Documents" /></LazySection>

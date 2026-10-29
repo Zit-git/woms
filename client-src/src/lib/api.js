@@ -190,6 +190,10 @@ export const listPackageTypes = () => getAllRows(TABLES.PACKAGE_TYPES);
 export const createPackageType = (row) => addRow(TABLES.PACKAGE_TYPES, row);
 export const editPackageType = (row) => updateRow(TABLES.PACKAGE_TYPES, row);
 export const removePackageType = (rowId) => deleteRow(TABLES.PACKAGE_TYPES, rowId);
+// How many Handling Units and line items carry this type's name. Goods are matched to a type by that name, so a
+// type that is in use cannot be renamed without leaving them unmatched.
+export const countPackageTypeUsage = (name) =>
+  Promise.all([countOf('Cargo', 'ROWID', `unit = '${sqlText(name)}'`), countOf('InboundLine', 'ROWID', `unit = '${sqlText(name)}'`)]).then(([hus, lines]) => ({ hus, lines, total: hus + lines }));
 
 // Full zone -> aisle -> rack -> location hierarchy for one warehouse, with
 // each location flagged occupied/empty from current Cargo placements.

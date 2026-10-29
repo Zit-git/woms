@@ -2,6 +2,8 @@ import { useState } from 'react';
 import Modal from '../../../components/Modal';
 import { addPickLine, removePickTask } from '../../../lib/api';
 import { useAuth } from '../../../context/AuthContext';
+import { usePagination } from '../../../lib/usePagination';
+import Pagination from '../../../components/Pagination';
 
 // Stage: choose which of the customer's Handling Units leave on this outbound.
 export default function GoodsPopup({ request, pickTasks, availableCargo, locations, reload, setError, onClose }) {
@@ -44,6 +46,8 @@ export default function GoodsPopup({ request, pickTasks, availableCargo, locatio
       .finally(() => setBusy(false));
   };
 
+  const pager = usePagination(pickTasks);
+
   return (
     <Modal title={`Select goods: ${request.outbound_reference || `#${request.ROWID}`}`} onClose={onClose} wide>
       <p className="muted small" style={{ marginTop: -8 }}>
@@ -85,6 +89,7 @@ export default function GoodsPopup({ request, pickTasks, availableCargo, locatio
       {!availableCargo.length && <p className="muted small">{request.inbound_advice_id ? 'No Handling Units from this inbound are left to add.' : 'No available Handling Units for this customer.'}</p>}
 
       <h3 style={{ marginTop: 18 }}>On this outbound ({pickTasks.length})</h3>
+      <>
       <table>
         <thead>
           <tr>
@@ -96,7 +101,7 @@ export default function GoodsPopup({ request, pickTasks, availableCargo, locatio
           </tr>
         </thead>
         <tbody>
-          {pickTasks.map((t) => (
+          {pager.pageRows.map((t) => (
             <tr key={t.ROWID}>
               <td>{t.cargo_hu_no || '—'}</td>
               <td>{t.cargo_description}</td>
@@ -122,6 +127,8 @@ export default function GoodsPopup({ request, pickTasks, availableCargo, locatio
           )}
         </tbody>
       </table>
+      <Pagination pager={pager} />
+      </>
 
       <div className="form-actions" style={{ justifyContent: 'flex-end' }}>
         <button className="btn" onClick={onClose}>

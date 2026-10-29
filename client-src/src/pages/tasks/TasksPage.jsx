@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { listTasks, createTask, editTask } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
+import { usePagination } from '../../lib/usePagination';
+import Pagination from '../../components/Pagination';
 
 const STATUSES = ['Assigned', 'In Progress', 'Completed'];
 const PRIORITIES = ['Low', 'Medium', 'High'];
@@ -49,6 +51,7 @@ export default function TasksPage() {
   };
 
   const visible = filter === 'open' ? tasks.filter((t) => t.status !== 'Completed') : tasks;
+  const pager = usePagination(visible);
 
   return (
     <div>
@@ -117,6 +120,7 @@ export default function TasksPage() {
       {loading ? (
         <p className="muted">Loading...</p>
       ) : (
+        <>
         <table>
           <thead>
             <tr>
@@ -129,7 +133,7 @@ export default function TasksPage() {
             </tr>
           </thead>
           <tbody>
-            {visible.map((t) => (
+            {pager.pageRows.map((t) => (
               <tr key={t.ROWID}>
                 <td>{t.task_type}</td>
                 <td>{t.assigned_to}</td>
@@ -156,6 +160,8 @@ export default function TasksPage() {
             )}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       )}
     </div>
   );

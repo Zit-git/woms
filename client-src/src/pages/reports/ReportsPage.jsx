@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { listCargoRegister, listDispatchReport } from '../../lib/api';
+import { usePagination } from '../../lib/usePagination';
+import Pagination from '../../components/Pagination';
 
 const TABS = [
   { key: 'cargo', label: 'Cargo Register' },
@@ -28,6 +30,10 @@ export default function ReportsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const pagerCargo = usePagination(cargo);
+
+  const pagerDispatches = usePagination(dispatches);
+
   return (
     <div>
       <h2>Reports & Dashboards</h2>
@@ -46,6 +52,7 @@ export default function ReportsPage() {
       {loading ? (
         <p className="muted">Loading...</p>
       ) : tab === 'cargo' ? (
+        <>
         <table>
           <thead>
             <tr>
@@ -58,7 +65,7 @@ export default function ReportsPage() {
             </tr>
           </thead>
           <tbody>
-            {cargo.map((c) => (
+            {pagerCargo.pageRows.map((c) => (
               <tr key={c.ROWID} className="clickable-row" onClick={() => navigate(`/cargo/${c.ROWID}`)}>
                 <td>{c.customer_name}</td>
                 <td>{c.description}</td>
@@ -81,7 +88,10 @@ export default function ReportsPage() {
             )}
           </tbody>
         </table>
+        <Pagination pager={pagerCargo} />
+        </>
       ) : (
+        <>
         <table>
           <thead>
             <tr>
@@ -94,7 +104,7 @@ export default function ReportsPage() {
             </tr>
           </thead>
           <tbody>
-            {dispatches.map((d) => (
+            {pagerDispatches.pageRows.map((d) => (
               <tr key={d.ROWID}>
                 <td>#{d.outbound_request_id}</td>
                 <td>{d.customer_name}</td>
@@ -115,6 +125,8 @@ export default function ReportsPage() {
             )}
           </tbody>
         </table>
+        <Pagination pager={pagerDispatches} />
+        </>
       )}
     </div>
   );

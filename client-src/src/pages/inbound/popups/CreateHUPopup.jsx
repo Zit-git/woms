@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import Modal from '../../../components/Modal';
 import { createHandlingUnit, deleteHandlingUnit, listPackageTypes } from '../../../lib/api';
 import { decimal2 } from '../../../lib/format';
+import { usePagination } from '../../../lib/usePagination';
+import Pagination from '../../../components/Pagination';
 
 const DEFAULT_HU_TYPES = ['Pallet', 'Box', 'Crate', 'Carton', 'Bag', 'Drum', 'Roll', 'Other'];
 
@@ -145,6 +147,8 @@ export default function CreateHUPopup({ advice, lines, cargoRows, huContents, re
       .finally(() => setBusy(false));
   };
 
+  const pager = usePagination(cargoRows);
+
   return (
     <Modal title={`Create Handling Units: ${advice.inbound_reference || ''}`} onClose={onClose} wide>
       {error && <div className="error-text">{error}</div>}
@@ -247,6 +251,7 @@ export default function CreateHUPopup({ advice, lines, cargoRows, huContents, re
 
       <div className="form-section-title">Handling Units ({cargoRows.length})</div>
       <div style={{ overflowX: 'auto' }}>
+        <>
         <table>
           <thead>
             <tr>
@@ -259,7 +264,7 @@ export default function CreateHUPopup({ advice, lines, cargoRows, huContents, re
             </tr>
           </thead>
           <tbody>
-            {cargoRows.map((c) => (
+            {pager.pageRows.map((c) => (
               <tr key={c.ROWID}>
                 <td><strong>{huLabel(advice, c)}</strong></td>
                 <td>{c.unit}</td>
@@ -287,6 +292,8 @@ export default function CreateHUPopup({ advice, lines, cargoRows, huContents, re
             )}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       </div>
 
       <div className="form-actions" style={{ justifyContent: 'flex-end', marginTop: 16 }}>

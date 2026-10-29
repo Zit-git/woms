@@ -6,6 +6,8 @@ import { computeInboundSummary } from '../../../lib/inboundSummary';
 import RecordTasks from '../../../components/RecordTasks';
 import AuditTrail from '../../../components/AuditTrail';
 import { fixed2, decimal2 } from '../../../lib/format';
+import { usePagination } from '../../../lib/usePagination';
+import Pagination from '../../../components/Pagination';
 
 // Stage: final review before generating the GRN -- HUs (and their QR labels)
 // were created one stage earlier (CreateHUPopup).
@@ -24,6 +26,8 @@ export default function CheckPopup({ advice, lines, cargoRows, transporters, sup
       .then(onClose)
       .finally(() => setCompleting(false));
   };
+
+  const pager = usePagination(lines);
 
   return (
     <Modal title={`Check: ${advice.inbound_reference || ''}`} onClose={onClose} wide>
@@ -75,6 +79,7 @@ export default function CheckPopup({ advice, lines, cargoRows, transporters, sup
 
       <h3>Line Items Overview</h3>
       <div style={{ overflowX: 'auto' }}>
+        <>
         <table>
           <thead>
             <tr>
@@ -88,7 +93,7 @@ export default function CheckPopup({ advice, lines, cargoRows, transporters, sup
             </tr>
           </thead>
           <tbody>
-            {lines.map((c) => (
+            {pager.pageRows.map((c) => (
               <tr key={c.ROWID}>
                 <td>{c.line_no}</td>
                 <td>{c.unit}</td>
@@ -103,6 +108,8 @@ export default function CheckPopup({ advice, lines, cargoRows, transporters, sup
             ))}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       </div>
 
       <div className="check-block" style={{ marginTop: 16 }}>

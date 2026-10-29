@@ -23,6 +23,8 @@ import {
   listPackageTypes,
   createPackageType,
   removePackageType,
+  editPackageType,
+  countPackageTypeUsage,
   getWarehouseMap,
   listHusInLocation,
   listCapacityLocations,
@@ -36,9 +38,11 @@ import { accessibleWarehouses, scopeByWarehouse } from '../../lib/access';
 import { fixed2, decimal2 } from '../../lib/format';
 import RackLevels from '../../components/RackLevels';
 import { locationLabelsPath } from '../../lib/labels';
+import Pagination from '../../components/Pagination';
+import { usePagination } from '../../lib/usePagination';
+import { CAPACITY_UNITS, validatePackageType } from '../../lib/packageTypes';
 
 const TABS = ['Warehouses', 'Zones', 'Aisles', 'Racks', 'Storage Locations', 'Package Types', 'Map', 'Availability'];
-const CAPACITY_UNITS = ['Pallet Positions', 'Cartons', 'Crates', 'm²', 'm³', 'Other'];
 const LOCATION_STATUSES = ['Available', 'Reserved', 'Blocked'];
 
 function useList(loader, deps) {
@@ -110,6 +114,8 @@ function WarehousesTab() {
       });
   };
 
+  const pager = usePagination(items);
+
   return (
     <div>
       {isAdmin && <form className="card" onSubmit={add}>
@@ -132,6 +138,7 @@ function WarehousesTab() {
       {loading ? (
         <p className="muted">Loading...</p>
       ) : (
+        <>
         <table>
           <thead>
             <tr>
@@ -142,7 +149,7 @@ function WarehousesTab() {
             </tr>
           </thead>
           <tbody>
-            {items.map((w) =>
+            {pager.pageRows.map((w) =>
               editingId === w.ROWID ? (
                 <tr key={w.ROWID}>
                   <td>
@@ -199,6 +206,8 @@ function WarehousesTab() {
             )}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       )}
     </div>
   );
@@ -571,6 +580,8 @@ function ZonesTab() {
     });
   };
 
+  const pager = usePagination(items);
+
   return (
     <div>
       <div className="form-row" style={{ maxWidth: 300 }}>
@@ -605,6 +616,7 @@ function ZonesTab() {
       {loading ? (
         <p className="muted">Loading...</p>
       ) : (
+        <>
         <table>
           <thead>
             <tr>
@@ -614,7 +626,7 @@ function ZonesTab() {
             </tr>
           </thead>
           <tbody>
-            {items.map((z) => (
+            {pager.pageRows.map((z) => (
               <tr key={z.ROWID}>
                 <td>{z.name}</td>
                 <td>{z.zone_type}</td>
@@ -634,6 +646,8 @@ function ZonesTab() {
             )}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       )}
     </div>
   );
@@ -662,6 +676,8 @@ function AislesTab() {
       reload();
     });
   };
+
+  const pager = usePagination(items);
 
   return (
     <div>
@@ -703,6 +719,7 @@ function AislesTab() {
       {loading ? (
         <p className="muted">Loading...</p>
       ) : (
+        <>
         <table>
           <thead>
             <tr>
@@ -711,7 +728,7 @@ function AislesTab() {
             </tr>
           </thead>
           <tbody>
-            {items.map((a) => (
+            {pager.pageRows.map((a) => (
               <tr key={a.ROWID}>
                 <td>{a.name}</td>
                 <td>
@@ -730,6 +747,8 @@ function AislesTab() {
             )}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       )}
     </div>
   );
@@ -763,6 +782,8 @@ function RacksTab() {
       reload();
     });
   };
+
+  const pager = usePagination(items);
 
   return (
     <div>
@@ -814,6 +835,7 @@ function RacksTab() {
       {loading ? (
         <p className="muted">Loading...</p>
       ) : (
+        <>
         <table>
           <thead>
             <tr>
@@ -822,7 +844,7 @@ function RacksTab() {
             </tr>
           </thead>
           <tbody>
-            {items.map((r) => (
+            {pager.pageRows.map((r) => (
               <tr key={r.ROWID}>
                 <td>{r.code}</td>
                 <td>
@@ -841,6 +863,8 @@ function RacksTab() {
             )}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       )}
     </div>
   );
@@ -918,6 +942,8 @@ function LocationsTab() {
   const byPosition = [...items].sort(
     (a, b) => (Number(a.bay) || 0) - (Number(b.bay) || 0) || (Number(a.rack_level) || 0) - (Number(b.rack_level) || 0) || String(a.location_code).localeCompare(String(b.location_code))
   );
+
+  const pager = usePagination(byPosition);
 
   return (
     <div>
@@ -1035,6 +1061,7 @@ function LocationsTab() {
       {loading ? (
         <p className="muted">Loading...</p>
       ) : (
+        <>
         <table>
           <thead>
             <tr>
@@ -1050,7 +1077,7 @@ function LocationsTab() {
             </tr>
           </thead>
           <tbody>
-            {byPosition.map((l) => (
+            {pager.pageRows.map((l) => (
               <tr key={l.ROWID}>
                 <td>{l.location_code}</td>
                 <td>
@@ -1106,6 +1133,8 @@ function LocationsTab() {
             )}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       )}
     </div>
   );
@@ -1316,19 +1345,68 @@ function LocationPopup({ location, path, warehouseId, onClose }) {
 
 function PackageTypesTab() {
   const { items, loading, error, reload } = useList(listPackageTypes, []);
+  const pager = usePagination(items);
   const [name, setName] = useState('');
   const [capacityUnit, setCapacityUnit] = useState(CAPACITY_UNITS[0]);
   const [unitsPerItem, setUnitsPerItem] = useState('1');
+  const [formError, setFormError] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [usage, setUsage] = useState(null); // { hus, lines, total } for the type being edited; null while it is being counted
+  const [busyId, setBusyId] = useState(null);
 
   const add = (e) => {
     e.preventDefault();
-    if (!name.trim()) return;
-    createPackageType({ name, capacity_unit: capacityUnit, units_per_item: Number(unitsPerItem) || 1, status: 'Active' }).then(() => {
-      setName('');
-      setUnitsPerItem('1');
-      reload();
-    });
+    const problem = validatePackageType({ name, units_per_item: unitsPerItem }, items);
+    setFormError(problem);
+    if (problem) return;
+    createPackageType({ name: name.trim(), capacity_unit: capacityUnit, units_per_item: Number(unitsPerItem), status: 'Active' })
+      .then(() => {
+        setName('');
+        setUnitsPerItem('1');
+        reload();
+      })
+      .catch((err) => setFormError(err.message || String(err)));
   };
+
+  const startEdit = (p) => {
+    setFormError('');
+    setEditingId(p.ROWID);
+    setEditForm({ name: p.name || '', capacity_unit: p.capacity_unit || CAPACITY_UNITS[0], units_per_item: String(p.units_per_item ?? 1), status: p.status || 'Active' });
+    setUsage(null);
+    countPackageTypeUsage(p.name)
+      .then(setUsage)
+      .catch(() => setUsage({ hus: 0, lines: 0, total: 0, unknown: true }));
+  };
+
+  const stopEdit = () => {
+    setEditingId(null);
+    setFormError('');
+  };
+
+  const saveEdit = () => {
+    const problem = validatePackageType(editForm, items, editingId);
+    setFormError(problem);
+    if (problem) return;
+    setBusyId(editingId);
+    editPackageType({
+      ROWID: editingId,
+      name: editForm.name.trim(),
+      capacity_unit: editForm.capacity_unit,
+      units_per_item: Number(editForm.units_per_item),
+      status: editForm.status,
+    })
+      .then(() => {
+        stopEdit();
+        reload();
+      })
+      .catch((err) => setFormError(err.message || String(err)))
+      .finally(() => setBusyId(null));
+  };
+
+  // The name is how goods find their type, so it is fixed while goods carry it (and until that count is known).
+  const nameLocked = !usage || usage.total > 0 || usage.unknown;
+  const unitOptions = (current) => (CAPACITY_UNITS.includes(current) || !current ? CAPACITY_UNITS : [...CAPACITY_UNITS, current]);
 
   return (
     <div>
@@ -1360,48 +1438,109 @@ function PackageTypesTab() {
       </form>
 
       {error && <div className="error-text">{error}</div>}
+      {formError && (
+        <div className="error-text" role="alert">
+          {formError}
+        </div>
+      )}
       {loading ? (
         <p className="muted">Loading...</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Capacity Unit</th>
-              <th>Units / Item</th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((p) => (
-              <tr key={p.ROWID}>
-                <td>{p.name}</td>
-                <td>{p.capacity_unit || <span className="muted">—</span>}</td>
-                <td>{decimal2(p.units_per_item ?? 1)}</td>
-                <td>
-                  <span className="status-badge">{p.status}</span>
-                </td>
-                <td>
-                  <button
-                    className="link-btn"
-                    style={{ color: 'var(--danger)' }}
-                    onClick={() => removePackageType(p.ROWID).then(reload)}
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {items.length === 0 && (
+        <>
+          <table>
+            <thead>
               <tr>
-                <td colSpan={5} className="muted">
-                  No package types configured yet.
-                </td>
+                <th>Name</th>
+                <th>Capacity Unit</th>
+                <th>Units / Item</th>
+                <th>Status</th>
+                <th></th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {pager.pageRows.map((p) =>
+                editingId === p.ROWID ? (
+                  <tr key={p.ROWID}>
+                    <td>
+                      <input
+                        aria-label="Name"
+                        value={editForm.name}
+                        disabled={nameLocked}
+                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                      />
+                      {usage && usage.total > 0 && (
+                        <div className="muted small">
+                          In use by {usage.hus} Handling Unit{usage.hus === 1 ? '' : 's'} and {usage.lines} line item{usage.lines === 1 ? '' : 's'}, so the name stays as it is. Goods are matched to their type by name.
+                        </div>
+                      )}
+                      {usage && usage.unknown && <div className="muted small">Could not check where this type is used, so the name stays as it is.</div>}
+                      {!usage && <div className="muted small">Checking where this type is used...</div>}
+                    </td>
+                    <td>
+                      <select aria-label="Capacity unit" value={editForm.capacity_unit} onChange={(e) => setEditForm({ ...editForm, capacity_unit: e.target.value })}>
+                        {unitOptions(editForm.capacity_unit).map((u) => (
+                          <option key={u} value={u}>
+                            {u}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        aria-label="Units per item"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editForm.units_per_item}
+                        onChange={(e) => setEditForm({ ...editForm, units_per_item: e.target.value })}
+                      />
+                      {usage && usage.total > 0 && <div className="muted small">Changes the capacity used by goods already in the warehouse.</div>}
+                    </td>
+                    <td>
+                      <select aria-label="Status" value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                      </select>
+                    </td>
+                    <td>
+                      <button className="link-btn" onClick={saveEdit} disabled={busyId === p.ROWID}>
+                        Save
+                      </button>{' '}
+                      <button className="link-btn" onClick={stopEdit}>
+                        Cancel
+                      </button>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={p.ROWID}>
+                    <td>{p.name}</td>
+                    <td>{p.capacity_unit || <span className="muted">—</span>}</td>
+                    <td>{decimal2(p.units_per_item ?? 1)}</td>
+                    <td>
+                      <span className="status-badge">{p.status}</span>
+                    </td>
+                    <td>
+                      <button className="link-btn" onClick={() => startEdit(p)}>
+                        Edit
+                      </button>{' '}
+                      <button className="link-btn" style={{ color: 'var(--danger)' }} onClick={() => removePackageType(p.ROWID).then(reload)}>
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                )
+              )}
+              {items.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="muted">
+                    No package types configured yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          <Pagination pager={pager} />
+        </>
       )}
     </div>
   );

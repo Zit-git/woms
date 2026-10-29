@@ -14,6 +14,8 @@ import { computeCapacity } from '../../../lib/capacity';
 import { todayStr } from '../../../lib/dates';
 import { allocateLocations, putawayConflicts } from '../../../lib/allocation';
 import { fixed2 } from '../../../lib/format';
+import Pagination from '../../../components/Pagination';
+import { usePagination } from '../../../lib/usePagination';
 
 
 // Stage: Put-away, done from inside the inbound. Shows what the warehouse
@@ -39,6 +41,7 @@ export default function PutawayPopup({ advice, cargoRows, reloadCargo, patchAdvi
 
   const pending = cargoRows.filter((c) => !c.current_location_id);
   const placed = cargoRows.filter((c) => c.current_location_id);
+  const pager = usePagination([...placed, ...pending]);
 
   const locationsInWarehouse = useMemo(
     () => (data ? data.locations.filter((l) => !advice.warehouse_id || String(l.warehouse_id) === String(advice.warehouse_id)) : []),
@@ -185,7 +188,7 @@ export default function PutawayPopup({ advice, cargoRows, reloadCargo, patchAdvi
             </tr>
           </thead>
           <tbody>
-            {placed.map((c) => (
+            {pager.pageRows.filter((c) => c.current_location_id).map((c) => (
               <tr key={c.ROWID}>
                 <td data-label="HU">{c.outer_package_no}</td>
                 <td data-label="Description">{c.description}</td>
@@ -195,7 +198,7 @@ export default function PutawayPopup({ advice, cargoRows, reloadCargo, patchAdvi
                 </td>
               </tr>
             ))}
-            {pending.map((c) => {
+            {pager.pageRows.filter((c) => !c.current_location_id).map((c) => {
               const suggested = suggestions.get(String(c.ROWID));
               return (
                 <tr key={c.ROWID}>
@@ -224,6 +227,7 @@ export default function PutawayPopup({ advice, cargoRows, reloadCargo, patchAdvi
             )}
           </tbody>
         </table>
+      <Pagination pager={pager} />
       </div>
 
       <div className="form-actions" style={{ justifyContent: 'flex-end', marginTop: 16 }}>

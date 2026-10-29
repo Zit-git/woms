@@ -16,6 +16,8 @@ import { decimal2 } from '../../lib/format';
 import { sameCode } from '../../lib/scanning';
 import { labelsPath, locationIdFromCode } from '../../lib/labels';
 import LocationMapPicker from '../../components/LocationMapPicker';
+import Pagination from '../../components/Pagination';
+import { usePagination } from '../../lib/usePagination';
 
 
 const QrScannerModal = lazy(() => import('../../components/QrScannerModal'));
@@ -140,7 +142,7 @@ export default function StoragePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowsForTab, customerFilter, locationFilter, search, tab, locById]);
 
-  const groups = useMemo(() => {
+  const allGroups = useMemo(() => {
     if (groupBy === 'none') return [{ key: 'all', title: null, subtitle: '', rows: filtered }];
     const map = new Map();
     filtered.forEach((c) => {
@@ -160,6 +162,14 @@ export default function StoragePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtered, groupBy, tab, locById]);
 
+  // Pages are cut from the rows in the order the groups show them; each group then shows its rows on this page.
+  const ordered = useMemo(() => allGroups.flatMap((g) => g.rows), [allGroups]);
+  const pager = usePagination(ordered);
+  const groups = useMemo(() => {
+    const onPage = new Set(pager.pageRows);
+    return allGroups.map((g) => ({ ...g, rows: g.rows.filter((r) => onPage.has(r)) })).filter((g) => g.rows.length > 0);
+  }, [allGroups, pager.pageRows]);
+
   const switchTab = (key) => {
     setTab(key);
     setSelected(new Set());
@@ -176,8 +186,15 @@ export default function StoragePage() {
       else next.add(k);
       return next;
     });
-  const allSelected = filtered.length > 0 && filtered.every((c) => selected.has(String(c.ROWID)));
-  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(filtered.map((c) => String(c.ROWID))));
+  // "Select all" means the rows on the page in view, so nothing is ticked that the person cannot see.
+  const pageIds = pager.pageRows.map((c) => String(c.ROWID));
+  const allSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+  const toggleAll = () =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      pageIds.forEach((id) => (allSelected ? next.delete(id) : next.add(id)));
+      return next;
+    });
 
   const openPicker = (mode, ids, defaultLocationId) => {
     setAction({ mode, ids: ids.map(String) });
@@ -508,6 +525,7 @@ export default function StoragePage() {
           )}
         </tbody>
       </table>
+      <Pagination pager={pager} />
     </div>
   );
 }

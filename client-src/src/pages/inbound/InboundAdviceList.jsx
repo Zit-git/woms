@@ -3,6 +3,8 @@ import { inboundMatchesQuery } from '../../lib/scanning';
 import { useNavigate } from 'react-router-dom';
 import { listInboundAdvice, listCargoStatusForAllAdvices, listLineTotalsForAllAdvices, listCustomers, startNewInboundAdvice } from '../../lib/api';
 import SortableTh from '../../components/SortableTh';
+import Pagination from '../../components/Pagination';
+import { usePagination } from '../../lib/usePagination';
 import { useSortableData } from '../../lib/useSortableData';
 import { useAuth } from '../../context/AuthContext';
 import { FULFILLMENT_STATUSES, computeFulfillmentStatus, fulfillmentStatusClass } from '../../lib/fulfillmentStatus';
@@ -84,6 +86,7 @@ export default function InboundAdviceList() {
     [advices, customerFilter, statusFilter, dateMode, customFrom, customTo, query]
   );
   const { sorted, toggleSort, arrowFor } = useSortableData(filtered);
+  const pager = usePagination(sorted);
 
   const canCreate = creatableWarehouses.length > 0;
   // A new inbound belongs to the warehouse chosen in the sidebar (or the user's only one).
@@ -197,6 +200,7 @@ export default function InboundAdviceList() {
       {loading ? (
         <p className="muted">Loading...</p>
       ) : (
+        <>
         <table>
           <thead>
             <tr>
@@ -211,7 +215,7 @@ export default function InboundAdviceList() {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((a) => (
+            {pager.pageRows.map((a) => (
               <tr key={a.ROWID} className="clickable-row" onClick={() => navigate(`/inbound/${a.ROWID}`)}>
                 <td>{a.inbound_reference || a.reference_number || <span className="muted">—</span>}</td>
                 <td>{a.customer_name}</td>
@@ -238,6 +242,8 @@ export default function InboundAdviceList() {
             )}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       )}
     </div>
   );

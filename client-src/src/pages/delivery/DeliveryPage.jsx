@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { listDeliveryGoods, markCargoDelivered } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { decimal2 } from '../../lib/format';
+import Pagination from '../../components/Pagination';
+import { usePagination } from '../../lib/usePagination';
 
 const TABS = [
   { key: 'Dispatched', label: 'In Transit' },
@@ -77,7 +79,7 @@ export default function DeliveryPage() {
     });
   }, [visible, customerFilter, dateFrom, dateTo, search]);
 
-  const groups = useMemo(() => {
+  const allGroups = useMemo(() => {
     if (groupBy === 'none') return [{ key: 'all', title: null, rows: filtered }];
     const map = new Map();
     filtered.forEach((r) => {
@@ -87,6 +89,14 @@ export default function DeliveryPage() {
     });
     return [...map.entries()].map(([key, list]) => ({ key, title: key, rows: list })).sort((a, b) => a.title.localeCompare(b.title));
   }, [filtered, groupBy]);
+
+  // Pages are cut from the rows in the order the groups show them; each group then shows its rows on this page.
+  const ordered = useMemo(() => allGroups.flatMap((g) => g.rows), [allGroups]);
+  const pager = usePagination(ordered);
+  const groups = useMemo(() => {
+    const onPage = new Set(pager.pageRows);
+    return allGroups.map((g) => ({ ...g, rows: g.rows.filter((r) => onPage.has(r)) })).filter((g) => g.rows.length > 0);
+  }, [allGroups, pager.pageRows]);
 
   const switchTab = (key) => {
     setTab(key);
@@ -101,8 +111,15 @@ export default function DeliveryPage() {
       return next;
     });
   const canSelect = tab === 'Dispatched';
-  const allSelected = canSelect && filtered.length > 0 && filtered.every((r) => selected.has(String(r.ROWID)));
-  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(filtered.map((r) => String(r.ROWID))));
+  // "Select all" means the rows on the page in view, so nothing is ticked that the person cannot see.
+  const pageIds = pager.pageRows.map((r) => String(r.ROWID));
+  const allSelected = canSelect && pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+  const toggleAll = () =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      pageIds.forEach((id) => (allSelected ? next.delete(id) : next.add(id)));
+      return next;
+    });
 
   const loadOlder = () => {
     deliveredMax.current += 300;
@@ -298,6 +315,7 @@ export default function DeliveryPage() {
           )}
         </tbody>
       </table>
+      <Pagination pager={pager} />
 
       {tab === 'Delivered' && moreDelivered && (
         <p className="muted small" style={{ marginTop: 12 }}>

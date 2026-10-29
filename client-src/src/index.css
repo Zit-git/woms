@@ -949,3 +949,23 @@ tbody tr:last-child td { border-bottom: none; }
 /* Fallback sign-in link sits below the card, on the dark login background. */
 .login-card > .muted { color: #9fb0cc; }
 .login-card > .muted a { color: #bcd2ff; }
+
+/* ===== Pagination under tables ===== */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  flex-wrap: wrap;
+  padding: 12px 2px 2px;
+}
+.pagination-info { display: flex; align-items: center; gap: 14px; }
+.pagination-controls { display: flex; align-items: center; gap: 6px; }
+.pagination-controls .btn { padding: 6px 12px; min-width: 0; }
+.pagination-size { display: inline-flex; align-items: center; gap: 6px; }
+.pagination-size select { width: auto; min-width: 68px; padding: 5px 24px 5px 10px; }
+.pagination-page { padding: 0 6px; white-space: nowrap; }
+@media (max-width: 768px) {
+  .pagination { flex-direction: column; justify-content: center; gap: 10px; }
+  .pagination-edge { display: none; }
+}

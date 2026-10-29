@@ -130,6 +130,13 @@ Result on the deployed /app/: unit tests 127; browser suite 39 passed before the
 
 Known limit: the print pages and the scanner's typed code were exercised on /app/ by in-app navigation; the legacy /app/ address cannot open a deep link such as /print/labels directly, Slate can.
 
+## 5c. Added 2026-10-29: paging and package type editing
+
+- **Paging.** Every list that can grow is shown a page at a time (25 by default; 10, 25, 50 or 100 on request): Customers, Transporters, Inbounds, Outbounds, Deliveries, Storage, Tasks, VAL, Reports, Users, Contacts, the customer's activity, the record timeline and audit trail, the Warehouse tabs, and the larger tables inside records and popups. The controls disappear when a list has 10 rows or fewer. "Select all" ticks only the rows on the page in view. Not paged on purpose: print pages (they must show everything), data-entry tables (line items, receiving quantities), and small summaries (capacity totals, the permission matrix).
+- **Package types** can be edited in place (capacity unit, units per item, status). The name is locked while Handling Units or line items carry it, because goods are matched to a type by name; a name another type already has, and an amount of zero or less, are refused.
+- **Tests added:** `e2e/pagination.spec.js` (real paging on the Inbounds list), `e2e/packageTypes.spec.js` (self-cleaning), unit tests for the validation rules and a guard that fails when a screen uses the paging code without importing it. That guard exists because a missing import took the Warehouses page down once during this work; the build does not catch it.
+- **Result:** 145 unit tests; browser suite all passing except the Slate-only checks. Do not run a second Playwright command while the suite is running: they share the `e2e/results` folder and the first one fails with `ENOENT`.
+
 ## 6. How to rerun
 
 ```

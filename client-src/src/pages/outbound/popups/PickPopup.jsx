@@ -3,6 +3,8 @@ import Modal from '../../../components/Modal';
 import { editPickTask, recordScan } from '../../../lib/api';
 import { useAuth } from '../../../context/AuthContext';
 import { pickLineForCode } from '../../../lib/scanning';
+import { usePagination } from '../../../lib/usePagination';
+import Pagination from '../../../components/Pagination';
 
 const QrScannerModal = lazy(() => import('../../../components/QrScannerModal'));
 
@@ -19,6 +21,7 @@ export default function PickPopup({ request, pickTasks, locations, reload, setEr
     const codeB = locations.get(String(b.cargo_location_id))?.code || '￿';
     return codeA.localeCompare(codeB, undefined, { numeric: true });
   });
+  const pager = usePagination(ordered);
   const pickedCount = pickTasks.filter((t) => t.status === 'Picked').length;
 
   // The camera stays open between scans, so the handler must see the pick list as it is now, not as it was
@@ -76,6 +79,7 @@ export default function PickPopup({ request, pickTasks, locations, reload, setEr
         </Suspense>
       )}
 
+      <>
       <table className="stack-on-phone">
         <thead>
           <tr>
@@ -88,7 +92,7 @@ export default function PickPopup({ request, pickTasks, locations, reload, setEr
           </tr>
         </thead>
         <tbody>
-          {ordered.map((t) => {
+          {pager.pageRows.map((t) => {
             const loc = locations.get(String(t.cargo_location_id));
             return (
               <tr key={t.ROWID}>
@@ -133,6 +137,8 @@ export default function PickPopup({ request, pickTasks, locations, reload, setEr
           )}
         </tbody>
       </table>
+      <Pagination pager={pager} />
+      </>
 
       <div className="form-actions" style={{ justifyContent: 'flex-end' }}>
         <button className="btn" onClick={onClose}>

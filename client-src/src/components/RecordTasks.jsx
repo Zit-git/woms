@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { listTasksForRecord, createTask, editTask, notifyEvent } from '../lib/api';
+import { usePagination } from '../lib/usePagination';
+import Pagination from './Pagination';
 
 const PRIORITIES = ['Low', 'Medium', 'High'];
 
@@ -54,6 +56,8 @@ export default function RecordTasks({ moduleRef, recordRefId }) {
       .then(load)
       .catch((err) => setError(err.message || String(err)));
   };
+
+  const pager = usePagination(tasks);
 
   return (
     <div className="card">
@@ -114,6 +118,7 @@ export default function RecordTasks({ moduleRef, recordRefId }) {
       ) : tasks.length === 0 ? (
         <p className="muted small">No tasks linked to this record yet.</p>
       ) : (
+        <>
         <table>
           <thead>
             <tr>
@@ -125,7 +130,7 @@ export default function RecordTasks({ moduleRef, recordRefId }) {
             </tr>
           </thead>
           <tbody>
-            {tasks.map((t) => (
+            {pager.pageRows.map((t) => (
               <tr key={t.ROWID}>
                 <td>{t.task_type}</td>
                 <td>{t.assigned_to}</td>
@@ -144,6 +149,8 @@ export default function RecordTasks({ moduleRef, recordRefId }) {
             ))}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       )}
     </div>
   );

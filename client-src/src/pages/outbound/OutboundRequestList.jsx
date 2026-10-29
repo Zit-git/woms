@@ -2,6 +2,8 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { listOutboundRequests, listPickStatusForAllRequests, createOutboundRequest, listCustomers, listTransporters, listWarehouses } from '../../lib/api';
 import SortableTh from '../../components/SortableTh';
+import Pagination from '../../components/Pagination';
+import { usePagination } from '../../lib/usePagination';
 import { useSortableData } from '../../lib/useSortableData';
 import { useAuth } from '../../context/AuthContext';
 import { accessibleWarehouses as scopeWarehouses } from '../../lib/access';
@@ -62,6 +64,7 @@ export default function OutboundRequestList() {
     else setError(`"${text}" is not a Pickup Pass code.`);
   };
   const { sorted, toggleSort, arrowFor } = useSortableData(shown);
+  const pager = usePagination(sorted);
 
   const load = () => {
     setLoading(true);
@@ -234,6 +237,7 @@ export default function OutboundRequestList() {
       {loading ? (
         <p className="muted">Loading...</p>
       ) : (
+        <>
         <table>
           <thead>
             <tr>
@@ -247,7 +251,7 @@ export default function OutboundRequestList() {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((r) => (
+            {pager.pageRows.map((r) => (
               <tr key={r.ROWID} className="clickable-row" onClick={() => navigate(`/outbound/${r.ROWID}`)}>
                 <td>{r.outbound_reference || <span className="muted">—</span>}</td>
                 <td>{r.reference_number || <span className="muted">—</span>}</td>
@@ -271,6 +275,8 @@ export default function OutboundRequestList() {
             )}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       )}
       {scanning && (
         <Suspense fallback={null}>

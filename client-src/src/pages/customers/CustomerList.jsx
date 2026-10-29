@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { listCustomers, createCustomer, editCustomer, removeCustomer, removeCustomers } from '../../lib/api';
 import CustomerForm from './CustomerForm';
 import SortableTh from '../../components/SortableTh';
+import Pagination from '../../components/Pagination';
+import { usePagination } from '../../lib/usePagination';
 import { useSortableData } from '../../lib/useSortableData';
 
 export default function CustomerList() {
@@ -16,6 +18,7 @@ export default function CustomerList() {
   const [bulkBusy, setBulkBusy] = useState(false);
 
   const { sorted, sortKey, toggleSort, arrowFor } = useSortableData(customers, 'name');
+  const pager = usePagination(sorted);
 
   const load = () => {
     setLoading(true);
@@ -68,8 +71,10 @@ export default function CustomerList() {
     });
   };
 
+  const pageIds = new Set(pager.pageRows.map((c) => c.ROWID));
+  const pageAllSelected = pager.pageRows.length > 0 && pager.pageRows.every((c) => selected.has(c.ROWID));
   const toggleSelectAll = () => {
-    setSelected((prev) => (prev.size === sorted.length ? new Set() : new Set(sorted.map((c) => c.ROWID))));
+    setSelected((prev) => (pageAllSelected ? new Set([...prev].filter((id) => !pageIds.has(id))) : new Set([...prev, ...pageIds])));
   };
 
   const handleBulkDelete = () => {
@@ -118,11 +123,12 @@ export default function CustomerList() {
       {loading ? (
         <p className="muted">Loading...</p>
       ) : (
+        <>
         <table>
           <thead>
             <tr>
               <th className="checkbox-cell">
-                <input type="checkbox" checked={selected.size === sorted.length && sorted.length > 0} onChange={toggleSelectAll} />
+                <input type="checkbox" checked={pageAllSelected} onChange={toggleSelectAll} />
               </th>
               <SortableTh label="Name" sortKey="name" onSort={toggleSort} arrowFor={arrowFor} />
               <SortableTh label="Email" sortKey="email" onSort={toggleSort} arrowFor={arrowFor} />
@@ -132,7 +138,7 @@ export default function CustomerList() {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((c) => (
+            {pager.pageRows.map((c) => (
               <tr key={c.ROWID} className="clickable-row" onClick={() => navigate(`/customers/${c.ROWID}`)}>
                 <td onClick={(e) => e.stopPropagation()}>
                   <input type="checkbox" checked={selected.has(c.ROWID)} onChange={() => toggleSelected(c.ROWID)} />
@@ -162,6 +168,8 @@ export default function CustomerList() {
             )}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       )}
     </div>
   );

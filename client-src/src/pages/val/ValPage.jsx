@@ -10,6 +10,8 @@ import {
   listCargoForCustomer,
 } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
+import { usePagination } from '../../lib/usePagination';
+import Pagination from '../../components/Pagination';
 
 const SERVICE_TYPES = ['Inspection', 'Repacking', 'Relabelling', 'Kitting', 'Quality Check'];
 
@@ -89,6 +91,8 @@ export default function ValPage() {
 
   const nextActionLabel = { Submitted: 'Assign', Assigned: 'Start', 'In Progress': 'Complete' };
 
+  const pager = usePagination(requests);
+
   return (
     <div>
       <div className="toolbar">
@@ -161,6 +165,7 @@ export default function ValPage() {
       {loading ? (
         <p className="muted">Loading...</p>
       ) : (
+        <>
         <table>
           <thead>
             <tr>
@@ -172,7 +177,7 @@ export default function ValPage() {
             </tr>
           </thead>
           <tbody>
-            {requests.map((r) => (
+            {pager.pageRows.map((r) => (
               <tr key={r.ROWID}>
                 <td>{r.customer_name}</td>
                 <td>{r.cargo_description}</td>
@@ -198,6 +203,8 @@ export default function ValPage() {
             )}
           </tbody>
         </table>
+        <Pagination pager={pager} />
+        </>
       )}
     </div>
   );
