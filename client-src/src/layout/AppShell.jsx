@@ -67,7 +67,7 @@ const NAV_GROUPS = [
 const BOTTOM_NAV_KEYS = ['/', '/inbound', '/storage', '/outbound'];
 
 export default function AppShell() {
-  const { user, businessRole, clearSession, canAccessPath, accessibleWarehouses, activeWarehouseId, setActiveWarehouseId } = useAuth();
+  const { user, businessRole, clearSession, canAccessPath, accessibleWarehouses, activeWarehouseId, setActiveWarehouseId, features } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
 
@@ -141,7 +141,7 @@ export default function AppShell() {
         </div>
         {nav}
         <div className="sidebar-footer">
-          {accessibleWarehouses.length > 1 && (
+          {features.multi_warehouse && accessibleWarehouses.length > 1 && (
             <label className="workspace-switch" title="The warehouse you are working in: new inbounds and outbounds are created here">
               <IconWarehouse width={16} height={16} />
               <select

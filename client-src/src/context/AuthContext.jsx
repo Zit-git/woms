@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { getCurrentUser, recordAuthIssue, readAuthIssue, clearAuthIssue } from '../lib/catalystClient';
-import { getAppUserByEmail, listRolePermissions, listUserWarehouseRoles, listWarehouses } from '../lib/api';
+import { getAppUserByEmail, listRolePermissions, listUserWarehouseRoles, listWarehouses, listAppSettings, saveAppSetting } from '../lib/api';
+import { resolveFeatures } from '../lib/features';
 import { ADMIN_ROLE, canApproveIn, canApproveAnywhere, canAccessWarehouse, roleIn, describeAccess } from '../lib/access';
 import { moduleForPath } from '../lib/permissions';
 
@@ -18,6 +19,7 @@ export function AuthProvider({ children }) {
       return '';
     }
   });
+  const [settingRows, setSettingRows] = useState([]);
   const [allowedModules, setAllowedModules] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   // Why the sign-in was refused after Catalyst accepted it (shown on the login screen).
@@ -36,8 +38,8 @@ export function AuthProvider({ children }) {
       // Fetched together rather than one after the other: listRolePermissions
       // doesn't depend on the AppUsers lookup, and chaining them cost an extra
       // full network round trip on every page load.
-      Promise.all([getAppUserByEmail(currentUser.email_id), listRolePermissions(), listWarehouses().catch(() => [])])
-        .then(async ([row, perms, warehouses]) => {
+      Promise.all([getAppUserByEmail(currentUser.email_id), listRolePermissions(), listWarehouses().catch(() => []), listAppSettings().catch(() => [])])
+        .then(async ([row, perms, warehouses, settings]) => {
           if (cancelled) return;
           const rows = row && row.business_role !== ADMIN_ROLE ? await listUserWarehouseRoles(row.ROWID) : [];
           if (cancelled) return;
@@ -47,6 +49,7 @@ export function AuthProvider({ children }) {
           setAppUser(row);
           setAssignments(mine);
           setWarehouseNames(warehouses);
+          setSettingRows(settings);
           // Module access is the union of what each role the user holds grants.
           const roles = row?.business_role === ADMIN_ROLE ? [ADMIN_ROLE] : [...new Set(mine.map((a) => a.role))];
           setAllowedModules(new Set(perms.filter((p) => roles.includes(p.role)).map((p) => p.module)));
@@ -91,6 +94,13 @@ export function AuthProvider({ children }) {
   const canAccessModule = (module) => hasActiveRole && (!module || allowedModules.has(module));
   const canAccessPath = (pathname) => canAccessModule(moduleForPath(pathname));
 
+  const features = useMemo(() => resolveFeatures(settingRows), [settingRows]);
+  const setFeature = async (key, on) => {
+    const existing = settingRows.find((r) => r.setting_key === key);
+    const saved = await saveAppSetting(existing?.ROWID, key, on);
+    setSettingRows((rows) => (existing ? rows.map((r) => (r.setting_key === key ? { ...r, setting_value: String(on) } : r)) : [...rows, saved]));
+  };
+
   const setActiveWarehouseId = (id) => {
     setActiveWarehouseIdState(id || '');
     try {
@@ -117,6 +127,8 @@ export function AuthProvider({ children }) {
     user,
     authError,
     viewer,
+    features,
+    setFeature,
     isAdmin,
     assignments,
     businessRole: appUser ? describeAccess(viewer, warehouseNames) || null : null,

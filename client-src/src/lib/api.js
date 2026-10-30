@@ -28,6 +28,7 @@ const TABLES = {
   SCAN_HISTORY: 'ScanHistory',
   CARGO_MOVEMENT_LOG: 'CargoMovementLog',
   AUDIT_LOG: 'AuditLog',
+  APP_SETTINGS: 'AppSettings',
 };
 
 // Cargo lifecycle: Received -> Stored <-> Retrieved -> Picked -> Dispatched -> Delivered.
@@ -154,6 +155,12 @@ export const getCustomerActivity = (customerId, viewer) =>
   ]).then(([inbound, outbound, cargo]) => ({ inbound, outbound, cargo }));
 
 // -- Warehouses / Zones / Racks / StorageLocations --
+export const listAppSettings = () => getAllRows(TABLES.APP_SETTINGS);
+export const saveAppSetting = (existingRowId, key, value) =>
+  existingRowId
+    ? updateRow(TABLES.APP_SETTINGS, { ROWID: existingRowId, setting_value: String(value) })
+    : addRow(TABLES.APP_SETTINGS, { setting_key: key, setting_value: String(value) });
+
 export const listWarehouses = () => getAllRows(TABLES.WAREHOUSES);
 export const createWarehouse = (row) => addRow(TABLES.WAREHOUSES, row);
 export const editWarehouse = (row) => updateRow(TABLES.WAREHOUSES, row);

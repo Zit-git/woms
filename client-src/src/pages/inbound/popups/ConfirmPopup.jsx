@@ -27,7 +27,7 @@ import { fixed2 } from '../../../lib/format';
 const MAX_DAYS = 60;
 
 export default function ConfirmPopup({ advice, lines, suppliers, transporters, patchAdvice, reloadLines, onClose }) {
-  const { user, viewer } = useAuth();
+  const { user, viewer, features } = useAuth();
   const [confirming, setConfirming] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [showReject, setShowReject] = useState(false);
@@ -158,7 +158,7 @@ export default function ConfirmPopup({ advice, lines, suppliers, transporters, p
   };
 
   return (
-    <Modal title={`Availability Check: ${advice.inbound_reference || ''}`} onClose={onClose} wide>
+    <Modal title={`${features.availability ? 'Availability Check' : 'Accept Request'}: ${advice.inbound_reference || ''}`} onClose={onClose} wide>
       {error && <div className="error-text">{error}</div>}
 
       <div className="check-block">
@@ -190,6 +190,8 @@ export default function ConfirmPopup({ advice, lines, suppliers, transporters, p
         </div>
       </div>
 
+      {features.multi_warehouse && (
+        <>
       <div className="form-section-title">Warehouse</div>
       <div className="form-row" style={{ maxWidth: 320 }}>
         <label>Store this request in</label>
@@ -209,7 +211,11 @@ export default function ConfirmPopup({ advice, lines, suppliers, transporters, p
       <p className="muted small">
         Your decision — the comparison below is guidance. Changing it re-assigns every line item on this request to that warehouse.
       </p>
+        </>
+      )}
 
+      {features.availability && (
+        <>
       <div className="form-section-title">
         Availability Check{hasStoragePeriod ? `: ${dates[0]} → ${dates[dates.length - 1]}` : ' (today only — no storage period set)'}
       </div>
@@ -334,6 +340,9 @@ export default function ConfirmPopup({ advice, lines, suppliers, transporters, p
         This is a capacity estimate, not a reservation. The exact storage location for each item is chosen later, at Put-away, once it
         has arrived.
       </p>
+
+        </>
+      )}
 
       {showReject ? (
         <>

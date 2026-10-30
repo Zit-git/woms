@@ -81,7 +81,7 @@ function useMyWarehouses() {
 }
 
 function WarehousesTab() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, features } = useAuth();
   const { items, loading, error, reload } = useMyWarehouses();
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
@@ -118,7 +118,10 @@ function WarehousesTab() {
 
   return (
     <div>
-      {isAdmin && <form className="card" onSubmit={add}>
+      {isAdmin && !features.multi_warehouse && items.length >= 1 && (
+        <p className="muted">Multiwarehouse is off in Settings, so this system runs a single warehouse. Turn it on to add more.</p>
+      )}
+      {isAdmin && (features.multi_warehouse || items.length < 1) && <form className="card" onSubmit={add}>
         <h3>Add Warehouse</h3>
         <div style={{ display: 'flex', gap: 12 }}>
           <div className="form-row" style={{ maxWidth: 300 }}>
@@ -1547,11 +1550,29 @@ function PackageTypesTab() {
 }
 
 export default function WarehouseConfig() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, features } = useAuth();
   // Only a System Administrator configures the warehouse structure; everyone else with
   // access to this module just sees Availability for their own warehouses.
-  const tabs = isAdmin ? TABS : ['Availability'];
-  const [tab, setTab] = useState(tabs[0]);
+  const tabOn = {
+    Zones: features.storage_locations,
+    Aisles: features.storage_locations,
+    Racks: features.storage_locations,
+    'Storage Locations': features.storage_locations,
+    'Package Types': features.storage_locations,
+    Map: features.visual_map,
+    Availability: features.availability,
+  };
+  const tabs = (isAdmin ? TABS : ['Availability']).filter((t) => tabOn[t] ?? true);
+  const [picked, setTab] = useState(tabs[0]);
+  const tab = tabs.includes(picked) ? picked : tabs[0];
+  if (!tabs.length) {
+    return (
+      <div>
+        <h2>Warehouse Management</h2>
+        <p className="muted">Nothing here is switched on for your role. A System Administrator can change this in Settings.</p>
+      </div>
+    );
+  }
 
   return (
     <div>
